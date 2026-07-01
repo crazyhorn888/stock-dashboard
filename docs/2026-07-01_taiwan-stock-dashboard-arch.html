@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>台股儀表板 — 架構 & UI Demo v2</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; }
+
+/* NAV */
+nav { display: flex; gap: 4px; padding: 14px 24px; background: #1a1d27; border-bottom: 1px solid #2d3148; position: sticky; top: 0; z-index: 200; flex-wrap: wrap; }
+nav button { padding: 7px 18px; border: 1px solid #2d3148; border-radius: 8px; background: transparent; color: #94a3b8; cursor: pointer; font-size: 13px; transition: all .2s; }
+nav button.active, nav button:hover { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+nav .title { margin-right: auto; font-weight: 800; font-size: 15px; color: #60a5fa; display: flex; align-items: center; gap: 6px; }
+
+/* PANELS */
+.panel { display: none; padding: 28px 24px; max-width: 1100px; margin: 0 auto; }
+.panel.active { display: block; }
+h2.section { font-size: 17px; font-weight: 700; color: #e2e8f0; margin-bottom: 18px; }
+.note { font-size: 12px; color: #64748b; line-height: 1.7; }
+.note strong { color: #94a3b8; }
+.sep { border-top: 1px solid #2d3148; margin: 28px 0; }
+
+/* ARCH */
+.arch-grid { display: grid; grid-template-columns: 1fr 48px 1fr 48px 1fr; align-items: start; margin-bottom: 32px; }
+.arch-col { display: flex; flex-direction: column; gap: 10px; }
+.arch-arrow { display: flex; align-items: center; justify-content: center; font-size: 24px; color: #4ade80; padding-top: 36px; }
+.arch-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #475569; margin-bottom: 6px; }
+.arch-card { background: #1e2235; border: 1px solid #2d3148; border-radius: 10px; padding: 12px 14px; }
+.arch-card h4 { font-size: 12px; font-weight: 600; color: #e2e8f0; margin-bottom: 3px; }
+.arch-card p { font-size: 11px; color: #64748b; line-height: 1.5; }
+.arch-card.hl { border-color: #3b82f6; background: #1a2540; }
+.arch-card.gr { border-color: #22c55e; background: #162014; }
+.arch-card.or { border-color: #f59e0b; background: #1c1a0e; }
+.badge { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 700; margin-top: 4px; }
+.badge.free { background: #14532d; color: #4ade80; }
+.badge.fc { background: #1c3a1c; color: #86efac; }
+.callout { background: #1c2a1c; border: 1px solid #22c55e; border-radius: 10px; padding: 14px 18px; margin-top: 14px; }
+.callout h4 { color: #4ade80; font-size: 13px; margin-bottom: 6px; }
+.callout ul { list-style: none; font-size: 12px; color: #86efac; line-height: 2; }
+.callout ul li::before { content: "✓  "; }
+.flow-title { font-size: 14px; font-weight: 700; color: #94a3b8; margin-bottom: 12px; border-left: 3px solid #3b82f6; padding-left: 10px; margin-top: 24px; }
+.flow-row { display: flex; gap: 0; align-items: stretch; margin-bottom: 8px; }
+.flow-step { flex: 1; background: #1e2235; border: 1px solid #2d3148; border-radius: 8px; padding: 10px 12px; }
+.flow-step h5 { font-size: 11px; font-weight: 700; color: #60a5fa; margin-bottom: 3px; }
+.flow-step p { font-size: 11px; color: #64748b; }
+.flow-sep { display: flex; align-items: center; padding: 0 6px; color: #4ade80; font-size: 16px; }
+
+/* DEMO CHROME */
+.demo-chrome { background: #1a1d27; border: 1px solid #2d3148; border-radius: 14px; overflow: hidden; }
+.demo-topbar { background: #111320; padding: 10px 18px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid #2d3148; flex-wrap: wrap; gap: 8px; }
+.demo-topbar .logo { font-weight: 800; font-size: 14px; color: #60a5fa; }
+.demo-nav-tabs { display: flex; gap: 2px; }
+.demo-nav-tabs span { padding: 5px 12px; font-size: 12px; border-radius: 6px; cursor: pointer; color: #64748b; }
+.demo-nav-tabs span.active { background: #3b82f6; color: #fff; }
+.demo-status { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+.demo-body { padding: 18px; }
+
+/* BUBBLE */
+.bubble-area { background: #111320; border-radius: 12px; padding: 14px; position: relative; }
+.bubble-area h3 { font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
+svg.bubble-svg { width: 100%; height: 320px; display: block; }
+.axis-line { stroke: #2d3148; stroke-width: 1; }
+.axis-text { fill: #475569; font-size: 10px; }
+.bubble-label { fill: #e2e8f0; font-size: 11px; font-weight: 600; text-anchor: middle; pointer-events: none; }
+.bubble-sub { fill: #94a3b8; font-size: 9px; text-anchor: middle; pointer-events: none; }
+.bubble { cursor: pointer; }
+#tooltip { position: fixed; background: #1e2235; border: 1px solid #3b82f6; border-radius: 8px; padding: 10px 14px; font-size: 12px; pointer-events: none; display: none; z-index: 999; min-width: 160px; }
+#tooltip h4 { color: #60a5fa; margin-bottom: 6px; font-size: 13px; }
+#tooltip .row { display: flex; justify-content: space-between; gap: 16px; color: #94a3b8; margin-top: 3px; }
+#tooltip .val { color: #e2e8f0; font-weight: 600; }
+.pos { color: #f87171; }
+.neg-c { color: #4ade80; }
+
+/* DRAWER */
+.stock-drawer { display: none; background: #111320; border-top: 1px solid #2d3148; padding: 14px; }
+.stock-drawer.open { display: block; }
+.drawer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.drawer-header h4 { font-size: 13px; font-weight: 700; }
+.drawer-header button { background: transparent; border: none; color: #64748b; cursor: pointer; font-size: 18px; }
+.stock-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 8px; }
+.stock-chip { background: #1e2235; border: 1px solid #2d3148; border-radius: 8px; padding: 10px 12px; }
+.stock-chip .sname { font-size: 12px; color: #94a3b8; }
+.stock-chip .scode { font-size: 10px; color: #475569; }
+.stock-chip .sprice { font-size: 14px; font-weight: 700; margin-top: 4px; }
+.stock-chip .schg { font-size: 12px; margin-top: 1px; }
+.stock-chip .sdd { font-size: 10px; color: #64748b; margin-top: 2px; }
+.up { color: #f87171; }
+.dn { color: #4ade80; }
+
+/* AFTERMARKET */
+/* N-day param bar */
+.param-bar { display: flex; align-items: center; gap: 10px; background: #1a2540; border: 1px solid #3b82f6; border-radius: 10px; padding: 10px 16px; margin-bottom: 16px; }
+.param-bar label { font-size: 12px; color: #60a5fa; font-weight: 700; white-space: nowrap; }
+.param-bar input[type=number] { width: 70px; background: #0f1117; border: 1px solid #3b82f6; border-radius: 6px; padding: 4px 8px; color: #e2e8f0; font-size: 14px; font-weight: 700; text-align: center; }
+.param-bar .hint { font-size: 11px; color: #475569; }
+
+/* Market index cards */
+.mkt-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.mkt-card { background: #1e2235; border: 1px solid #2d3148; border-radius: 12px; padding: 14px 16px; }
+.mkt-card.triggered-pos { border-color: #ef4444; background: #1f1215; }
+.mkt-card.triggered-neg { border-color: #22c55e; background: #131f13; }
+.mkt-card h4 { font-size: 12px; color: #64748b; margin-bottom: 10px; font-weight: 600; }
+.mkt-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.mkt-row .label { font-size: 11px; color: #64748b; }
+.mkt-row .val { font-size: 14px; font-weight: 700; }
+.mkt-row .val.red { color: #f87171; }
+.mkt-row .val.green { color: #4ade80; }
+.mkt-row .val.blue { color: #60a5fa; }
+.condition-tag { margin-top: 8px; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; display: inline-block; }
+.condition-tag.pos-tag { color: #f87171; background: #2d1515; border: 1px solid #ef4444; }
+.condition-tag.neg-tag { color: #4ade80; background: #152d15; border: 1px solid #22c55e; }
+
+/* Func cards */
+.func-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+.func-card { background: #1e2235; border: 1px solid #2d3148; border-radius: 10px; padding: 14px; border-top: 3px solid; }
+.func-card.active-fc { border-top-color: #3b82f6; }
+.func-card.future-fc { border-top-color: #475569; opacity: .55; }
+.func-card h4 { font-size: 12px; font-weight: 700; margin-bottom: 3px; }
+.func-card p { font-size: 11px; color: #64748b; line-height: 1.5; }
+.func-card .fc-status { font-size: 10px; font-weight: 700; margin-top: 6px; color: #3b82f6; }
+.func-card.future-fc .fc-status { color: #475569; }
+
+/* filter toolbar */
+.after-toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+.after-toolbar select, .after-toolbar input[type=text] { background: #1e2235; border: 1px solid #2d3148; border-radius: 6px; padding: 5px 8px; color: #e2e8f0; font-size: 12px; }
+.tag { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; cursor: pointer; }
+.tag.sel { background: #3b82f6; color: #fff; }
+.tag.unsel { background: #1e2235; color: #64748b; border: 1px solid #2d3148; }
+
+/* stock table */
+table.stock-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.stock-table th { text-align: left; padding: 7px 10px; color: #64748b; font-weight: 600; border-bottom: 1px solid #2d3148; cursor: pointer; white-space: nowrap; user-select: none; }
+table.stock-table th:hover { color: #94a3b8; }
+table.stock-table td { padding: 8px 10px; border-bottom: 1px solid #1e2235; white-space: nowrap; }
+table.stock-table tr:hover td { background: #1e2235; }
+.bar-bg { background: #1e2235; border-radius: 3px; height: 5px; width: 70px; overflow: hidden; display: inline-block; vertical-align: middle; }
+.bar-fill { height: 100%; border-radius: 3px; }
+.itag { background: #1e2235; border: 1px solid #2d3148; border-radius: 4px; padding: 1px 6px; font-size: 10px; color: #64748b; }
+.inline-pos { font-size: 10px; color: #f87171; margin-left: 4px; }
+.inline-neg { font-size: 10px; color: #4ade80; margin-left: 4px; }
+
+/* ── SIGNALS PAGE ── */
+.signals-section { margin-bottom: 28px; }
+.signals-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.signals-header h3 { font-size: 15px; font-weight: 700; }
+.signals-header .badge-pos { background: #2d1515; color: #f87171; border: 1px solid #ef4444; border-radius: 6px; padding: 3px 10px; font-size: 11px; font-weight: 700; }
+.signals-header .badge-neg { background: #152d15; color: #4ade80; border: 1px solid #22c55e; border-radius: 6px; padding: 3px 10px; font-size: 11px; font-weight: 700; }
+.signal-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.signal-card { background: #1e2235; border: 1px solid #2d3148; border-radius: 12px; padding: 16px; cursor: pointer; transition: all .2s; position: relative; }
+.signal-card:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,.4); }
+.signal-card.active-pos { border-color: #ef4444; background: #1f1215; }
+.signal-card.active-neg { border-color: #22c55e; background: #131f13; }
+.signal-card.inactive { opacity: .55; }
+.signal-card .sc-name { font-size: 13px; font-weight: 700; color: #e2e8f0; margin-bottom: 6px; }
+.signal-card .sc-formula { font-size: 11px; color: #64748b; margin-bottom: 10px; font-family: monospace; }
+.signal-card .sc-value { font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+.signal-card .sc-status { font-size: 11px; font-weight: 700; }
+.signal-card.active-pos .sc-status { color: #f87171; }
+.signal-card.active-neg .sc-status { color: #4ade80; }
+.signal-card .sc-hint { font-size: 10px; color: #64748b; margin-top: 8px; }
+.placeholder-card { background: #161925; border: 1px dashed #2d3148; border-radius: 12px; padding: 16px; display: flex; align-items: center; justify-content: center; color: #2d3148; font-size: 12px; min-height: 100px; }
+
+/* MODAL */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 500; align-items: center; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal-box { background: #1e2235; border-radius: 16px; padding: 28px; max-width: 520px; width: 90%; border: 1px solid #2d3148; position: relative; }
+.modal-box h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.modal-box .modal-type { font-size: 11px; font-weight: 700; margin-bottom: 16px; }
+.modal-box .modal-type.pos { color: #f87171; }
+.modal-box .modal-type.neg { color: #4ade80; }
+.modal-close { position: absolute; top: 16px; right: 18px; background: transparent; border: none; color: #64748b; font-size: 20px; cursor: pointer; }
+.formula-block { background: #111320; border-radius: 8px; padding: 14px; margin: 12px 0; font-family: monospace; font-size: 12px; color: #93c5fd; line-height: 2; }
+.formula-block .comment { color: #475569; }
+.modal-example { background: #162014; border-radius: 8px; padding: 12px 14px; margin-top: 10px; }
+.modal-example h5 { font-size: 11px; font-weight: 700; color: #4ade80; margin-bottom: 6px; }
+.modal-example p { font-size: 11px; color: #86efac; line-height: 1.8; }
+.modal-example.neg-ex { background: #151f27; }
+.modal-example.neg-ex h5 { color: #60a5fa; }
+.modal-example.neg-ex p { color: #93c5fd; }
+.trigger-bar { display: flex; gap: 8px; align-items: center; margin-top: 14px; padding: 10px 14px; border-radius: 8px; }
+.trigger-bar.pos-bar { background: #2d1515; border: 1px solid #ef4444; }
+.trigger-bar.neg-bar { background: #152d15; border: 1px solid #22c55e; }
+.trigger-bar .tb-label { font-size: 12px; font-weight: 700; }
+.trigger-bar.pos-bar .tb-label { color: #f87171; }
+.trigger-bar.neg-bar .tb-label { color: #4ade80; }
+.trigger-bar .tb-val { font-size: 12px; color: #e2e8f0; margin-left: auto; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<!-- TOOLTIP -->
+<div id="tooltip">
+  <h4 id="tt-name"></h4>
+  <div class="row"><span>資金淨流入</span><span class="val" id="tt-flow"></span></div>
+  <div class="row"><span>漲跌幅</span><span class="val" id="tt-chg"></span></div>
+  <div class="row"><span>成交量佔比</span><span class="val" id="tt-vol"></span></div>
+  <div class="row"><span>包含個股</span><span class="val" id="tt-cnt"></span></div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <h3 id="modal-title"></h3>
+    <div class="modal-type" id="modal-type"></div>
+    <div class="formula-block" id="modal-formula"></div>
+    <div id="modal-example"></div>
+    <div class="trigger-bar" id="modal-trigger">
+      <span class="tb-label" id="modal-trigger-label"></span>
+      <span class="tb-val" id="modal-trigger-val"></span>
+    </div>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <div class="title">📈 StockView Demo</div>
+  <button class="active" onclick="showPanel('arch',this)">① 架構說明</button>
+  <button onclick="showPanel('intraday',this)">② 盤中即時</button>
+  <button onclick="showPanel('aftermarket',this)">③ 盤後行情</button>
+  <button onclick="showPanel('signals',this)">④ 市場條件</button>
+</nav>
+
+<!-- ═══════════════════════════════════
+     PANEL 1 — ARCH
+═══════════════════════════════════ -->
+<div id="panel-arch" class="panel active">
+  <h2 class="section">系統架構總覽</h2>
+
+  <div class="arch-grid">
+    <div class="arch-col">
+      <div class="arch-label">資料來源</div>
+      <div class="arch-card hl"><h4>Fugle API</h4><p>盤中即時行情 WebSocket</p><span class="badge fc">免費（需開富果帳號）</span></div>
+      <div class="arch-card gr"><h4>TWSE OpenAPI</h4><p>日線、籌碼、融資餘額<br>大盤收盤點數</p><span class="badge free">完全免費</span></div>
+      <div class="arch-card gr"><h4>FinMind</h4><p>EPS、P/E、殖利率<br>基本面 75+ 資料集</p><span class="badge free">免費 600 req/hr</span></div>
+      <div class="arch-card or"><h4>題材 Mapping</h4><p>爬 Yahoo/玩股網<br>每月人工確認一次</p><span class="badge free">免費（手動維護）</span></div>
+    </div>
+    <div class="arch-arrow">→</div>
+    <div class="arch-col">
+      <div class="arch-label">後端處理</div>
+      <div class="arch-card hl"><h4>GitHub Actions Cron</h4><p>每日 15:30 觸發<br>抓 TWSE + FinMind<br>計算所有指標快照</p><span class="badge free">免費</span></div>
+      <div class="arch-card gr"><h4>Firebase Firestore</h4><p>日線快照、基本面<br>大盤融資歷史（N日）<br>距高/距低 Pre-computed</p><span class="badge free">免費（Spark）</span></div>
+      <div class="arch-card"><h4>條件引擎（新增）</h4><p>每日算正向/負向條件<br>是否觸發 → 寫入 flag<br>前端直接讀結果</p></div>
+    </div>
+    <div class="arch-arrow">→</div>
+    <div class="arch-col">
+      <div class="arch-label">前端（Next.js / Vercel）</div>
+      <div class="arch-card hl"><h4>/intraday 盤中即時</h4><p>Fugle WebSocket<br>泡泡圖 3 秒批次更新</p></div>
+      <div class="arch-card hl"><h4>/aftermarket 盤後行情</h4><p>大盤指標卡片（增減幅）<br>N 日設定<br>個股修正%表格</p></div>
+      <div class="arch-card hl"><h4>/signals 市場條件 🆕</h4><p>正向/負向條件卡片<br>Modal 計算說明<br>可持續新增條件</p></div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <h4>⚡ 快取策略（為什麼不會 Loading 很久）</h4>
+    <ul>
+      <li>每日 15:30 排程算完所有指標 → 存 Firebase → 前端只讀一份 JSON 快照，近乎瞬間載入</li>
+      <li>大盤融資增減幅：每日排程一次算好，含觸發 flag，前端不需即時計算</li>
+      <li>盤中頁面：WebSocket 推送，每 3 秒 batch 更新泡泡，不逐 tick 重繪</li>
+      <li>Firebase 台灣 CDN 節點延遲 &lt; 100ms</li>
+    </ul>
+  </div>
+
+  <div class="flow-title">資料流</div>
+  <div class="flow-row">
+    <div class="flow-step"><h5>① 盤後 15:30</h5><p>GitHub Actions 觸發</p></div>
+    <div class="flow-sep">→</div>
+    <div class="flow-step"><h5>② 抓資料</h5><p>TWSE 日線 + 融資 + FinMind 基本面</p></div>
+    <div class="flow-sep">→</div>
+    <div class="flow-step"><h5>③ 算指標</h5><p>距高/距低、融資增減幅、條件觸發 flag</p></div>
+    <div class="flow-sep">→</div>
+    <div class="flow-step"><h5>④ 寫 Firebase</h5><p>每股快照 + 大盤指標 + 條件 flags</p></div>
+  </div>
+
+  <div style="margin-top:20px">
+    <p class="note"><strong>Q7 Skill 計畫：</strong>未來新增正向/負向條件時，執行 <code>/add-signal</code> → 引導填入條件名稱/公式/門檻 → 自動更新 4 個位置（/signals 卡片、盤後指標區、行內標籤、GitHub Actions 計算腳本）。Dashboard 專案完成後建立此 Skill。</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════
+     PANEL 2 — INTRADAY
+═══════════════════════════════════ -->
+<div id="panel-intraday" class="panel">
+  <h2 class="section">盤中即時頁面 — UI Demo</h2>
+  <p class="note" style="margin-bottom:16px">泡泡大小 = 產業資金淨流入量｜X 軸 = 漲跌幅%｜Y 軸 = 成交量佔大盤%｜點擊泡泡展開個股清單</p>
+  <div class="demo-chrome">
+    <div class="demo-topbar">
+      <div class="logo">StockView</div>
+      <div class="demo-nav-tabs">
+        <span class="active">盤中即時</span>
+        <span>盤後行情</span>
+        <span>市場條件</span>
+      </div>
+      <div class="demo-status" style="color:#4ade80;"><div class="dot" style="background:#4ade80"></div>即時串流 14:32:18</div>
+    </div>
+    <div class="demo-body">
+      <div class="bubble-area">
+        <h3>產業資金流向泡泡圖（盤中）</h3>
+        <svg class="bubble-svg" id="bubbleSvg">
+          <line class="axis-line" x1="50%" y1="0" x2="50%" y2="100%"/>
+          <line class="axis-line" x1="0" y1="50%" x2="100%" y2="50%"/>
+          <text class="axis-text" x="51%" y="14">高量</text>
+          <text class="axis-text" x="51%" y="97%">低量</text>
+          <text class="axis-text" x="1%" y="51%">跌</text>
+          <text class="axis-text" x="93%" y="51%">漲</text>
+          <text class="axis-text" x="3%" y="16" opacity=".4">跌＋高量（賣壓）</text>
+          <text class="axis-text" x="54%" y="16" opacity=".4">漲＋高量（主攻）</text>
+          <text class="axis-text" x="3%" y="97%" opacity=".4">跌＋低量（整理）</text>
+          <text class="axis-text" x="54%" y="97%" opacity=".4">漲＋低量（潛伏）</text>
+        </svg>
+        <div style="font-size:11px;color:#475569;text-align:center;margin-top:6px;">漲跌幅 %</div>
+      </div>
+      <div class="stock-drawer" id="stockDrawer">
+        <div class="drawer-header">
+          <h4 id="drawerTitle">個股清單</h4>
+          <button onclick="closeDrawer()">✕</button>
+        </div>
+        <div class="stock-grid" id="stockGrid"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════
+     PANEL 3 — AFTERMARKET
+═══════════════════════════════════ -->
+<div id="panel-aftermarket" class="panel">
+  <h2 class="section">盤後行情頁面 — UI Demo</h2>
+  <p class="note" style="margin-bottom:16px">TWSE OpenAPI + FinMind，每日 15:30 更新快照。N 日設定影響距高/距低計算與大盤融資增減幅。</p>
+
+  <div class="demo-chrome">
+    <div class="demo-topbar">
+      <div class="logo">StockView</div>
+      <div class="demo-nav-tabs">
+        <span>盤中即時</span>
+        <span class="active">盤後行情</span>
+        <span>市場條件</span>
+      </div>
+      <div class="demo-status" style="color:#f59e0b;"><div class="dot" style="background:#f59e0b;animation:none"></div>更新 2026/07/01 15:32</div>
+    </div>
+    <div class="demo-body">
+
+      <!-- N 日設定 -->
+      <div class="param-bar">
+        <label>📅 參考區間 N =</label>
+        <input type="number" id="nDays" value="100" min="20" max="250" onchange="updateN(this.value)">
+        <span style="font-size:12px;color:#60a5fa;font-weight:700;">天</span>
+        <span class="hint">— 影響距高/距低計算 & 大盤融資增減幅。預設 100 天。</span>
+      </div>
+
+      <!-- 大盤指標卡片 -->
+      <div class="mkt-cards">
+        <!-- 正向：融資減幅 vs 大盤減幅 -->
+        <div class="mkt-card triggered-pos" id="mktCardPos">
+          <h4>大盤融資減幅指標（過去 <span class="n-label">100</span> 天，以最高點基準）</h4>
+          <div class="mkt-row">
+            <span class="label">📍 區間最高點</span>
+            <span class="val blue">22,634 點 (2026/05/08)</span>
+          </div>
+          <div class="mkt-row">
+            <span class="label">今日大盤</span>
+            <span class="val">20,981 點</span>
+          </div>
+          <div class="mkt-row">
+            <span class="label">大盤減幅</span>
+            <span class="val red">▼ 7.31%</span>
+          </div>
+          <div class="mkt-row">
+            <span class="label">最高點當日融資餘額</span>
+            <span class="val blue">2,418 億</span>
+          </div>
+          <div class="mkt-row">
+            <span class="label">今日融資餘額</span>
+            <span class="val">1,986 億</span>
+          </div>
+          <div class="mkt-row">
+            <span class="label">融資減幅</span>
+            <span class="val red">▼ 17.87%</span>
+          </div>
+          <div class="mkt-row" style="margin-top:4px;padding-top:8px;border-top:1px solid #2d1515;">
+            <span class="label" style="font-weight:700;color:#94a3b8;">融資減幅 − 大盤減幅</span>
+            <span class="val red">+10.56%</span>
+          </div>
+          <span class="condition-tag pos-tag">● 融資減幅&gt;大盤減幅 5% ✓ 觸發</span>
+        </div>
+
+        <!-- 負向：融資增幅 vs 大盤增幅 -->
+        <div class="mkt-card" id="mktCardNeg">
+          <h4>大盤融資增幅指標（過去 <span class="n-label">100</span> 天，以最低點基準）</h4>
+          <div class="mkt-row">
+            <span class="label">📍 區間最低點</span>
+            <span class="val blue">17,208 點 (2026/04/07)</span>
+          </div>
+          <div class="mkt-row">
+            <span class="label">今日大盤</span>
+            <span class="val">20,981 點</span>
+          </div>
+          <div class="mkt-row">
+            <span class="label">大盤增幅</span>
+            <span class="val green">▲ 21.93%</span>
+          </div>
+          <div class="mkt-row">
+            <span class="label">最低點當日融資餘額</span>
+            <span class="val blue">1,842 億</span>
+          </div>
+          <div class="mkt-row">
+            <span class="label">今日融資餘額</span>
+            <span class="val">1,986 億</span>
+          </div>
+          <div class="mkt-row">
+            <span class="label">融資增幅</span>
+            <span class="val green">▲ 7.82%</span>
+          </div>
+          <div class="mkt-row" style="margin-top:4px;padding-top:8px;border-top:1px solid #2d3148;">
+            <span class="label" style="font-weight:700;color:#94a3b8;">融資增幅 − 大盤增幅</span>
+            <span class="val" style="color:#64748b;">−14.11%</span>
+          </div>
+          <span class="condition-tag" style="color:#64748b;background:#1e2235;border-color:#2d3148;margin-top:8px;display:inline-block;font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;">融資增幅&gt;大盤增幅 7% — 未觸發</span>
+        </div>
+      </div>
+
+      <!-- Function tabs -->
+      <div class="func-cards">
+        <div class="func-card active-fc"><h4>📊 修正幅度表</h4><p>距N日最高/最低修正%<br>含基本面欄位</p><div class="fc-status">▶ 目前頁面</div></div>
+        <div class="func-card future-fc"><h4>💰 籌碼分析</h4><p>外資/投信/自營買賣超<br>連續天數統計</p><div class="fc-status">＋ 未來新增</div></div>
+        <div class="func-card future-fc"><h4>📈 基本面比較</h4><p>P/E、P/B、EPS TTM<br>同產業橫向比較</p><div class="fc-status">＋ 未來新增</div></div>
+      </div>
+
+      <!-- Filters -->
+      <div class="after-toolbar">
+        <select><option>全部產業</option><option>半導體</option><option>電腦及週邊</option><option>光電</option><option>金融</option></select>
+        <select><option>全部題材</option><option>AI</option><option>電動車</option><option>軍工</option></select>
+        <span class="tag sel">所有</span><span class="tag unsel">上市</span><span class="tag unsel">上櫃</span>
+        <input type="text" placeholder="🔍 搜尋代號 / 名稱" style="width:150px">
+      </div>
+
+      <!-- Table -->
+      <table class="stock-table">
+        <thead>
+          <tr>
+            <th>代號</th><th>名稱</th><th>收盤</th>
+            <th>今日漲跌%</th>
+            <th>距N日高▼%</th><th>視覺</th>
+            <th>距N日低▲%</th>
+            <th>P/E</th><th>EPS TTM</th>
+            <th>外資買賣超</th><th>產業</th>
+          </tr>
+        </thead>
+        <tbody id="afterTableBody"></tbody>
+      </table>
+      <p class="note" style="margin-top:8px">
+        距N日高▼%：修正愈深數值愈負（紅色警示）｜距N日低▲%：反彈幅度｜N = <span id="nLabel2">100</span> 天（上方可修改）<br>
+        表格內紅字小標籤 = 正向條件觸發、綠字小標籤 = 負向條件觸發
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════
+     PANEL 4 — SIGNALS
+═══════════════════════════════════ -->
+<div id="panel-signals" class="panel">
+  <h2 class="section">市場條件頁面 — UI Demo</h2>
+  <p class="note" style="margin-bottom:20px">點擊任一條件卡片查看詳細計算說明。條件觸發時卡片高亮邊框。未來新增條件執行 <code>/add-signal</code>。</p>
+
+  <div class="demo-chrome">
+    <div class="demo-topbar">
+      <div class="logo">StockView</div>
+      <div class="demo-nav-tabs">
+        <span>盤中即時</span><span>盤後行情</span><span class="active">市場條件</span>
+      </div>
+    </div>
+    <div class="demo-body">
+
+      <!-- 正向條件 -->
+      <div class="signals-section">
+        <div class="signals-header">
+          <h3>正向條件（看多）</h3>
+          <span class="badge-pos">● 紅字顯示（台灣：紅 = 漲 = 利多）</span>
+        </div>
+        <div class="signal-cards">
+          <div class="signal-card active-pos" onclick="openModal('pos1')">
+            <div class="sc-name">融資減幅 &gt; 大盤減幅 5%</div>
+            <div class="sc-formula">( 融資減幅 − 大盤減幅 ) ≥ 5%</div>
+            <div class="sc-value" style="color:#f87171;">差距 +10.56%</div>
+            <div class="sc-status">● 目前觸發中</div>
+            <div class="sc-hint">點擊查看計算說明 →</div>
+          </div>
+          <div class="placeholder-card">＋ 未來新增正向條件<br><small style="font-size:10px">執行 /add-signal</small></div>
+          <div class="placeholder-card">＋ 未來新增正向條件</div>
+        </div>
+      </div>
+
+      <!-- 負向條件 -->
+      <div class="signals-section">
+        <div class="signals-header">
+          <h3>負向條件（看空）</h3>
+          <span class="badge-neg">● 綠字顯示（台灣：綠 = 跌 = 利空）</span>
+        </div>
+        <div class="signal-cards">
+          <div class="signal-card inactive" onclick="openModal('neg1')">
+            <div class="sc-name">融資增幅 &gt; 大盤增幅 7%</div>
+            <div class="sc-formula">( 融資增幅 − 大盤增幅 ) ≥ 7%</div>
+            <div class="sc-value" style="color:#64748b;">差距 −14.11%</div>
+            <div class="sc-status" style="color:#475569;">○ 未觸發</div>
+            <div class="sc-hint">點擊查看計算說明 →</div>
+          </div>
+          <div class="placeholder-card">＋ 未來新增負向條件<br><small style="font-size:10px">執行 /add-signal</small></div>
+          <div class="placeholder-card">＋ 未來新增負向條件</div>
+        </div>
+      </div>
+
+      <!-- 說明 -->
+      <div style="margin-top:20px;padding:14px;background:#1e2235;border-radius:10px;">
+        <p style="font-size:12px;color:#64748b;line-height:1.8;">
+          <strong style="color:#94a3b8;">顏色邏輯</strong>：正向條件 = 紅字（台灣習慣：紅 = 漲 = 利多）；負向條件 = 綠字（綠 = 跌 = 利空）<br>
+          <strong style="color:#94a3b8;">新增條件</strong>：在 Dashboard 專案完成後，執行 <code>/add-signal</code> → 填入條件名稱、公式、門檻 → 自動更新 /signals 頁、盤後指標區、行內標籤、GitHub Actions 腳本。
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ SCRIPTS ═══════════════════ -->
+<script>
+// NAV
+function showPanel(id, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (id === 'intraday' && !window.bubblesDrawn) { setTimeout(drawBubbles, 50); window.bubblesDrawn = true; }
+}
+
+// ── BUBBLE ──
+const sectors = [
+  { name:'半導體', cnt:42, flow:85, chg:2.3, vol:18.5, color:'#3b82f6', stocks:[{code:'2330',name:'台積電',price:1085,chg:2.1,dd:-4.2},{code:'2303',name:'聯電',price:52.3,chg:1.8,dd:-11.5},{code:'3711',name:'日月光',price:168,chg:1.5,dd:-6.7}] },
+  { name:'AI 伺服器', cnt:18, flow:62, chg:3.8, vol:22.1, color:'#8b5cf6', stocks:[{code:'2317',name:'鴻海',price:215,chg:4.2,dd:-2.1},{code:'6515',name:'穎崴',price:380,chg:5.0,dd:-15.2}] },
+  { name:'電腦週邊', cnt:29, flow:-28, chg:-1.2, vol:8.3, color:'#ef4444', stocks:[{code:'2382',name:'廣達',price:325,chg:-1.5,dd:-18.3},{code:'2353',name:'宏碁',price:28.1,chg:-0.8,dd:-22.1}] },
+  { name:'光電', cnt:22, flow:-15, chg:-0.5, vol:5.1, color:'#f97316', stocks:[{code:'2409',name:'友達',price:18.3,chg:-0.7,dd:-28.5}] },
+  { name:'金融', cnt:38, flow:12, chg:0.4, vol:11.2, color:'#22c55e', stocks:[{code:'2882',name:'國泰金',price:68.2,chg:0.6,dd:-3.1},{code:'2886',name:'兆豐金',price:42.5,chg:0.3,dd:-5.8}] },
+  { name:'電動車', cnt:15, flow:30, chg:1.9, vol:7.4, color:'#06b6d4', stocks:[{code:'1590',name:'亞德客',price:995,chg:2.3,dd:-6.5}] },
+  { name:'生技', cnt:20, flow:-5, chg:-0.2, vol:3.8, color:'#ec4899', stocks:[{code:'1786',name:'科妍',price:155,chg:0.1,dd:-18.7}] },
+  { name:'傳產鋼鐵', cnt:25, flow:-18, chg:-0.8, vol:6.2, color:'#78716c', stocks:[{code:'2002',name:'中鋼',price:24.5,chg:-1.2,dd:-12.3}] },
+];
+
+function drawBubbles() {
+  const svg = document.getElementById('bubbleSvg');
+  const W = svg.clientWidth || 700, H = svg.clientHeight || 320, PAD = 60;
+  const maxFlow = Math.max(...sectors.map(s => Math.abs(s.flow)));
+  sectors.forEach((s, i) => {
+    const r = 22 + (Math.abs(s.flow) / maxFlow) * 50;
+    const x = PAD + ((s.chg + 5) / 10) * (W - PAD*2);
+    const y = PAD + (1 - s.vol / 30) * (H - PAD*2);
+    const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.setAttribute('class','bubble');
+    const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    c.setAttribute('cx',x); c.setAttribute('cy',y); c.setAttribute('r',r);
+    c.setAttribute('fill',s.color); c.setAttribute('fill-opacity', s.flow>0?'0.75':'0.4');
+    c.setAttribute('stroke',s.color); c.setAttribute('stroke-width','1.5');
+    const t1 = document.createElementNS('http://www.w3.org/2000/svg','text');
+    t1.setAttribute('x',x); t1.setAttribute('y',y-4); t1.setAttribute('class','bubble-label'); t1.textContent = s.name;
+    const t2 = document.createElementNS('http://www.w3.org/2000/svg','text');
+    t2.setAttribute('x',x); t2.setAttribute('y',y+12); t2.setAttribute('class','bubble-sub');
+    t2.textContent = (s.chg>0?'+':'')+s.chg+'%';
+    g.appendChild(c); g.appendChild(t1); g.appendChild(t2);
+    svg.appendChild(g);
+    g.addEventListener('mouseenter', e => showTT(e,s));
+    g.addEventListener('mousemove', e => moveTT(e));
+    g.addEventListener('mouseleave', hideTT);
+    g.addEventListener('click', () => openDrawer(s));
+  });
+}
+function showTT(e,s){ const tt=document.getElementById('tooltip'); document.getElementById('tt-name').textContent=s.name; document.getElementById('tt-flow').textContent=(s.flow>0?'+':'')+s.flow+'億'; const ce=document.getElementById('tt-chg'); ce.textContent=(s.chg>0?'+':'')+s.chg+'%'; ce.className='val '+(s.chg>=0?'pos':'neg-c'); document.getElementById('tt-vol').textContent=s.vol+'%'; document.getElementById('tt-cnt').textContent=s.cnt+'檔'; tt.style.display='block'; moveTT(e); }
+function moveTT(e){ const tt=document.getElementById('tooltip'); tt.style.left=(e.clientX+14)+'px'; tt.style.top=(e.clientY-10)+'px'; }
+function hideTT(){ document.getElementById('tooltip').style.display='none'; }
+function openDrawer(s){
+  document.getElementById('drawerTitle').textContent = s.name+' — 個股清單';
+  const grid=document.getElementById('stockGrid'); grid.innerHTML='';
+  s.stocks.forEach(st=>{
+    const d=document.createElement('div'); d.className='stock-chip';
+    d.innerHTML=`<div class="sname">${st.name}</div><div class="scode">${st.code}</div><div class="sprice">${st.price}</div><div class="schg ${st.chg>=0?'up':'dn'}">${st.chg>=0?'▲':'▼'}${Math.abs(st.chg)}%</div><div class="sdd">距${window.currentN||100}日高 ${st.dd}%</div>`;
+    grid.appendChild(d);
+  });
+  document.getElementById('stockDrawer').classList.add('open');
+}
+function closeDrawer(){ document.getElementById('stockDrawer').classList.remove('open'); }
+
+// ── AFTERMARKET TABLE ──
+const afterData = [
+  { code:'2330', name:'台積電', price:1085, chg:2.1,  h100:-4.2,  l100:38.5, pe:25.3, eps:42.8, foreign:'+8,230', industry:'半導體', posSignal:true, negSignal:false },
+  { code:'2317', name:'鴻海',   price:215,  chg:4.2,  h100:-2.1,  l100:52.3, pe:12.1, eps:17.8, foreign:'+3,150', industry:'電腦週邊', posSignal:false, negSignal:false },
+  { code:'2382', name:'廣達',   price:325,  chg:-1.5, h100:-18.3, l100:15.2, pe:18.5, eps:17.6, foreign:'-1,820', industry:'電腦週邊', posSignal:false, negSignal:false },
+  { code:'2409', name:'友達',   price:18.3, chg:-0.7, h100:-28.5, l100:5.8,  pe:8.2,  eps:2.2,  foreign:'-520',  industry:'光電', posSignal:false, negSignal:false },
+  { code:'2882', name:'國泰金', price:68.2, chg:0.6,  h100:-3.1,  l100:22.5, pe:14.3, eps:4.8,  foreign:'+1,050',industry:'金融', posSignal:false, negSignal:false },
+  { code:'6515', name:'穎崴',   price:380,  chg:5.0,  h100:-15.2, l100:88.3, pe:32.1, eps:11.8, foreign:'+890',  industry:'AI伺服器', posSignal:false, negSignal:false },
+  { code:'2002', name:'中鋼',   price:24.5, chg:-1.2, h100:-12.3, l100:8.5,  pe:11.2, eps:2.2,  foreign:'-180',  industry:'鋼鐵', posSignal:false, negSignal:false },
+  { code:'2886', name:'兆豐金', price:42.5, chg:0.3,  h100:-5.8,  l100:18.1, pe:12.8, eps:3.3,  foreign:'+420',  industry:'金融', posSignal:false, negSignal:false },
+  { code:'1590', name:'亞德客', price:995,  chg:2.3,  h100:-6.5,  l100:45.2, pe:22.4, eps:44.4, foreign:'+680',  industry:'電動車', posSignal:false, negSignal:true },
+];
+
+let currentN = 100;
+function updateN(v){
+  currentN = parseInt(v) || 100;
+  window.currentN = currentN;
+  document.querySelectorAll('.n-label').forEach(el=>el.textContent=currentN);
+  document.getElementById('nLabel2').textContent = currentN;
+  renderAfterTable(afterData);
+}
+
+function renderAfterTable(data){
+  const body=document.getElementById('afterTableBody'); body.innerHTML='';
+  data.forEach(r=>{
+    const bp = Math.min(Math.abs(r.h100),50)*2;
+    const fc = r.foreign.startsWith('+')?'#f87171':'#4ade80';
+    const hcls = r.h100<=-15?'style="color:#f87171"':r.h100>=-5?'style="color:#4ade80"':'';
+    const posTag = r.posSignal ? `<span class="inline-pos">融資減幅&gt;大盤減幅 5%</span>` : '';
+    const negTag = r.negSignal ? `<span class="inline-neg">融資增幅&gt;大盤增幅 7%</span>` : '';
+    body.innerHTML+=`<tr>
+      <td style="font-weight:600;color:#60a5fa">${r.code}</td>
+      <td>${r.name}</td>
+      <td>${r.price}</td>
+      <td class="${r.chg>=0?'up':'dn'}">${r.chg>=0?'▲':'▼'}${Math.abs(r.chg)}%${posTag}${negTag}</td>
+      <td ${hcls}>${r.h100}%</td>
+      <td><div class="bar-bg"><div class="bar-fill" style="width:${bp}%;background:#ef4444"></div></div></td>
+      <td style="color:#4ade80">+${r.l100}%</td>
+      <td>${r.pe}</td>
+      <td>${r.eps}</td>
+      <td style="color:${fc}">${r.foreign}</td>
+      <td><span class="itag">${r.industry}</span></td>
+    </tr>`;
+  });
+}
+
+// ── MODAL ──
+const modalData = {
+  pos1: {
+    title: '融資減幅 > 大盤減幅 5%',
+    type: '正向條件（看多）',
+    typeClass: 'pos',
+    formula: `<span class="comment">// 基準：過去 N 天大盤最高點</span>
+peak_date = 區間最高點日期 (2026/05/08)
+peak_index = 最高點大盤點數 (22,634)
+peak_margin = 最高點融資餘額 (2,418 億)
+
+<span class="comment">// 計算</span>
+大盤減幅 = (22,634 − 20,981) / 22,634 = 7.31%
+融資減幅 = (2,418 − 1,986) / 2,418 = 17.87%
+
+差距 = 17.87% − 7.31% = <strong style="color:#f87171">+10.56%</strong>`,
+    example: `<h5>● 目前觸發（差距 10.56% ≥ 門檻 5%）</h5>
+<p>意義：大盤從高點下跌 7.31%，但融資餘額卻減少了 17.87%，
+減少幅度遠大於大盤跌幅。代表投資人已大量去化融資槓桿，
+市場恐慌性降槓桿完成，後續反彈壓力較輕。</p>`,
+    exClass: 'modal-example',
+    triggerClass: 'trigger-bar pos-bar',
+    triggerLabel: '門檻：差距 ≥ 5% → 觸發',
+    triggerVal: '目前差距 +10.56% ✓'
+  },
+  neg1: {
+    title: '融資增幅 > 大盤增幅 7%',
+    type: '負向條件（看空）',
+    typeClass: 'neg',
+    formula: `<span class="comment">// 基準：過去 N 天大盤最低點</span>
+trough_date = 區間最低點日期 (2026/04/07)
+trough_index = 最低點大盤點數 (17,208)
+trough_margin = 最低點融資餘額 (1,842 億)
+
+<span class="comment">// 計算</span>
+大盤增幅 = (20,981 − 17,208) / 17,208 = 21.93%
+融資增幅 = (1,986 − 1,842) / 1,842 = 7.82%
+
+差距 = 7.82% − 21.93% = <strong style="color:#64748b">−14.11%</strong>`,
+    example: `<h5>○ 目前未觸發（差距 −14.11% &lt; 門檻 7%）</h5>
+<p>觸發條件：大盤從低點反彈，但融資餘額增加幅度更快，
+代表散戶加速追高加槓桿，市場過熱，風險升溫。
+目前差距為負值（融資增幅遠小於大盤增幅），代表籌碼仍健康。</p>`,
+    exClass: 'modal-example neg-ex',
+    triggerClass: 'trigger-bar neg-bar',
+    triggerLabel: '門檻：差距 ≥ 7% → 觸發',
+    triggerVal: '目前差距 −14.11% ✗'
+  }
+};
+
+function openModal(key){
+  const d = modalData[key];
+  document.getElementById('modal-title').textContent = d.title;
+  const mt = document.getElementById('modal-type');
+  mt.textContent = d.type; mt.className = 'modal-type ' + d.typeClass;
+  document.getElementById('modal-formula').innerHTML = d.formula;
+  document.getElementById('modal-example').innerHTML = `<div class="${d.exClass}">${d.example}</div>`;
+  const tb = document.getElementById('modal-trigger');
+  tb.className = d.triggerClass;
+  document.getElementById('modal-trigger-label').textContent = d.triggerLabel;
+  document.getElementById('modal-trigger-val').textContent = d.triggerVal;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+function closeModal(e){
+  if (!e || e.target === document.getElementById('modalOverlay')) {
+    document.getElementById('modalOverlay').classList.remove('open');
+  }
+}
+
+// INIT
+window.addEventListener('load', () => {
+  renderAfterTable(afterData);
+  window.currentN = 100;
+});
+window.addEventListener('resize', () => {
+  if (window.bubblesDrawn) {
+    document.querySelectorAll('#bubbleSvg g.bubble').forEach(el=>el.remove());
+    drawBubbles();
+  }
+});
+</script>
+</body>
+</html>
