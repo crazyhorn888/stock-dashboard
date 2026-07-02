@@ -14,74 +14,64 @@ import { fileURLToPath } from 'url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DATA_FILE = join(__dirname, '..', 'data', 'latest.json')
 
-// ── 抓大盤歷史（TWSE）────────────────────────────────
+// ── 抓大盤歷史（FMTQIK，每月一請求）──────────────────
 async function fetchIndexHistory(n) {
-  // 往回取 n 個交易日（多抓一點避免非交易日）
-  const days = Math.round(n * 1.6) + 30
-  const startDate = new Date(Date.now() - days * 24 * 3600 * 1000)
-    .toISOString().slice(0, 10).replace(/-/g, '')
-  const endDate = new Date().toLocaleDateString('zh-TW', {
-    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).replace(/\//g, '')
-
+  const months = getLastNMonths(Math.ceil(n / 18) + 1)  // 每月約 20 天，多備 1 個月
   const results = []
-  // TWSE 每次只能查一個月，需要分月查
-  const months = getMonthRange(startDate, endDate)
+
   for (const ym of months) {
     try {
-      const url = `https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date=${ym}01&type=IND`
-      const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
-      if (!res.ok) continue
-      const d = await res.json()
-      // MI_INDEX data 中找加權指數行
-      const rows = (d?.data ?? []).filter(r => r[0] === '發行量加權股價指數')
-      for (const row of rows) {
-        const date = twDateToISO(d.date ?? row[1])
-        const close = parseFloat(row[4]?.replace(/,/g, '') ?? 0)
-        if (date && close > 0) results.push({ date, close })
-      }
-    } catch { /* 忽略單月失敗 */ }
-    await new Promise(r => setTimeout(r, 500))
-  }
-  // 按日期遞減排序，取前 n 筆
-  return results
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, n)
-}
-
-// ── 抓大盤融資歷史（TWSE）────────────────────────────
-async function fetchMarginHistory(n) {
-  const days = Math.round(n * 1.6) + 30
-  const startDate = new Date(Date.now() - days * 24 * 3600 * 1000)
-    .toISOString().slice(0, 10).replace(/-/g, '')
-  const endDate = new Date().toLocaleDateString('zh-TW', {
-    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).replace(/\//g, '')
-
-  const results = []
-  const months = getMonthRange(startDate, endDate)
-  for (const ym of months) {
-    try {
-      const url = `https://www.twse.com.tw/exchangeReport/MI_MARGN?response=json&date=${ym}01&selectType=MS`
+      const url = `https://www.twse.com.tw/rwd/zh/afterTrading/FMTQIK?response=json&date=${ym}01`
       const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
       if (!res.ok) continue
       const d = await res.json()
       for (const row of d?.data ?? []) {
-        const date = twDateToISO(row[0])
-        // 融資餘額（千元）→ 億元，欄位 index 9
-        const margin = parseFloat(row[9]?.replace(/,/g, '') ?? 0) / 1e5
-        if (date && margin > 0) results.push({ date, margin })
+        const date = twDateToISO(row[0])   // '115/06/01' → '2026-06-01'
+        const close = parseFloat(row[4]?.replace(/,/g, '') ?? 0)
+        if (date && close > 0) results.push({ date, close })
       }
-    } catch { /* 忽略 */ }
-    await new Promise(r => setTimeout(r, 500))
+    } catch { /* 忽略單月失敗 */ }
+    await new Promise(r => setTimeout(r, 400))
   }
+
   return results
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, n)
 }
 
+// ── 抓大盤融資歷史（RWD MI_MARGN，按交易日並行查詢）──
+async function fetchMarginHistory(tradingDates) {
+  const CONCURRENCY = 5
+  const results = []
+
+  for (let i = 0; i < tradingDates.length; i += CONCURRENCY) {
+    const batch = tradingDates.slice(i, i + CONCURRENCY)
+    const batchResults = await Promise.allSettled(
+      batch.map(async date => {
+        const yyyymmdd = date.replace(/-/g, '')
+        const url = `https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?response=json&date=${yyyymmdd}&selectType=MS`
+        const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const d = await res.json()
+        if (d?.stat !== 'OK' || !d?.tables?.[0]?.data) throw new Error('no data')
+        // tables[0].data[2] = 融資金額行，[5] = 今日餘額（仟元）
+        const balance = d.tables[0].data[2]?.[5]
+        if (!balance) throw new Error('no balance field')
+        const margin = parseFloat(balance.replace(/,/g, '')) / 1e5  // 仟元 → 億元
+        return { date, margin }
+      })
+    )
+    for (const r of batchResults) {
+      if (r.status === 'fulfilled') results.push(r.value)
+    }
+    if (i + CONCURRENCY < tradingDates.length) await new Promise(r => setTimeout(r, 300))
+  }
+
+  return results.sort((a, b) => b.date.localeCompare(a.date))
+}
+
 // ── 工具函式 ─────────────────────────────────────────
-/** 民國年日期字串 → YYYY-MM-DD */
+/** 民國年日期字串（'115/06/01'）→ YYYY-MM-DD */
 function twDateToISO(str) {
   if (!str) return null
   const m = str.match(/(\d+)\/(\d+)\/(\d+)/)
@@ -90,15 +80,13 @@ function twDateToISO(str) {
   return `${year}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`
 }
 
-/** YYYYMM 範圍清單（從 start 到 end） */
-function getMonthRange(start8, end8) {
-  const sy = parseInt(start8.slice(0, 4)), sm = parseInt(start8.slice(4, 6))
-  const ey = parseInt(end8.slice(0, 4)), em = parseInt(end8.slice(4, 6))
+/** 取最近 k 個月的 YYYYMM 字串（含當月，倒序）*/
+function getLastNMonths(k) {
   const result = []
-  let y = sy, m = sm
-  while (y < ey || (y === ey && m <= em)) {
-    result.push(`${y}${String(m).padStart(2, '0')}`)
-    m++; if (m > 12) { m = 1; y++ }
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }))
+  for (let i = 0; i < k; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    result.push(`${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`)
   }
   return result
 }
@@ -170,19 +158,19 @@ async function main() {
 
   console.log(`[calc-signals] N=${N} 開始計算`)
 
-  const [indexHistory, marginHistory] = await Promise.all([
-    fetchIndexHistory(N),
-    fetchMarginHistory(N),
-  ])
-  console.log(`[calc-signals] 大盤 ${indexHistory.length} 筆，融資 ${marginHistory.length} 筆`)
+  const indexHistory = await fetchIndexHistory(N)
+  console.log(`[calc-signals] 大盤 ${indexHistory.length} 筆`)
+
+  const tradingDates = indexHistory.map(r => r.date)
+  const marginHistory = await fetchMarginHistory(tradingDates)
+  console.log(`[calc-signals] 融資 ${marginHistory.length} 筆`)
 
   const signals = calcSignals(indexHistory, marginHistory, N)
 
   console.log(`[calc-signals] 正向差距 ${signals.posGapPct.toFixed(2)}%，觸發：${signals.posTriggered}`)
   console.log(`[calc-signals] 負向差距 ${signals.negGapPct.toFixed(2)}%，觸發：${signals.negTriggered}`)
 
-  // 讀取並更新 latest.json
-  const snapshot = JSON.parse(readFileSync(DATA_FILE, 'utf-8'))
+  // 更新 latest.json
   snapshot.marketSignals = signals
   writeFileSync(DATA_FILE, JSON.stringify(snapshot))
   console.log('[calc-signals] 已寫入 data/latest.json')

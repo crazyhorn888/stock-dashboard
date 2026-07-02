@@ -72,12 +72,12 @@ async function isTradingDay(dateTW) {
   } catch { return false }
 }
 
-// ── Guard 3：融資資料是否發布 ────────────────────────
+// ── Guard 3：融資資料是否發布（YYYYMMDD 格式）────────
 async function isMarginDataReady(date) {
-  const url = `https://www.twse.com.tw/exchangeReport/MI_MARGN?response=json&date=${date}&selectType=MS`
+  const url = `https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?response=json&date=${date}&selectType=MS`
   try {
     const d = await fetchJSON(url)
-    return d?.stat === 'OK' && Array.isArray(d?.data) && d.data.length > 0
+    return d?.stat === 'OK' && Array.isArray(d?.tables?.[0]?.data) && d.tables[0].data.length > 0
   } catch { return false }
 }
 
@@ -162,8 +162,8 @@ async function main() {
     process.exit(0)
   }
 
-  // Guard 3：融資尚未發布
-  if (!(await isMarginDataReady(dateTW))) {
+  // Guard 3：融資尚未發布（傳 YYYYMMDD 格式）
+  if (!(await isMarginDataReady(today.replace(/-/g, '')))) {
     console.log('[daily] 融資資料尚未發布，等下一個排程，exit 0')
     process.exit(0)
   }
