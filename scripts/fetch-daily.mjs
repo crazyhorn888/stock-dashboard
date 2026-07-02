@@ -50,10 +50,10 @@ async function fetchTWSEAll() {
 
 // ── Guard 1：今天已上傳 ──────────────────────────────
 async function isAlreadyDoneToday() {
-  const bucket = process.env.FIREBASE_STORAGE_BUCKET
-  if (!bucket) return false
+  const supabaseUrl = process.env.SUPABASE_URL
+  if (!supabaseUrl) return false
   try {
-    const url = `https://storage.googleapis.com/${bucket}/snapshots/latest.json`
+    const url = `${supabaseUrl}/storage/v1/object/public/snapshots/latest.json`
     const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
     if (!res.ok) return false
     const d = await res.json()
@@ -81,13 +81,13 @@ async function isMarginDataReady(date) {
   } catch { return false }
 }
 
-// ── 下載現有 Firebase 快照 ───────────────────────────
+// ── 下載現有 Supabase 快照 ──────────────────────────
 async function downloadSnapshot() {
-  const bucket = process.env.FIREBASE_STORAGE_BUCKET
-  if (!bucket) throw new Error('FIREBASE_STORAGE_BUCKET 未設定')
-  const url = `https://storage.googleapis.com/${bucket}/snapshots/latest.json`
+  const supabaseUrl = process.env.SUPABASE_URL
+  if (!supabaseUrl) throw new Error('SUPABASE_URL 未設定')
+  const url = `${supabaseUrl}/storage/v1/object/public/snapshots/latest.json`
   const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
-  if (!res.ok) throw new Error(`無法下載現有快照：HTTP ${res.status}（請先執行 seed-history.mjs）`)
+  if (!res.ok) throw new Error(`無法下載現有快照：HTTP ${res.status}（請先執行 seed-history.mjs → write-firebase.mjs）`)
   return res.json()
 }
 
