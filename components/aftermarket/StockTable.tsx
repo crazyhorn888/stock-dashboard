@@ -4,13 +4,11 @@ import type { StockRow } from '@/lib/types'
 
 interface Props {
   rows: StockRow[]
-  posTriggered: boolean
-  negTriggered: boolean
 }
 
 type SortKey = 'changePercent' | 'highDropPct' | 'lowRisePct' | 'pe' | 'eps' | 'foreignNetBuy'
 
-export default function StockTable({ rows, posTriggered, negTriggered }: Props) {
+export default function StockTable({ rows }: Props) {
   const [query, setQuery] = useState('')
   const [industry, setIndustry] = useState('全部')
   const [sortKey, setSortKey] = useState<SortKey>('highDropPct')
@@ -41,7 +39,7 @@ export default function StockTable({ rows, posTriggered, negTriggered }: Props) 
   }
 
   function thCls(key: SortKey) {
-    return `cursor-pointer select-none px-3 py-2 text-left text-xs font-semibold whitespace-nowrap hover:text-[#94a3b8] ${sortKey === key ? 'text-[#60a5fa]' : 'text-[#64748b]'}`
+    return `cursor-pointer select-none px-3 py-2 text-left text-xs font-semibold whitespace-nowrap hover:text-slate-600 ${sortKey === key ? 'text-blue-600' : 'text-slate-400'}`
   }
 
   return (
@@ -51,37 +49,37 @@ export default function StockTable({ rows, posTriggered, negTriggered }: Props) 
         <select
           value={industry}
           onChange={e => setIndustry(e.target.value)}
-          className="bg-[#1e2235] border border-[#2d3148] rounded-lg px-2 py-1.5 text-xs text-[#e2e8f0] focus:outline-none"
+          className="bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-400"
         >
           {industries.map(i => <option key={i}>{i}</option>)}
         </select>
         <input
           type="text"
-          placeholder="🔍 搜尋代號 / 名稱"
+          placeholder="搜尋代號 / 名稱"
           value={query}
           onChange={e => setQuery(e.target.value)}
-          className="bg-[#1e2235] border border-[#2d3148] rounded-lg px-3 py-1.5 text-xs text-[#e2e8f0] w-44 focus:outline-none focus:border-[#3b82f6]"
+          className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 w-40 focus:outline-none focus:border-blue-400"
         />
-        <span className="text-xs text-[#475569]">{sorted.length} 檔</span>
+        <span className="text-xs text-slate-400">{sorted.length} 檔</span>
       </div>
 
       {/* 表格 */}
-      <div className="overflow-x-auto rounded-xl border border-[#2d3148]">
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-xs border-collapse">
           <thead>
-            <tr className="border-b border-[#2d3148] bg-[#111320]">
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[#64748b] whitespace-nowrap">代號</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[#64748b]">名稱</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[#64748b]">收盤</th>
+            <tr className="border-b border-slate-200 bg-slate-50">
+              <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 whitespace-nowrap">代號</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400">名稱</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400">收盤</th>
               <th className={thCls('changePercent')} onClick={() => handleSort('changePercent')}>
                 漲跌% {sortKey === 'changePercent' ? (sortAsc ? '↑' : '↓') : '↕'}
               </th>
               <th className={thCls('highDropPct')} onClick={() => handleSort('highDropPct')}>
-                距N日高▼% {sortKey === 'highDropPct' ? (sortAsc ? '↑' : '↓') : '↕'}
+                距N高▼% {sortKey === 'highDropPct' ? (sortAsc ? '↑' : '↓') : '↕'}
               </th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[#64748b] whitespace-nowrap">視覺</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 whitespace-nowrap">視覺</th>
               <th className={thCls('lowRisePct')} onClick={() => handleSort('lowRisePct')}>
-                距N日低▲% {sortKey === 'lowRisePct' ? (sortAsc ? '↑' : '↓') : '↕'}
+                距N低▲% {sortKey === 'lowRisePct' ? (sortAsc ? '↑' : '↓') : '↕'}
               </th>
               <th className={thCls('pe')} onClick={() => handleSort('pe')}>
                 P/E {sortKey === 'pe' ? (sortAsc ? '↑' : '↓') : '↕'}
@@ -92,7 +90,7 @@ export default function StockTable({ rows, posTriggered, negTriggered }: Props) 
               <th className={thCls('foreignNetBuy')} onClick={() => handleSort('foreignNetBuy')}>
                 外資億 {sortKey === 'foreignNetBuy' ? (sortAsc ? '↑' : '↓') : '↕'}
               </th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[#64748b]">產業</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400">產業</th>
             </tr>
           </thead>
           <tbody>
@@ -101,36 +99,34 @@ export default function StockTable({ rows, posTriggered, negTriggered }: Props) 
               const highBad = r.highDropPct <= -15
               const highGood = r.highDropPct >= -5
               return (
-                <tr key={r.code} className="border-b border-[#1a1d27] hover:bg-[#1e2235] transition-colors">
-                  <td className="px-3 py-2 font-bold text-[#60a5fa]">{r.code}</td>
-                  <td className="px-3 py-2 text-[#e2e8f0]">{r.name}</td>
-                  <td className="px-3 py-2 text-[#e2e8f0]">{r.close.toLocaleString()}</td>
+                <tr key={r.code} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                  <td className="px-3 py-2 font-bold text-blue-600">{r.code}</td>
+                  <td className="px-3 py-2 text-slate-700">{r.name}</td>
+                  <td className="px-3 py-2 text-slate-700">{r.close.toLocaleString()}</td>
                   <td className="px-3 py-2">
-                    <span className={chgUp ? 'text-red-400' : 'text-green-400'}>
+                    <span className={chgUp ? 'text-red-500 font-semibold' : 'text-green-600 font-semibold'}>
                       {chgUp ? '▲' : '▼'}{Math.abs(r.changePercent).toFixed(2)}%
                     </span>
-                    {posTriggered && <span className="ml-1 text-[10px] text-red-400">融資減幅&gt;大盤5%</span>}
-                    {negTriggered && <span className="ml-1 text-[10px] text-green-400">融資增幅&gt;大盤7%</span>}
                   </td>
-                  <td className={`px-3 py-2 font-medium ${highBad ? 'text-red-400' : highGood ? 'text-green-400' : 'text-[#e2e8f0]'}`}>
+                  <td className={`px-3 py-2 font-medium ${highBad ? 'text-red-500' : highGood ? 'text-slate-400' : 'text-slate-600'}`}>
                     {r.highDropPct.toFixed(2)}%
                   </td>
                   <td className="px-3 py-2">
-                    <div className="w-16 h-1.5 bg-[#1e2235] rounded-full overflow-hidden">
+                    <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-red-500 rounded-full"
+                        className="h-full bg-red-400 rounded-full"
                         style={{ width: `${Math.min(Math.abs(r.highDropPct), 50) * 2}%` }}
                       />
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-green-400 font-medium">+{r.lowRisePct.toFixed(2)}%</td>
-                  <td className="px-3 py-2 text-[#e2e8f0]">{r.pe?.toFixed(1) ?? '—'}</td>
-                  <td className="px-3 py-2 text-[#e2e8f0]">{r.eps?.toFixed(2) ?? '—'}</td>
-                  <td className={`px-3 py-2 font-medium ${r.foreignNetBuy >= 0 ? 'text-red-400' : 'text-green-400'}`}>
+                  <td className="px-3 py-2 text-red-500 font-medium">+{r.lowRisePct.toFixed(2)}%</td>
+                  <td className="px-3 py-2 text-slate-600">{r.pe?.toFixed(1) ?? '—'}</td>
+                  <td className="px-3 py-2 text-slate-600">{r.eps?.toFixed(2) ?? '—'}</td>
+                  <td className={`px-3 py-2 font-medium ${r.foreignNetBuy >= 0 ? 'text-red-500' : 'text-green-600'}`}>
                     {r.foreignNetBuy >= 0 ? '+' : ''}{r.foreignNetBuy.toLocaleString()}
                   </td>
                   <td className="px-3 py-2">
-                    <span className="bg-[#1e2235] border border-[#2d3148] rounded px-1.5 py-0.5 text-[#64748b] text-[10px]">
+                    <span className="bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-slate-500 text-[10px]">
                       {r.industry}
                     </span>
                   </td>
@@ -141,8 +137,8 @@ export default function StockTable({ rows, posTriggered, negTriggered }: Props) 
         </table>
       </div>
 
-      <p className="text-xs text-[#475569] mt-2">
-        距N日高▼%：修正愈深數值愈負（紅色）｜距N日低▲%：反彈幅度（綠色）｜欄位標題可排序
+      <p className="text-xs text-slate-400 mt-2">
+        距N高▼%：修正愈深數值愈負（紅）｜距N低▲%：從低點反彈幅度（紅）｜欄位標題可排序
       </p>
     </div>
   )

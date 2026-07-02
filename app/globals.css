@@ -1,17 +1,17 @@
 @import "tailwindcss";
 
-/* ── CSS 自訂屬性 ── */
+/* ── CSS 自訂屬性（淺色主題）── */
 :root {
-  --bg:        #0f1117;
-  --bg-card:   #1e2235;
-  --bg-nav:    #111320;
-  --border:    #2d3148;
-  --text:      #e2e8f0;
-  --text2:     #94a3b8;
-  --text3:     #475569;
-  --accent:    #3b82f6;
+  --bg:        #f8fafc;
+  --bg-card:   #ffffff;
+  --bg-nav:    #ffffff;
+  --border:    #e2e8f0;
+  --text:      #1e293b;
+  --text2:     #64748b;
+  --text3:     #94a3b8;
+  --accent:    #2563eb;
   --accent-dim:#1d4ed8;
-  --warn:      #f59e0b;
+  --warn:      #d97706;
   --nav-h:     56px;
 }
 
@@ -50,6 +50,7 @@ html, body {
   padding-bottom: env(safe-area-inset-bottom, 0px);
   background: var(--bg-nav);
   border-top: 1px solid var(--border);
+  box-shadow: 0 -1px 12px rgba(0, 0, 0, 0.05);
   display: flex;
   z-index: 200;
 }

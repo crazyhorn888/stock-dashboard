@@ -46,7 +46,7 @@ function buildConditions(s: MarketSignals): Condition[] {
       modalContent: {
         formulaDetail: `基準日：${s.troughDate}（N日最低點）\n大盤增幅 = (${s.todayIndex.toLocaleString()} − ${s.troughIndex.toLocaleString()}) / ${s.troughIndex.toLocaleString()} = ${s.indexRisePct.toFixed(2)}%\n融資增幅 = (${s.todayMargin} − ${s.troughMargin}) / ${s.troughMargin} = ${s.marginRisePct.toFixed(2)}%\n\n差距 = ${s.marginRisePct.toFixed(2)}% − ${s.indexRisePct.toFixed(2)}% = ${s.negGapPct.toFixed(2)}%`,
         currentCalc: `差距 ${s.negGapPct.toFixed(2)}% ${s.negTriggered ? '≥' : '<'} 門檻 7%`,
-        meaning: '大盤從低點反彈，但融資餘額增加幅度比大盤漲幅更快，代表散戶加速追高加槓桿，市場過熱，風險升溫。目前差距為負值，籌碼仍健康。',
+        meaning: '大盤從低點反彈，但融資餘額增加幅度比大盤漲幅更快，代表散戶加速追高加槓桿，市場過熱，風險升溫。',
       },
     },
   ]
@@ -67,38 +67,35 @@ export default function SignalsPage() {
   const pos = conditions.filter(c => c.type === 'positive')
   const neg = conditions.filter(c => c.type === 'negative')
 
-  function CardGroup({ title, badge, items }: { title: string; badge: React.ReactNode; items: Condition[] }) {
+  function CardGroup({ title, items }: { title: string; items: Condition[] }) {
     return (
-      <section className="mb-8">
-        <div className="flex items-center gap-3 mb-4">
-          <h2 className="text-base font-bold">{title}</h2>
-          {badge}
-        </div>
+      <section className="mb-7">
+        <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">{title}</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {items.map(c => (
             <button
               key={c.id}
               onClick={() => setModal(c)}
-              className={`text-left rounded-xl p-4 border transition-all hover:-translate-y-0.5 hover:shadow-lg ${
+              className={`text-left rounded-xl p-4 border transition-all hover:-translate-y-0.5 hover:shadow-md ${
                 c.triggered
-                  ? c.type === 'positive' ? 'border-red-500 bg-[#1f1215]' : 'border-green-500 bg-[#131f13]'
-                  : 'border-[#2d3148] bg-[#1e2235] opacity-60'
+                  ? c.type === 'positive' ? 'border-red-300 bg-red-50' : 'border-green-300 bg-green-50'
+                  : 'border-slate-200 bg-white opacity-70'
               }`}
             >
-              <div className="text-sm font-bold text-[#e2e8f0] mb-1">{c.name}</div>
-              <div className="text-xs font-mono text-[#64748b] mb-3">{c.formula}</div>
-              <div className={`text-sm font-bold mb-1 ${c.type === 'positive' ? 'text-red-400' : 'text-green-400'}`}>
+              <div className="text-sm font-bold text-slate-700 mb-1">{c.name}</div>
+              <div className="text-xs font-mono text-slate-400 mb-3">{c.formula}</div>
+              <div className={`text-sm font-bold mb-1 ${c.type === 'positive' ? 'text-red-500' : 'text-green-600'}`}>
                 差距 {c.currentGap >= 0 ? '+' : ''}{c.currentGap.toFixed(2)}%
               </div>
-              <div className={`text-xs font-bold ${c.triggered ? (c.type === 'positive' ? 'text-red-400' : 'text-green-400') : 'text-[#475569]'}`}>
+              <div className={`text-xs font-bold ${c.triggered ? (c.type === 'positive' ? 'text-red-500' : 'text-green-600') : 'text-slate-400'}`}>
                 {c.triggered ? '● 目前觸發中' : '○ 未觸發'}
               </div>
-              <div className="text-[10px] text-[#475569] mt-2">點擊查看計算說明 →</div>
+              <div className="text-[10px] text-slate-400 mt-2">點擊查看計算說明 →</div>
             </button>
           ))}
           {[1, 2].map(i => (
-            <div key={i} className="rounded-xl border border-dashed border-[#2d3148] bg-[#161925] flex items-center justify-center min-h-[120px] text-[#2d3148] text-sm">
-              ＋ 未來新增條件<br /><span className="text-xs">/stock-add-signal</span>
+            <div key={i} className="rounded-xl border border-dashed border-slate-200 bg-white flex items-center justify-center min-h-[120px] text-slate-300 text-sm">
+              ＋ 未來新增
             </div>
           ))}
         </div>
@@ -107,74 +104,67 @@ export default function SignalsPage() {
   }
 
   return (
-    <div className="bg-[#0f1117] text-[#e2e8f0]">
-      <div className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 bg-[#111320] border-b border-[#2d3148]">
-        <span className="font-extrabold text-[#60a5fa] text-base tracking-tight">📈 StockView</span>
+    <div className="bg-slate-50 min-h-screen text-slate-800">
+      <div className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 bg-white border-b border-slate-200 shadow-sm">
+        <span className="font-extrabold text-blue-600 text-base tracking-tight">StockView</span>
         {!loading && signals.updatedAt && (
-          <span className="text-xs text-[#f59e0b]">
-            ● {new Date(signals.updatedAt).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          <span className="text-xs text-amber-600 font-medium">
+            更新 {new Date(signals.updatedAt).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </span>
         )}
       </div>
-      <main className="max-w-screen-xl mx-auto px-4 py-6">
-        <h1 className="text-lg font-bold mb-1">市場條件</h1>
-        <p className="text-xs text-[#64748b] mb-6">點擊卡片查看計算說明。紅字 = 正向（利多），綠字 = 負向（利空）。</p>
+
+      <main className="max-w-screen-xl mx-auto px-4 py-5">
+        <h1 className="text-base font-bold text-slate-700 mb-1">市場條件</h1>
+        <p className="text-xs text-slate-400 mb-6">紅字 = 正向（看多），綠字 = 負向（看空）。點擊卡片查看計算說明。</p>
 
         {loading ? (
           <div className="space-y-4 animate-pulse">
-            <div className="h-8 w-40 rounded bg-[#1e2235]" />
+            <div className="h-6 w-32 rounded bg-slate-200" />
             <div className="grid grid-cols-3 gap-3">
-              {[1,2,3].map(i => <div key={i} className="h-32 rounded-xl bg-[#1e2235]" />)}
+              {[1, 2, 3].map(i => <div key={i} className="h-32 rounded-xl bg-slate-200" />)}
             </div>
           </div>
         ) : (
           <>
-            <CardGroup
-              title="正向條件（看多）"
-              badge={<span className="text-xs font-bold text-red-400 border border-red-500 bg-[#2d1515] rounded-md px-2 py-0.5">● 紅字顯示（台灣：紅 = 漲 = 利多）</span>}
-              items={pos}
-            />
-            <CardGroup
-              title="負向條件（看空）"
-              badge={<span className="text-xs font-bold text-green-400 border border-green-500 bg-[#152d15] rounded-md px-2 py-0.5">● 綠字顯示（台灣：綠 = 跌 = 利空）</span>}
-              items={neg}
-            />
+            <CardGroup title="正向條件（看多）" items={pos} />
+            <CardGroup title="負向條件（看空）" items={neg} />
           </>
         )}
       </main>
 
       {modal && (
         <div
-          className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
           onClick={e => e.target === e.currentTarget && setModal(null)}
         >
-          <div className="bg-[#1e2235] rounded-2xl p-7 max-w-lg w-full border border-[#2d3148] relative">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full border border-slate-200 shadow-xl relative">
             <button
               onClick={() => setModal(null)}
-              className="absolute top-4 right-5 text-[#64748b] hover:text-white text-xl"
+              className="absolute top-4 right-5 text-slate-400 hover:text-slate-700 text-xl"
             >✕</button>
-            <h3 className="text-base font-bold mb-1">{modal.name}</h3>
-            <div className={`text-xs font-bold mb-4 ${modal.type === 'positive' ? 'text-red-400' : 'text-green-400'}`}>
+            <h3 className="text-base font-bold text-slate-800 mb-1">{modal.name}</h3>
+            <div className={`text-xs font-bold mb-4 ${modal.type === 'positive' ? 'text-red-500' : 'text-green-600'}`}>
               {modal.type === 'positive' ? '正向條件（看多）' : '負向條件（看空）'}
             </div>
-            <div className="bg-[#111320] rounded-lg p-4 mb-3 font-mono text-xs text-[#93c5fd] leading-7 whitespace-pre-wrap">
+            <div className="bg-slate-50 rounded-lg p-4 mb-3 font-mono text-xs text-blue-700 leading-7 whitespace-pre-wrap border border-slate-200">
               {modal.modalContent.formulaDetail}
             </div>
-            <div className={`rounded-lg p-3 mb-3 text-xs ${modal.type === 'positive' ? 'bg-[#1c2a1c] border border-green-800' : 'bg-[#1a2030] border border-blue-900'}`}>
-              <div className={`font-bold mb-1 ${modal.type === 'positive' ? 'text-green-400' : 'text-blue-400'}`}>▶ 意義</div>
-              <p className={`leading-relaxed ${modal.type === 'positive' ? 'text-green-200' : 'text-blue-200'}`}>
+            <div className={`rounded-lg p-3 mb-3 text-xs border ${modal.type === 'positive' ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+              <div className={`font-bold mb-1 ${modal.type === 'positive' ? 'text-red-600' : 'text-green-700'}`}>▶ 意義</div>
+              <p className={`leading-relaxed ${modal.type === 'positive' ? 'text-red-700' : 'text-green-700'}`}>
                 {modal.modalContent.meaning}
               </p>
             </div>
             <div className={`flex items-center justify-between px-4 py-2.5 rounded-lg border ${
               modal.triggered
-                ? modal.type === 'positive' ? 'bg-[#2d1515] border-red-500' : 'bg-[#152d15] border-green-500'
-                : 'bg-[#1e2235] border-[#2d3148]'
+                ? modal.type === 'positive' ? 'bg-red-50 border-red-300' : 'bg-green-50 border-green-300'
+                : 'bg-slate-50 border-slate-200'
             }`}>
-              <span className={`text-xs font-bold ${modal.triggered ? (modal.type === 'positive' ? 'text-red-400' : 'text-green-400') : 'text-[#475569]'}`}>
+              <span className={`text-xs font-bold ${modal.triggered ? (modal.type === 'positive' ? 'text-red-500' : 'text-green-600') : 'text-slate-400'}`}>
                 門檻：差距 ≥ {modal.threshold}% → 觸發
               </span>
-              <span className="text-sm font-bold text-[#e2e8f0]">
+              <span className="text-sm font-bold text-slate-700">
                 目前 {modal.currentGap >= 0 ? '+' : ''}{modal.currentGap.toFixed(2)}% {modal.triggered ? '✓' : '✗'}
               </span>
             </div>
