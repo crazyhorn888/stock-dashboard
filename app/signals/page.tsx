@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect } from 'react'
-import NavBar from '@/components/shared/NavBar'
 import { MOCK_DATA } from '@/lib/mockData'
 import { fetchSnapshot } from '@/lib/fetchSnapshot'
 import type { MarketSignals } from '@/lib/types'
@@ -108,8 +107,15 @@ export default function SignalsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0f1117] text-[#e2e8f0]">
-      <NavBar updatedAt={loading ? undefined : signals.updatedAt} />
+    <div className="bg-[#0f1117] text-[#e2e8f0]">
+      <div className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 bg-[#111320] border-b border-[#2d3148]">
+        <span className="font-extrabold text-[#60a5fa] text-base tracking-tight">📈 StockView</span>
+        {!loading && signals.updatedAt && (
+          <span className="text-xs text-[#f59e0b]">
+            ● {new Date(signals.updatedAt).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
+      </div>
       <main className="max-w-screen-xl mx-auto px-4 py-6">
         <h1 className="text-lg font-bold mb-1">市場條件</h1>
         <p className="text-xs text-[#64748b] mb-6">點擊卡片查看計算說明。紅字 = 正向（利多），綠字 = 負向（利空）。</p>

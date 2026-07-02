@@ -1,6 +1,5 @@
 'use client'
 import { useState, useMemo, useEffect } from 'react'
-import NavBar from '@/components/shared/NavBar'
 import ParamBar from '@/components/aftermarket/ParamBar'
 import MarketSignalCards from '@/components/aftermarket/MarketSignalCards'
 import StockTable from '@/components/aftermarket/StockTable'
@@ -31,8 +30,16 @@ export default function AftermarketPage() {
   )
 
   return (
-    <div className="min-h-screen bg-[#0f1117] text-[#e2e8f0]">
-      <NavBar updatedAt={loading ? undefined : data.updatedAt} />
+    <div className="bg-[#0f1117] text-[#e2e8f0]">
+      {/* 頁面標題列 */}
+      <div className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 bg-[#111320] border-b border-[#2d3148]">
+        <span className="font-extrabold text-[#60a5fa] text-base tracking-tight">📈 StockView</span>
+        {!loading && data.updatedAt && (
+          <span className="text-xs text-[#f59e0b]">
+            ● {new Date(data.updatedAt).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
+      </div>
       <main className="max-w-screen-xl mx-auto px-4 py-6">
 
         {/* 錯誤提示 */}

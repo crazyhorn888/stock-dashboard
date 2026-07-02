@@ -1,26 +1,84 @@
 @import "tailwindcss";
 
+/* ── CSS 自訂屬性 ── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg:        #0f1117;
+  --bg-card:   #1e2235;
+  --bg-nav:    #111320;
+  --border:    #2d3148;
+  --text:      #e2e8f0;
+  --text2:     #94a3b8;
+  --text3:     #475569;
+  --accent:    #3b82f6;
+  --accent-dim:#1d4ed8;
+  --warn:      #f59e0b;
+  --nav-h:     56px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ── 基礎 reset ── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, 'PingFang TC', 'Noto Sans TC', 'Segoe UI', sans-serif;
+  -webkit-text-size-adjust: 100%;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ── App Shell ── */
+.app-shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* 主內容區：底部留出 nav 高度 + iPhone 安全區 */
+.app-content {
+  flex: 1;
+  padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
+}
+
+/* ── Bottom Nav ── */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--bg-nav);
+  border-top: 1px solid var(--border);
+  display: flex;
+  z-index: 200;
+}
+
+.nav-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding-top: 4px;
+  color: var(--text3);
+  font-size: 10px;
+  letter-spacing: 0.3px;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.nav-tab svg {
+  width: 22px;
+  height: 22px;
+  transition: stroke 0.15s;
+}
+
+.nav-tab.active {
+  color: var(--accent);
+}
+
+.nav-tab:not(.active):active {
+  color: var(--text2);
 }
