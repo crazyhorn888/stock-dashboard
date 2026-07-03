@@ -1,4 +1,4 @@
-import type { SnapshotData, IndexOHLC } from './types'
+import type { SnapshotData, IndexOHLC, SectorBubble } from './types'
 
 /** 產生加權指數 OHLC 歷史（250 交易日），模擬低點→高點→今日的走勢，newest first */
 function fakeIndexHistory(): IndexOHLC[] {
@@ -54,6 +54,35 @@ function dateStr(daysAgo: number): string {
   return d.toISOString().slice(0, 10)
 }
 
+const MOCK_SECTORS: SectorBubble[] = [
+  { sectorName: '電子工業', x:  12.5, y:  0.28, size: 95, stocks: [
+    { code: '2330', name: '台積電',  industry: '半導體',    netBuy:  8230 },
+    { code: '2317', name: '鴻海',    industry: '電腦週邊',  netBuy:  3150 },
+    { code: '6515', name: '穎崴',    industry: 'AI伺服器', netBuy:   890 },
+    { code: '2382', name: '廣達',    industry: '電腦週邊',  netBuy: -1820 },
+    { code: '2409', name: '友達',    industry: '光電',      netBuy:  -520 },
+    { code: '3481', name: '群創',    industry: '光電',      netBuy:  -310 },
+  ]},
+  { sectorName: '金融業',   x:   3.2, y:  0.12, size: 42, stocks: [
+    { code: '2882', name: '國泰金',  industry: '壽險',      netBuy:  1050 },
+    { code: '2886', name: '兆豐金',  industry: '銀行',      netBuy:   420 },
+  ]},
+  { sectorName: '鋼鐵工業', x:  -5.8, y: -0.15, size: 28, stocks: [
+    { code: '2002', name: '中鋼',    industry: '鋼鐵',      netBuy:  -180 },
+  ]},
+  { sectorName: '生技醫療', x:   1.1, y: -0.08, size: 18, stocks: [] },
+  { sectorName: '建材營造', x:  -2.3, y:  0.05, size: 15, stocks: [] },
+  { sectorName: '航運業',   x:   7.4, y:  0.33, size: 38, stocks: [] },
+  { sectorName: '電機機械', x:  -4.1, y: -0.22, size: 22, stocks: [] },
+  { sectorName: '化學工業', x:   0.8, y:  0.02, size: 12, stocks: [] },
+  { sectorName: '塑膠工業', x:  -1.5, y: -0.05, size: 17, stocks: [] },
+  { sectorName: '食品工業', x:   2.6, y:  0.09, size: 14, stocks: [] },
+  { sectorName: '紡織纖維', x:  -0.9, y: -0.18, size: 10, stocks: [] },
+  { sectorName: '油電燃氣', x:   4.3, y:  0.21, size: 25, stocks: [] },
+  { sectorName: '觀光餐旅', x:  -3.2, y:  0.14, size: 11, stocks: [] },
+  { sectorName: '汽車工業', x:   9.1, y:  0.41, size: 31, stocks: [] },
+]
+
 export const MOCK_DATA: SnapshotData = {
   updatedAt: today.toISOString(),
   stocks: [
@@ -69,6 +98,8 @@ export const MOCK_DATA: SnapshotData = {
     { code: '3481', name: '群創',    industry: '光電',   close: 14.1, changePercent: -0.3, pe:  9.5, eps:  1.5, foreignNetBuy:  -310, closes: fakePriceHistory(14.1), dates: Array.from({length:250},(_,i)=>dateStr(i)) },
   ],
   indexHistory: fakeIndexHistory(),
+  sectorHistory: [],
+  sectors: MOCK_SECTORS,
   marketSignals: {
     updatedAt: today.toISOString(),
     nDays: 100,

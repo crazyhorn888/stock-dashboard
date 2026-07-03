@@ -3,14 +3,16 @@ import { useState, useMemo, useEffect } from 'react'
 import MarketSignalCards from '@/components/aftermarket/MarketSignalCards'
 import KlineChart from '@/components/aftermarket/KlineChart'
 import StockTable from '@/components/aftermarket/StockTable'
+import BubbleChart from '@/components/bubble/BubbleChart'
+import SectorPanel from '@/components/bubble/SectorPanel'
 import { calcStockRow } from '@/lib/calcMetrics'
 import { MOCK_DATA } from '@/lib/mockData'
 import { fetchSnapshot } from '@/lib/fetchSnapshot'
-import type { SnapshotData } from '@/lib/types'
+import type { SnapshotData, SectorBubble } from '@/lib/types'
 
 const TABS = ['大盤關鍵資料', '產業板塊', '個股清單', '基本面'] as const
 type Tab = typeof TABS[number]
-const DISABLED_TABS: Tab[] = ['產業板塊', '基本面']
+const DISABLED_TABS: Tab[] = ['基本面']
 
 export default function AftermarketPage() {
   const [activeTab, setActiveTab] = useState<Tab>('大盤關鍵資料')
@@ -19,6 +21,7 @@ export default function AftermarketPage() {
   const [data, setData] = useState<SnapshotData>(MOCK_DATA)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [activeSector, setActiveSector] = useState<SectorBubble | null>(null)
 
   useEffect(() => {
     fetchSnapshot()
@@ -130,10 +133,11 @@ export default function AftermarketPage() {
             )}
 
             {activeTab === '產業板塊' && (
-              <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-                <div className="text-5xl mb-4">🫧</div>
-                <p className="text-sm font-medium">產業板塊泡泡圖</p>
-                <p className="text-xs mt-1">開發中</p>
+              <div className="rounded-xl bg-white shadow-sm overflow-hidden">
+                <BubbleChart
+                  sectors={data.sectors ?? []}
+                  onBubbleClick={s => setActiveSector(s)}
+                />
               </div>
             )}
 
@@ -147,6 +151,7 @@ export default function AftermarketPage() {
           </>
         )}
       </main>
+      <SectorPanel sector={activeSector} onClose={() => setActiveSector(null)} />
     </div>
   )
 }

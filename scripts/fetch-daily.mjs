@@ -6,6 +6,7 @@
 import { writeFileSync, mkdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
+import { calcSectors } from './calc-sectors.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -81,6 +82,43 @@ async function buildFullIndexHistory(todayISO) {
   const results = await Promise.all(months.map(m => fetchIndexOHLCForMonth(m)))
   const all = results.flat().sort((a, b) => b.date.localeCompare(a.date))
   return all.slice(0, 250)
+}
+
+// ── TWSE T86 三大法人（類股小計 + 個股）────────────
+function parseNum(v) {
+  return parseFloat(String(v).replace(/,/g, '')) || 0
+}
+
+async function fetchT86Sectors(dateYYYYMMDD) {
+  const url = `https://www.twse.com.tw/rwd/zh/fund/T86?response=json&date=${dateYYYYMMDD}&selectType=ALL`
+  try {
+    const d = await fetchJSON(url)
+    if (d?.stat !== 'OK' || !Array.isArray(d.data)) return null
+
+    const rows = []
+    let pending = []   // 目前類股累積的個股
+
+    for (const row of d.data) {
+      const code = String(row[0]).trim()
+      const name = String(row[1]).trim()
+
+      if (name.includes('小計')) {
+        const sectorName = name.replace(/\s*小計$/, '').trim()
+        const net      = parseNum(row[11])   // 三大法人合計淨買超（張）
+        const buyTotal = parseNum(row[2])  + parseNum(row[5])  + parseNum(row[8])
+        const sellTotal= parseNum(row[3])  + parseNum(row[6])  + parseNum(row[9])
+        rows.push({ name: sectorName, net, buySell: buyTotal + sellTotal, stocks: pending })
+        pending = []
+      } else if (/^\d{4}$/.test(code)) {
+        pending.push({ code, name, net: parseNum(row[11]) })
+      }
+    }
+
+    return rows
+  } catch (e) {
+    console.warn('[daily] T86 抓取失敗:', e.message)
+    return null
+  }
 }
 
 // ── Guard 1：今天已上傳 ──────────────────────────────
@@ -213,11 +251,12 @@ async function main() {
 
   // Step 2：抓今日 TWSE 資料（並行）
   const todayYYYYMMDD = today.replace(/-/g, '')
-  const [prices, foreignMap, fundamentals, todayOHLCMonth] = await Promise.all([
+  const [prices, foreignMap, fundamentals, todayOHLCMonth, t86Rows] = await Promise.all([
     fetchTWSEPrices(),
     fetchStockForeign(dateTW),
     fetchFundamentals(FINMIND_TOKEN),
     fetchIndexOHLCForMonth(todayYYYYMMDD),
+    fetchT86Sectors(todayYYYYMMDD),
   ])
   console.log(`[daily] TWSE 今日資料：${prices.length} 支`)
 
@@ -267,7 +306,6 @@ async function main() {
   if (!indexHistory || indexHistory.length === 0) {
     indexHistory = await buildFullIndexHistory(today)
   } else {
-    // 找今日新 OHLC 並 prepend（如已存在則覆蓋）
     const todayOHLC = todayOHLCMonth.find(r => r.date === today)
     if (todayOHLC) {
       const filtered = indexHistory.filter(r => r.date !== today)
@@ -278,11 +316,25 @@ async function main() {
     }
   }
 
+  // Step 5：更新 sectorHistory（T86）並計算泡泡圖座標
+  let sectorHistory = snapshot.sectorHistory ?? []
+  if (t86Rows && t86Rows.length > 0) {
+    const filtered = sectorHistory.filter(d => d.date !== today)
+    sectorHistory = [{ date: today, rows: t86Rows }, ...filtered].slice(0, 25)
+    console.log(`[daily] sectorHistory 更新今日 ${today}，${t86Rows.length} 類股`)
+  } else {
+    console.warn('[daily] T86 無資料，sectorHistory 保留舊值')
+  }
+  const sectors = calcSectors(sectorHistory, stockMap)
+  console.log(`[daily] 計算泡泡圖：${sectors.length} 個類股`)
+
   const newSnapshot = {
     updatedAt: new Date().toISOString(),
     stocks,
     indexHistory,
-    marketSignals: null,
+    sectorHistory,
+    sectors,
+    marketSignals: snapshot.marketSignals ?? null,
   }
 
   const outDir = join(__dirname, '..', 'data')
