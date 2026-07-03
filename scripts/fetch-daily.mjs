@@ -19,12 +19,10 @@ async function fetchJSON(url) {
 
 function todayTW() {
   // 民國年格式，TWSE OpenAPI Date 欄位用（e.g. "1150623"）
-  const d = new Date().toLocaleDateString('zh-TW', {
-    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).replace(/\//g, '')
-  // zh-TW 格式：「2026/06/23」→ 去掉斜線 → "20260623"，需轉成民國年
-  const year = parseInt(d.slice(0, 4)) - 1911
-  return `${year}${d.slice(4)}`
+  // 用 en-CA（YYYY-MM-DD）避免 zh-TW 在 Ubuntu 上回傳民國年導致計算錯誤
+  const d = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' })
+  const [yyyy, mm, dd] = d.split('-')
+  return `${parseInt(yyyy) - 1911}${mm}${dd}`
 }
 
 function todayTWDate() {

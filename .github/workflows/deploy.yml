@@ -19,6 +19,7 @@ jobs:
           node-version: '20'
 
       - name: Deploy to Vercel Production
+        id: deploy
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -27,6 +28,18 @@ jobs:
           npm i -g vercel@latest
           DEPLOY_OUTPUT=$(vercel deploy --prod --yes --token "$VERCEL_TOKEN" 2>&1)
           echo "$DEPLOY_OUTPUT"
-          DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -o 'https://[^ ]*\.vercel\.app' | tail -1)
-          echo "✅ Deployed: $DEPLOY_URL"
-          echo "✅ https://franky-stock-dashboard.vercel.app 已更新（--prod 自動對應 production alias）"
+          DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -i 'Production:' | grep -oE 'https://[^ ]+' | head -1)
+          echo "deploy_url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+          echo "Deployed: $DEPLOY_URL"
+
+      - name: Alias to franky-stock-dashboard.vercel.app
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          DEPLOY_URL="${{ steps.deploy.outputs.deploy_url }}"
+          if [ -z "$DEPLOY_URL" ]; then
+            echo "❌ 找不到部署 URL，跳過 alias"
+            exit 1
+          fi
+          vercel alias set "$DEPLOY_URL" franky-stock-dashboard.vercel.app --token "$VERCEL_TOKEN"
+          echo "✅ https://franky-stock-dashboard.vercel.app → $DEPLOY_URL"
