@@ -10,7 +10,7 @@
  * 執行：
  *   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... node scripts/seed-sectors.mjs
  */
-import { writeFileSync, mkdirSync } from 'fs'
+import { writeFileSync, readFileSync, mkdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -130,27 +130,43 @@ async function main() {
   })
   console.log(`[seed-sectors] 更新 ${updated} 支股票的 sector`)
 
-  // 7. 存到 data/latest.json
+  // 7. 存到 data/latest.json（先寫檔再讀回，確保 byte 完整）
   const newSnapshot = { ...snapshot, stocks }
   const outDir = join(__dirname, '..', 'data')
   mkdirSync(outDir, { recursive: true })
-  const raw = JSON.stringify(newSnapshot)
-  writeFileSync(join(outDir, 'latest.json'), raw)
+  const outPath = join(outDir, 'latest.json')
+  writeFileSync(outPath, JSON.stringify(newSnapshot))
+  const rawForUpload = readFileSync(outPath, 'utf-8')
+  console.log(`[seed-sectors] 寫檔完成，${rawForUpload.length} chars（${(Buffer.byteLength(rawForUpload, 'utf-8') / 1024).toFixed(0)} KB）`)
 
-  // 8. 上傳 Supabase
-  console.log('[seed-sectors] 上傳 Supabase...')
-  const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/snapshots/latest.json`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-      'Content-Type': 'application/json',
-      'x-upsert': 'true',
-    },
-    body: raw,
-  })
+  // 8. 上傳 Supabase（先 PUT 更新，失敗改 POST 新增）
+  const uploadUrl = `${SUPABASE_URL.trim()}/storage/v1/object/snapshots/latest.json`
+  console.log('[seed-sectors] 上傳 Supabase:', uploadUrl)
+
+  const bodyBuf = Buffer.from(rawForUpload, 'utf-8')
+
+  async function tryUpload(method, extraHeaders = {}) {
+    const res = await fetch(uploadUrl, {
+      method,
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_SERVICE_KEY.trim()}`,
+        'Content-Type': 'application/json',
+        'Content-Length': String(bodyBuf.byteLength),
+        ...extraHeaders,
+      },
+      body: bodyBuf,
+    })
+    return res
+  }
+
+  let uploadRes = await tryUpload('PUT')
+  if (!uploadRes.ok && uploadRes.status === 404) {
+    console.log('[seed-sectors] PUT 404（檔案不存在），改用 POST...')
+    uploadRes = await tryUpload('POST', { 'x-upsert': 'true' })
+  }
   if (!uploadRes.ok) {
     const err = await uploadRes.text()
-    throw new Error(`Supabase 上傳失敗：${uploadRes.status} ${err}`)
+    throw new Error(`Supabase 上傳失敗：${uploadRes.status} ${err.slice(0, 500)}`)
   }
   console.log(`[seed-sectors] 完成！${updated} 支股票 sector 已補全並上傳`)
 }
