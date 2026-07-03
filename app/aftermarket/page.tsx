@@ -25,7 +25,15 @@ export default function AftermarketPage() {
 
   useEffect(() => {
     fetchSnapshot()
-      .then(d => { setData(d); setLoading(false) })
+      .then(d => {
+        setData({
+          ...d,
+          // production 快照可能尚未有這兩個欄位，fallback 到 mock
+          indexHistory: d.indexHistory?.length ? d.indexHistory : MOCK_DATA.indexHistory,
+          sectors:      d.sectors?.length      ? d.sectors      : MOCK_DATA.sectors,
+        })
+        setLoading(false)
+      })
       .catch(e => {
         console.warn('[fetchSnapshot] 使用 Mock 資料：', e.message)
         setError('無法取得即時資料，顯示示範資料')
