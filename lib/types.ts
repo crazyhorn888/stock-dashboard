@@ -1,7 +1,8 @@
 export interface StockData {
   code: string
   name: string
-  industry: string
+  industry: string     // 細項分類（顯示用）
+  sector?: string      // TWSE T86 / t187ap03_L 產業類別（對應泡泡圖板塊）
   close: number
   changePercent: number
   pe: number | null

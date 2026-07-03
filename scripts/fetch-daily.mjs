@@ -251,14 +251,23 @@ async function main() {
 
   // Step 2：抓今日 TWSE 資料（並行）
   const todayYYYYMMDD = today.replace(/-/g, '')
-  const [prices, foreignMap, fundamentals, todayOHLCMonth, t86Rows] = await Promise.all([
+  const [prices, foreignMap, fundamentals, todayOHLCMonth, t86Rows, industryList] = await Promise.all([
     fetchTWSEPrices(),
     fetchStockForeign(dateTW),
     fetchFundamentals(FINMIND_TOKEN),
     fetchIndexOHLCForMonth(todayYYYYMMDD),
     fetchT86Sectors(todayYYYYMMDD),
+    // t187ap03_L: 上市公司基本資料，取得個股 → 產業類別（= T86 板塊名）
+    fetchJSON('https://openapi.twse.com.tw/v1/opendata/t187ap03_L').catch(() => []),
   ])
-  console.log(`[daily] TWSE 今日資料：${prices.length} 支`)
+  // sectorMap: code → 產業類別（e.g., "半導體業"）
+  const sectorMap = {}
+  for (const r of (Array.isArray(industryList) ? industryList : [])) {
+    const code = String(r['公司代號'] ?? r.Code ?? '').trim()
+    const sec  = String(r['產業類別'] ?? r.IndustryCategory ?? '').trim()
+    if (/^\d{4}$/.test(code) && sec) sectorMap[code] = sec
+  }
+  console.log(`[daily] TWSE 今日資料：${prices.length} 支，產業對照：${Object.keys(sectorMap).length} 支`)
 
   // Step 3：更新每支股票
   let newCount = 0
@@ -281,6 +290,7 @@ async function main() {
         close: p.close,
         changePercent: p.changePercent,
         pe, eps,
+        sector: sectorMap[p.code] ?? existing.sector,
         foreignNetBuy: foreignMap[p.code] ?? existing.foreignNetBuy,
         closes: closes.slice(0, 250),
         dates: dates.slice(0, 250),
@@ -288,7 +298,9 @@ async function main() {
     } else {
       // 快照中沒有的新股票
       stockMap[p.code] = {
-        code: p.code, name: p.name, industry: '—',
+        code: p.code, name: p.name,
+        industry: sectorMap[p.code] ?? '—',
+        sector: sectorMap[p.code],
         close: p.close, changePercent: p.changePercent,
         pe, eps,
         foreignNetBuy: foreignMap[p.code] ?? 0,
