@@ -26,8 +26,15 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           npm i -g vercel@latest
-          DEPLOY_OUTPUT=$(vercel deploy --prod --yes --token "$VERCEL_TOKEN" 2>&1)
+          set +e
+          DEPLOY_OUTPUT=$(vercel deploy --prod --token "$VERCEL_TOKEN" 2>&1)
+          DEPLOY_EXIT=$?
+          set -e
           echo "$DEPLOY_OUTPUT"
+          if [ $DEPLOY_EXIT -ne 0 ]; then
+            echo "❌ vercel deploy 失敗（exit $DEPLOY_EXIT）"
+            exit $DEPLOY_EXIT
+          fi
           DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -i 'Production:' | grep -oE 'https://[^ ]+' | head -1)
           echo "deploy_url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
           echo "Deployed: $DEPLOY_URL"
