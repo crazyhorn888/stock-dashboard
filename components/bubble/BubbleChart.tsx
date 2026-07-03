@@ -77,6 +77,7 @@ const DEFAULT_VB = { x: 0, y: 0, w: W, h: H }
 
 export default function BubbleChart({ sectors, onBubbleClick }: Props) {
   const [zoom, setZoom] = useState<QuadrantId>(null)
+  const [top15Active, setTop15Active] = useState(false)
   const [hovered, setHovered] = useState<string | null>(null)
   const [vb, setVb] = useState(DEFAULT_VB)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -201,10 +202,16 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
     return [-absMax * 1.2, absMax * 1.2]
   }, [sectors])
 
+  const top15Set = useMemo(() => {
+    const sorted = [...sectors].sort((a, b) => b.size - a.size).slice(0, 15)
+    return new Set(sorted.map(s => s.sectorName))
+  }, [sectors])
+
   const visibleSectors = useMemo(() => {
-    if (!zoom) return sectors
-    return sectors.filter(s => quadrantOf(s.x, s.y) === zoom)
-  }, [sectors, zoom])
+    let list = top15Active ? sectors.filter(s => top15Set.has(s.sectorName)) : sectors
+    if (zoom) list = list.filter(s => quadrantOf(s.x, s.y) === zoom)
+    return list
+  }, [sectors, zoom, top15Active, top15Set])
 
   const zeroSVG = toSVG(0, 0, zoom, xRange, yRange)
 
@@ -212,7 +219,7 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
     <div className="relative select-none">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-3 py-2">
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5 flex-wrap">
           {QUADRANTS.map(q => (
             <button
               key={q.id}
@@ -227,6 +234,18 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
               {q.label}
             </button>
           ))}
+          {/* 熱門 15 */}
+          <button
+            onClick={() => setTop15Active(v => !v)}
+            className="px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-all"
+            style={{
+              background: top15Active ? '#f59e0b' : '#fffbeb',
+              borderColor: top15Active ? '#f59e0b' : '#fcd34d',
+              color: top15Active ? '#fff' : '#d97706',
+            }}
+          >
+            🔥 熱門 15
+          </button>
         </div>
         <div className="flex items-center gap-2">
           {isZoomed && (
