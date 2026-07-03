@@ -159,7 +159,7 @@ export default function AftermarketPage() {
           </>
         )}
       </main>
-      <SectorPanel sector={activeSector} onClose={() => setActiveSector(null)} />
+      <SectorPanel sector={activeSector} onClose={() => setActiveSector(null)} allStocks={data.stocks} n={n} />
     </div>
   )
 }

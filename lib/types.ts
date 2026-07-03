@@ -65,8 +65,11 @@ export interface StockRow extends StockData {
 export interface SectorStock {
   code: string
   name: string
-  industry: string   // 細項分類（from StockData.industry）
-  netBuy: number     // 三大法人淨買超（張）
+  industry: string    // 細項分類（from StockData.industry）
+  netBuy: number      // 三大法人合計淨買超（張）
+  foreignNet: number  // 外資淨買超（張）
+  trustNet: number    // 投信淨買超（張）
+  dealerNet: number   // 自營淨買超（張）
 }
 
 export interface SectorBubble {
@@ -81,7 +84,13 @@ export interface SectorDayRow {
   name: string       // 類股名稱
   net: number        // 三大法人淨買超（張）
   buySell: number    // 三大法人買賣合計（張）
-  stocks: { code: string; name: string; net: number }[]
+  stocks: {
+    code: string; name: string
+    net: number
+    foreignNet: number  // 外資淨買超（張）
+    trustNet: number    // 投信淨買超（張）
+    dealerNet: number   // 自營淨買超（張）
+  }[]
 }
 
 export interface SectorDayData {

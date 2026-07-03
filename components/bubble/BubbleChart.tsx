@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import type { SectorBubble } from '@/lib/types'
 
 interface Props {
@@ -73,9 +73,118 @@ function toSVG(
   }
 }
 
+const DEFAULT_VB = { x: 0, y: 0, w: W, h: H }
+
 export default function BubbleChart({ sectors, onBubbleClick }: Props) {
   const [zoom, setZoom] = useState<QuadrantId>(null)
   const [hovered, setHovered] = useState<string | null>(null)
+  const [vb, setVb] = useState(DEFAULT_VB)
+  const svgRef = useRef<SVGSVGElement>(null)
+  const touchRef = useRef<{
+    type: 'pinch' | 'pan'
+    dist?: number; cx?: number; cy?: number
+    x0?: number; y0?: number
+    vb: typeof DEFAULT_VB
+  } | null>(null)
+  const vbRef = useRef(vb)
+  useEffect(() => { vbRef.current = vb }, [vb])
+
+  const isZoomed = vb.w < W - 1 || vb.h < H - 1
+
+  // ── SVG-space helpers for zoom math ─────────────────
+  function svgPt(clientX: number, clientY: number, curVb = vbRef.current) {
+    const rect = svgRef.current!.getBoundingClientRect()
+    return {
+      x: ((clientX - rect.left) / rect.width)  * curVb.w + curVb.x,
+      y: ((clientY - rect.top)  / rect.height) * curVb.h + curVb.y,
+    }
+  }
+
+  function applyZoom(cx: number, cy: number, factor: number, base = vbRef.current) {
+    const nw = Math.max(W * 0.15, Math.min(W, base.w * factor))
+    const nh = Math.max(H * 0.15, Math.min(H, base.h * factor))
+    return {
+      x: Math.max(0, Math.min(W - nw, cx - (cx - base.x) / base.w * nw)),
+      y: Math.max(0, Math.min(H - nh, cy - (cy - base.y) / base.h * nh)),
+      w: nw, h: nh,
+    }
+  }
+
+  // ── Wheel (desktop zoom) ─────────────────────────────
+  useEffect(() => {
+    const el = svgRef.current
+    if (!el) return
+    const handler = (e: WheelEvent) => {
+      e.preventDefault()
+      const factor = e.deltaY > 0 ? 1.18 : 1 / 1.18
+      const { x: cx, y: cy } = svgPt(e.clientX, e.clientY)
+      setVb(applyZoom(cx, cy, factor))
+    }
+    el.addEventListener('wheel', handler, { passive: false })
+    return () => el.removeEventListener('wheel', handler)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Touch (mobile pinch + pan) ───────────────────────
+  useEffect(() => {
+    const el = svgRef.current
+    if (!el) return
+
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        const t0 = e.touches[0], t1 = e.touches[1]
+        touchRef.current = {
+          type: 'pinch',
+          dist: Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY),
+          cx: (t0.clientX + t1.clientX) / 2,
+          cy: (t0.clientY + t1.clientY) / 2,
+          vb: { ...vbRef.current },
+        }
+      } else if (e.touches.length === 1 && vbRef.current.w < W - 1) {
+        touchRef.current = {
+          type: 'pan',
+          x0: e.touches[0].clientX,
+          y0: e.touches[0].clientY,
+          vb: { ...vbRef.current },
+        }
+      }
+    }
+
+    const onMove = (e: TouchEvent) => {
+      e.preventDefault()
+      const t = touchRef.current
+      if (!t) return
+      const rect = svgRef.current!.getBoundingClientRect()
+
+      if (t.type === 'pinch' && e.touches.length === 2) {
+        const t0 = e.touches[0], t1 = e.touches[1]
+        const newDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY)
+        const factor  = t.dist! / newDist
+        const { x: cx, y: cy } = svgPt(t.cx!, t.cy!, t.vb)
+        setVb(applyZoom(cx, cy, factor, t.vb))
+      } else if (t.type === 'pan' && e.touches.length === 1) {
+        const dx = ((e.touches[0].clientX - t.x0!) / rect.width)  * t.vb.w
+        const dy = ((e.touches[0].clientY - t.y0!) / rect.height) * t.vb.h
+        setVb({
+          ...t.vb,
+          x: Math.max(0, Math.min(W - t.vb.w, t.vb.x - dx)),
+          y: Math.max(0, Math.min(H - t.vb.h, t.vb.y - dy)),
+        })
+      }
+    }
+
+    const onEnd = () => { touchRef.current = null }
+
+    el.addEventListener('touchstart', onStart, { passive: false })
+    el.addEventListener('touchmove',  onMove,  { passive: false })
+    el.addEventListener('touchend',   onEnd)
+    return () => {
+      el.removeEventListener('touchstart', onStart)
+      el.removeEventListener('touchmove',  onMove)
+      el.removeEventListener('touchend',   onEnd)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const maxSize = useMemo(
     () => Math.max(1, ...sectors.map(s => s.size)),
@@ -107,7 +216,7 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
           {QUADRANTS.map(q => (
             <button
               key={q.id}
-              onClick={() => setZoom(zoom === q.id ? null : q.id)}
+              onClick={() => { setZoom(zoom === q.id ? null : q.id); setVb(DEFAULT_VB) }}
               className="px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-all"
               style={{
                 background: zoom === q.id ? q.color : q.fill,
@@ -119,17 +228,32 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
             </button>
           ))}
         </div>
-        {zoom && (
-          <button
-            onClick={() => setZoom(null)}
-            className="text-[10px] text-slate-400 underline"
-          >
-            全覽
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {isZoomed && (
+            <button
+              onClick={() => setVb(DEFAULT_VB)}
+              className="text-[10px] text-blue-500 font-medium border border-blue-200 rounded-full px-2 py-0.5"
+            >
+              重置
+            </button>
+          )}
+          {zoom && (
+            <button
+              onClick={() => { setZoom(null); setVb(DEFAULT_VB) }}
+              className="text-[10px] text-slate-400 underline"
+            >
+              全覽
+            </button>
+          )}
+        </div>
       </div>
 
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ touchAction: 'none' }}>
+      <svg
+        ref={svgRef}
+        viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
+        className="w-full"
+        style={{ touchAction: 'none', cursor: isZoomed ? 'grab' : 'default' }}
+      >
         {/* Quadrant backgrounds */}
         {!zoom ? QUADRANTS.map(q => {
           const x1 = q.xSign < 0 ? PAD.left : CX

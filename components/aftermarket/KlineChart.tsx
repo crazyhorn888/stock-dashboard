@@ -25,15 +25,15 @@ export default function KlineChart({ data, n }: Props) {
 
   const availW = VW - L_PAD - R_PAD
 
-  // N-day high/low indices
+  // N-day 收盤最高/最低（與 MarketSignalCards 顯示一致，用收盤價）
   const { peakIdx, troughIdx, peakPrice, troughPrice } = useMemo(() => {
     if (!bars.length) return { peakIdx: -1, troughIdx: -1, peakPrice: 0, troughPrice: 0 }
     let pi = 0, ti = 0
     bars.forEach((d, i) => {
-      if (d.high > bars[pi].high) pi = i
-      if (d.low  < bars[ti].low)  ti = i
+      if (d.close > bars[pi].close) pi = i
+      if (d.close < bars[ti].close) ti = i
     })
-    return { peakIdx: pi, troughIdx: ti, peakPrice: bars[pi].high, troughPrice: bars[ti].low }
+    return { peakIdx: pi, troughIdx: ti, peakPrice: bars[pi].close, troughPrice: bars[ti].close }
   }, [bars])
 
   // Price axis range (with padding)

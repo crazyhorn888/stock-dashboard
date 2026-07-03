@@ -37,10 +37,10 @@ export function calcSectors(sectorHistory, stockMap) {
     const y    = avg20 !== 0 ? (avg5 / Math.abs(avg20)) - (avg20 > 0 ? 1 : -1) : 0
     const size = Math.abs(buy5 / days5.length / 1000)
 
-    // 今日 T86 淨買超 map（只有有活動的股票）
+    // 今日 T86 個股 map（含三大法人明細）
     const todayRow = sectorHistory[0]?.rows.find(r => r.name === name)
-    const t86NetMap = Object.fromEntries(
-      (todayRow?.stocks ?? []).map(s => [s.code, s.net])
+    const t86StockMap = Object.fromEntries(
+      (todayRow?.stocks ?? []).map(s => [s.code, s])
     )
 
     // 全部屬於此板塊的股票（從 stockMap 取，sector 欄位對應 T86 板塊名）
@@ -49,12 +49,18 @@ export function calcSectors(sectorHistory, stockMap) {
     )
 
     const stocks = allSectorStocks
-      .map(s => ({
-        code:     s.code,
-        name:     s.name,
-        industry: s.industry !== name ? s.industry : (s.sector ?? name),
-        netBuy:   t86NetMap[s.code] ?? 0,
-      }))
+      .map(s => {
+        const t = t86StockMap[s.code]
+        return {
+          code:       s.code,
+          name:       s.name,
+          industry:   s.industry !== name ? s.industry : (s.sector ?? name),
+          netBuy:     t?.net        ?? 0,
+          foreignNet: t?.foreignNet ?? 0,
+          trustNet:   t?.trustNet   ?? 0,
+          dealerNet:  t?.dealerNet  ?? 0,
+        }
+      })
       .sort((a, b) => {
         if (a.industry !== b.industry) return a.industry.localeCompare(b.industry, 'zh-TW')
         return b.netBuy - a.netBuy
@@ -63,7 +69,11 @@ export function calcSectors(sectorHistory, stockMap) {
     // 若 stockMap 沒有對應股票，fallback 用 T86 的列表
     const finalStocks = stocks.length > 0 ? stocks : (todayRow?.stocks ?? [])
       .filter(s => /^\d{4}$/.test(s.code))
-      .map(s => ({ code: s.code, name: s.name, industry: name, netBuy: s.net }))
+      .map(s => ({
+        code: s.code, name: s.name, industry: name,
+        netBuy: s.net ?? 0, foreignNet: s.foreignNet ?? 0,
+        trustNet: s.trustNet ?? 0, dealerNet: s.dealerNet ?? 0,
+      }))
       .sort((a, b) => b.netBuy - a.netBuy)
 
     bubbles.push({ sectorName: name, x, y, size, stocks: finalStocks })

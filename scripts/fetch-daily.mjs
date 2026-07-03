@@ -84,37 +84,62 @@ async function buildFullIndexHistory(todayISO) {
   return all.slice(0, 250)
 }
 
-// ── TWSE T86 三大法人（類股小計 + 個股）────────────
+// ── TWSE T86 三大法人（以 stockMap sector 分組，不依賴已消失的「小計」行）────────────
 function parseNum(v) {
   return parseFloat(String(v).replace(/,/g, '')) || 0
 }
 
-async function fetchT86Sectors(dateYYYYMMDD) {
+/**
+ * T86 欄位（19 欄，已實測）：
+ * [0]代號 [1]名稱
+ * [2]外陸資買進 [3]外陸資賣出 [4]外陸資淨買（不含外資自營）
+ * [5]外資自營買進 [6]外資自營賣出 [7]外資自營淨買
+ * [8]投信買進 [9]投信賣出 [10]投信淨買
+ * [11]自營合計淨買 [12]自營自行買進 [13]自營自行賣出 [14]自營自行淨買
+ * [15]自營避險買進 [16]自營避險賣出 [17]自營避險淨買
+ * [18]三大法人合計
+ * 所有數值單位：股（shares）→ ÷1000 = 張（lots）
+ */
+async function fetchT86Sectors(dateYYYYMMDD, stockMap) {
   const url = `https://www.twse.com.tw/rwd/zh/fund/T86?response=json&date=${dateYYYYMMDD}&selectType=ALL`
   try {
     const d = await fetchJSON(url)
     if (d?.stat !== 'OK' || !Array.isArray(d.data)) return null
 
-    const rows = []
-    let pending = []   // 目前類股累積的個股
+    const groups = {}  // sectorName → { net, buySell, stocks[] }
 
     for (const row of d.data) {
       const code = String(row[0]).trim()
-      const name = String(row[1]).trim()
+      if (!/^\d{4}$/.test(code)) continue   // 跳過 ETF、認購權證等
 
-      if (name.includes('小計')) {
-        const sectorName = name.replace(/\s*小計$/, '').trim()
-        const net      = parseNum(row[11])   // 三大法人合計淨買超（張）
-        const buyTotal = parseNum(row[2])  + parseNum(row[5])  + parseNum(row[8])
-        const sellTotal= parseNum(row[3])  + parseNum(row[6])  + parseNum(row[9])
-        rows.push({ name: sectorName, net, buySell: buyTotal + sellTotal, stocks: pending })
-        pending = []
-      } else if (/^\d{4}$/.test(code)) {
-        pending.push({ code, name, net: parseNum(row[11]) })
-      }
+      const stock = stockMap[code]
+      if (!stock?.sector) continue           // 無法對應板塊則跳過
+
+      const foreignNet = Math.round((parseNum(row[4]) + parseNum(row[7])) / 1000)  // 外資（含外資自營）張
+      const trustNet   = Math.round(parseNum(row[10]) / 1000)                       // 投信 張
+      const dealerNet  = Math.round(parseNum(row[11]) / 1000)                       // 自營合計 張
+      const netBuy     = foreignNet + trustNet + dealerNet                           // 三大法人合計 張
+
+      const buyVol  = parseNum(row[2])+parseNum(row[5])+parseNum(row[8])+parseNum(row[12])+parseNum(row[15])
+      const sellVol = parseNum(row[3])+parseNum(row[6])+parseNum(row[9])+parseNum(row[13])+parseNum(row[16])
+      const buySell = Math.round((buyVol + sellVol) / 1000)   // 買賣合計 張（for bubble size）
+
+      const sectorName = stock.sector
+      if (!groups[sectorName]) groups[sectorName] = { net: 0, buySell: 0, stocks: [] }
+      groups[sectorName].net     += netBuy
+      groups[sectorName].buySell += buySell
+      groups[sectorName].stocks.push({ code, name: stock.name, net: netBuy, foreignNet, trustNet, dealerNet })
     }
 
-    return rows
+    const rows = Object.entries(groups).map(([name, v]) => ({
+      name,
+      net: v.net,
+      buySell: v.buySell,
+      stocks: v.stocks.sort((a, b) => b.net - a.net),
+    }))
+
+    console.log(`[daily] T86 分組：${rows.length} 個板塊，${rows.reduce((s, r) => s + r.stocks.length, 0)} 支個股`)
+    return rows.length > 0 ? rows : null
   } catch (e) {
     console.warn('[daily] T86 抓取失敗:', e.message)
     return null
@@ -250,13 +275,13 @@ async function main() {
   console.log(`[daily] 快照載入，${snapshot.stocks.length} 支股票`)
 
   // Step 2：抓今日 TWSE 資料（並行）
+  // T86 需要 stockMap 完成後才能執行，所以移到 Step 5 再呼叫
   const todayYYYYMMDD = today.replace(/-/g, '')
-  const [prices, foreignMap, fundamentals, todayOHLCMonth, t86Rows, industryList] = await Promise.all([
+  const [prices, foreignMap, fundamentals, todayOHLCMonth, industryList] = await Promise.all([
     fetchTWSEPrices(),
     fetchStockForeign(dateTW),
     fetchFundamentals(FINMIND_TOKEN),
     fetchIndexOHLCForMonth(todayYYYYMMDD),
-    fetchT86Sectors(todayYYYYMMDD),
     // t187ap03_L: 上市公司基本資料，取得個股 → 產業類別（= T86 板塊名）
     fetchJSON('https://openapi.twse.com.tw/v1/opendata/t187ap03_L').catch(() => []),
   ])
@@ -341,8 +366,9 @@ async function main() {
     }
   }
 
-  // Step 5：更新 sectorHistory（T86）並計算泡泡圖座標
+  // Step 5：T86（依 stockMap sector 分組）→ sectorHistory → 泡泡圖
   let sectorHistory = snapshot.sectorHistory ?? []
+  const t86Rows = await fetchT86Sectors(todayYYYYMMDD, stockMap)
   if (t86Rows && t86Rows.length > 0) {
     const filtered = sectorHistory.filter(d => d.date !== today)
     sectorHistory = [{ date: today, rows: t86Rows }, ...filtered].slice(0, 25)
