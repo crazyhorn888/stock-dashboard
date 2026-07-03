@@ -1,4 +1,8 @@
 import type { Metadata, Viewport } from 'next'
+
+// 不讓 Next.js PRERENDER 快取任何頁面（避免 Vercel CDN age 殘留舊版 HTML）
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 import BottomNav from '@/components/shared/BottomNav'
 import './globals.css'
 
