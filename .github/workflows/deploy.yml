@@ -1,0 +1,42 @@
+name: Deploy to Vercel Production
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'scripts/**'
+      - 'plans/**'
+      - '*.md'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Deploy to Vercel Production
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npm i -g vercel@latest
+          DEPLOY_URL=$(vercel deploy --prod --yes --token "$VERCEL_TOKEN" 2>&1 | tail -1)
+          echo "deploy_url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+          echo "Deployed: $DEPLOY_URL"
+
+      - name: Alias to franky-stock-dashboard.vercel.app
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          vercel alias set \
+            "$(echo '${{ steps.deploy.outputs.deploy_url }}' | sed 's|https://||')" \
+            franky-stock-dashboard.vercel.app \
+            --token "$VERCEL_TOKEN" \
+            --yes
+          echo "✅ https://franky-stock-dashboard.vercel.app 已更新"

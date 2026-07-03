@@ -240,6 +240,62 @@ async function fetchFundamentals(token) {
   }
 }
 
+// ── TPEX 上櫃 ─────────────────────────────────────────
+async function fetchTPEXPrices() {
+  try {
+    const data = await fetchJSON('https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes')
+    return data
+      .filter(r => /^\d{4}$/.test(r.SecuritiesCompanyCode) && parseFloat(r.Close) > 0)
+      .map(r => {
+        const close  = parseFloat(r.Close)  || 0
+        const change = parseFloat(r.Change) || 0
+        const prev   = close - change
+        return {
+          code:          r.SecuritiesCompanyCode,
+          name:          r.CompanyName,
+          close,
+          changePercent: prev > 0 ? Math.round((change / prev) * 10000) / 100 : 0,
+        }
+      })
+  } catch (e) {
+    console.warn('[daily] TPEX 價格抓取失敗:', e.message)
+    return []
+  }
+}
+
+async function fetchTPEXForeignMap() {
+  try {
+    const data = await fetchJSON('https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading')
+    const map = {}
+    for (const r of data) {
+      if (!/^\d{4}$/.test(r.SecuritiesCompanyCode)) continue
+      // 外資含陸資含自營（股）；欄位名含空格為 API 本身問題
+      const shares = parseNum(r['ForeignInvestorsInclude MainlandAreaInvestors-Difference'] ?? '0')
+      map[r.SecuritiesCompanyCode] = shares
+    }
+    return map
+  } catch (e) {
+    console.warn('[daily] TPEX 三大法人抓取失敗:', e.message)
+    return {}
+  }
+}
+
+async function fetchTPEXIndustryMap() {
+  try {
+    const d = await fetchJSON('https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo')
+    const map = {}
+    for (const r of d?.data ?? []) {
+      if (r.type === 'tpex' && /^\d{4}$/.test(r.stock_id)) {
+        map[r.stock_id] = r.industry_category || '其他'
+      }
+    }
+    return map
+  } catch (e) {
+    console.warn('[daily] FinMind TPEX 產業資料失敗:', e.message)
+    return {}
+  }
+}
+
 // ── Main ─────────────────────────────────────────
 async function main() {
   const dateTW = todayTW()
@@ -348,8 +404,62 @@ async function main() {
     }
   }
 
+  console.log(`[daily] TWSE 更新 ${prices.length} 支，新增 ${newCount} 支`)
+
+  // Step 3b：TPEX 上櫃股票
+  const [tpexPrices, tpexForeignMap, tpexIndustryMap] = await Promise.all([
+    fetchTPEXPrices(),
+    fetchTPEXForeignMap(),
+    fetchTPEXIndustryMap(),
+  ])
+  console.log(`[daily] TPEX 今日資料：${tpexPrices.length} 支`)
+
+  let tpexNewCount = 0
+  for (const p of tpexPrices) {
+    const existing      = stockMap[p.code]
+    const industry      = tpexIndustryMap[p.code] ?? existing?.industry ?? '其他'
+    const foreignShares = tpexForeignMap[p.code] ?? 0
+    // 億元 = 股數 × 收盤價 / 1e8
+    const foreignNetBuy = Math.round(foreignShares * p.close / 1e6) / 100
+
+    if (existing) {
+      const closes = [...existing.closes]
+      const dates  = [...existing.dates]
+      if (dates[0] === today) {
+        closes[0] = p.close
+      } else {
+        closes.unshift(p.close)
+        dates.unshift(today)
+      }
+      stockMap[p.code] = {
+        ...existing,
+        close:         p.close,
+        changePercent: p.changePercent,
+        industry,
+        foreignNetBuy,
+        closes: closes.slice(0, 250),
+        dates:  dates.slice(0, 250),
+      }
+    } else {
+      stockMap[p.code] = {
+        code:          p.code,
+        name:          p.name,
+        industry,
+        sector:        'OTC',   // 不進入 TWSE T86 泡泡圖
+        close:         p.close,
+        changePercent: p.changePercent,
+        pe:            null,
+        eps:           null,
+        foreignNetBuy,
+        closes:        [p.close],
+        dates:         [today],
+      }
+      tpexNewCount++
+    }
+  }
+
   const stocks = Object.values(stockMap)
-  console.log(`[daily] 更新 ${prices.length} 支，新增 ${newCount} 支，總計 ${stocks.length} 支`)
+  console.log(`[daily] TPEX 更新 ${tpexPrices.length} 支，新增 ${tpexNewCount} 支，全市場合計 ${stocks.length} 支`)
 
   // Step 4：更新 indexHistory
   let indexHistory = snapshot.indexHistory ?? null
