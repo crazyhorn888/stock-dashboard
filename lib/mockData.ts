@@ -1,4 +1,41 @@
-import type { SnapshotData } from './types'
+import type { SnapshotData, IndexOHLC } from './types'
+
+/** 產生加權指數 OHLC 歷史（250 交易日），模擬低點→高點→今日的走勢，newest first */
+function fakeIndexHistory(): IndexOHLC[] {
+  const result: IndexOHLC[] = []
+  const d = new Date(today)
+  let close = 36296  // 從低點開始
+  // 往回 350 天、跳過週末，直到收集滿 250 筆交易日
+  for (let daysBack = 350; daysBack >= 0 && result.length < 250; daysBack--) {
+    const cur = new Date(d)
+    cur.setDate(cur.getDate() - daysBack)
+    if (cur.getDay() === 0 || cur.getDay() === 6) continue  // 跳週末
+    const progress = (250 - (250 - result.length)) / 249  // 0→1（從最舊到最新）
+    // 走勢：trough(36296) → peak(47741) → today(47018)
+    let target: number
+    if (progress < 0.85) {
+      target = 36296 + (47741 - 36296) * (progress / 0.85)
+    } else {
+      target = 47741 - (47741 - 47018) * ((progress - 0.85) / 0.15)
+    }
+    const drift = (target - close) * 0.18
+    const noise = (Math.random() - 0.48) * 400
+    close = Math.max(34000, Math.min(50000, close + drift + noise))
+    const open = close * (1 + (Math.random() - 0.5) * 0.008)
+    const high = Math.max(open, close) * (1 + Math.random() * 0.004)
+    const low  = Math.min(open, close) * (1 - Math.random() * 0.004)
+    result.push({
+      date: cur.toISOString().slice(0, 10),
+      open:   Math.round(open  * 100) / 100,
+      high:   Math.round(high  * 100) / 100,
+      low:    Math.round(low   * 100) / 100,
+      close:  Math.round(close * 100) / 100,
+      volume: Math.round(800 + Math.random() * 2500),
+    })
+  }
+  result.reverse()  // newest first
+  return result
+}
 
 /** 產生隨機收盤價歷史（250 天）供 UI 開發用 */
 function fakePriceHistory(base: number): number[] {
@@ -31,6 +68,7 @@ export const MOCK_DATA: SnapshotData = {
     { code: '1590', name: '亞德客',  industry: '電動車',  close: 995,  changePercent:  2.3, pe: 22.4, eps: 44.4, foreignNetBuy:   680, closes: fakePriceHistory(995),  dates: Array.from({length:250},(_,i)=>dateStr(i)) },
     { code: '3481', name: '群創',    industry: '光電',   close: 14.1, changePercent: -0.3, pe:  9.5, eps:  1.5, foreignNetBuy:  -310, closes: fakePriceHistory(14.1), dates: Array.from({length:250},(_,i)=>dateStr(i)) },
   ],
+  indexHistory: fakeIndexHistory(),
   marketSignals: {
     updatedAt: today.toISOString(),
     nDays: 100,

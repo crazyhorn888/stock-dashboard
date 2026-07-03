@@ -36,10 +36,20 @@ export interface MarketSignals {
   negTriggered: boolean   // >= 7%
 }
 
+export interface IndexOHLC {
+  date: string    // YYYY-MM-DD
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number  // 成交金額（億）
+}
+
 export interface SnapshotData {
   updatedAt: string
   stocks: StockData[]
   marketSignals: MarketSignals
+  indexHistory: IndexOHLC[]  // 近 250 交易日，index 0 = 最新
 }
 
 export interface StockRow extends StockData {

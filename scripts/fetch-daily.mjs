@@ -30,9 +30,9 @@ function todayTWDate() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' })
 }
 
-/** 民國年日期字串（1150630）→ YYYY-MM-DD */
+/** 民國年日期字串（1150630 或 115/06/30）→ YYYY-MM-DD */
 function rocToISO(rocStr) {
-  const s = String(rocStr)
+  const s = String(rocStr).replace(/\//g, '')
   const year = parseInt(s.slice(0, -4)) + 1911
   const mm = s.slice(-4, -2)
   const dd = s.slice(-2)
@@ -46,6 +46,41 @@ async function fetchTWSEAll() {
   const data = await fetchJSON('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL')
   _twseAllCache = Array.isArray(data) ? data : []
   return _twseAllCache
+}
+
+// ── TWSE 加權指數 OHLC（FMTQIK，傳 YYYYMMDD）────────
+async function fetchIndexOHLCForMonth(yyyymmdd) {
+  const url = `https://www.twse.com.tw/rwd/zh/historicalData/FMTQIK?response=json&date=${yyyymmdd}`
+  try {
+    const d = await fetchJSON(url)
+    if (d?.stat !== 'OK' || !Array.isArray(d.data)) return []
+    return d.data.map(row => ({
+      date: rocToISO(row[0]),
+      open:   parseFloat(String(row[3]).replace(/,/g, '')) || 0,
+      high:   parseFloat(String(row[4]).replace(/,/g, '')) || 0,
+      low:    parseFloat(String(row[5]).replace(/,/g, '')) || 0,
+      close:  parseFloat(String(row[6]).replace(/,/g, '')) || 0,
+      // 成交金額單位為千元，÷1e5 → 億
+      volume: Math.round(parseFloat(String(row[2]).replace(/,/g, '')) / 1e5),
+    })).filter(r => r.close > 0)
+  } catch {
+    console.warn(`[daily] FMTQIK ${yyyymmdd} 抓取失敗`)
+    return []
+  }
+}
+
+/** 初始化 indexHistory：回填最近 13 個月，取最新 250 筆，newest first */
+async function buildFullIndexHistory(todayISO) {
+  console.log('[daily] indexHistory 缺失，初始化 13 個月歷史...')
+  const months = []
+  const d = new Date(todayISO)
+  for (let i = 0; i < 13; i++) {
+    months.push(`${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}01`)
+    d.setMonth(d.getMonth() - 1)
+  }
+  const results = await Promise.all(months.map(m => fetchIndexOHLCForMonth(m)))
+  const all = results.flat().sort((a, b) => b.date.localeCompare(a.date))
+  return all.slice(0, 250)
 }
 
 // ── Guard 1：今天已上傳 ──────────────────────────────
@@ -176,11 +211,13 @@ async function main() {
   const stockMap = Object.fromEntries(snapshot.stocks.map(s => [s.code, s]))
   console.log(`[daily] 快照載入，${snapshot.stocks.length} 支股票`)
 
-  // Step 2：抓今日 TWSE 資料（三個並行，OpenAPI 已快取）
-  const [prices, foreignMap, fundamentals] = await Promise.all([
+  // Step 2：抓今日 TWSE 資料（並行）
+  const todayYYYYMMDD = today.replace(/-/g, '')
+  const [prices, foreignMap, fundamentals, todayOHLCMonth] = await Promise.all([
     fetchTWSEPrices(),
     fetchStockForeign(dateTW),
     fetchFundamentals(FINMIND_TOKEN),
+    fetchIndexOHLCForMonth(todayYYYYMMDD),
   ])
   console.log(`[daily] TWSE 今日資料：${prices.length} 支`)
 
@@ -225,9 +262,26 @@ async function main() {
   const stocks = Object.values(stockMap)
   console.log(`[daily] 更新 ${prices.length} 支，新增 ${newCount} 支，總計 ${stocks.length} 支`)
 
+  // Step 4：更新 indexHistory
+  let indexHistory = snapshot.indexHistory ?? null
+  if (!indexHistory || indexHistory.length === 0) {
+    indexHistory = await buildFullIndexHistory(today)
+  } else {
+    // 找今日新 OHLC 並 prepend（如已存在則覆蓋）
+    const todayOHLC = todayOHLCMonth.find(r => r.date === today)
+    if (todayOHLC) {
+      const filtered = indexHistory.filter(r => r.date !== today)
+      indexHistory = [todayOHLC, ...filtered].slice(0, 250)
+      console.log(`[daily] indexHistory 更新今日 ${today}，共 ${indexHistory.length} 筆`)
+    } else {
+      console.warn('[daily] 今日 FMTQIK 無資料，indexHistory 保留舊值')
+    }
+  }
+
   const newSnapshot = {
     updatedAt: new Date().toISOString(),
     stocks,
+    indexHistory,
     marketSignals: null,
   }
 
