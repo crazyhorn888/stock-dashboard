@@ -21,6 +21,7 @@ interface Props {
   onClose: () => void
   allStocks: StockData[]
   n: number
+  onStockClick?: (stock: StockData) => void
 }
 
 function sign(v: number) { return v > 0 ? '+' : '' }
@@ -35,10 +36,11 @@ interface Chip {
   colorClass: string
 }
 
-function StockRow({ s, stockData, n }: {
+function StockRow({ s, stockData, n, onStockClick }: {
   s: SectorBubble['stocks'][number]
   stockData: StockData | undefined
   n: number
+  onStockClick?: (stock: StockData) => void
 }) {
   const changePercent = stockData?.changePercent ?? 0
   const chgUp = changePercent >= 0
@@ -67,15 +69,19 @@ function StockRow({ s, stockData, n }: {
 
   return (
     <div className="border-b border-slate-50 last:border-0">
-      {/* 整行可橫向拖曳 */}
+      {/* 整行可橫向拖曳，點擊名稱/代號區開啟個股詳情 */}
       <div
         className="flex items-center gap-2 py-1.5 overflow-x-auto scrollbar-none"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        {/* 代號 */}
-        <span className="text-[11px] text-slate-400 shrink-0 w-9">{s.code}</span>
-        {/* 名稱 */}
-        <span className="text-sm text-slate-700 shrink-0">{s.name}</span>
+        {/* 代號＋名稱：點擊開啟個股詳情 */}
+        <button
+          className="flex items-center gap-1 shrink-0 hover:opacity-70 active:opacity-50"
+          onClick={() => stockData && onStockClick?.(stockData)}
+        >
+          <span className="text-[11px] text-blue-400 w-9 text-left">{s.code}</span>
+          <span className="text-sm text-slate-700">{s.name}</span>
+        </button>
         {/* 漲跌% */}
         {stockData && (
           <span className={`text-xs font-semibold shrink-0 ${chgUp ? 'text-red-500' : 'text-green-600'}`}>
@@ -98,7 +104,7 @@ function StockRow({ s, stockData, n }: {
   )
 }
 
-export default function SectorPanel({ sector, onClose, allStocks, n }: Props) {
+export default function SectorPanel({ sector, onClose, allStocks, n, onStockClick }: Props) {
   if (!sector) return null
 
   const qId = quadrantOf(sector.x, sector.y)
@@ -170,6 +176,7 @@ export default function SectorPanel({ sector, onClose, allStocks, n }: Props) {
                     s={s}
                     stockData={stockIndex[s.code]}
                     n={n}
+                    onStockClick={onStockClick}
                   />
                 ))}
               </div>

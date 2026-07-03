@@ -5,10 +5,11 @@ import KlineChart from '@/components/aftermarket/KlineChart'
 import StockTable from '@/components/aftermarket/StockTable'
 import BubbleChart from '@/components/bubble/BubbleChart'
 import SectorPanel from '@/components/bubble/SectorPanel'
+import StockDetailSheet from '@/components/stock/StockDetailSheet'
 import { calcStockRow } from '@/lib/calcMetrics'
 import { MOCK_DATA } from '@/lib/mockData'
 import { fetchSnapshot } from '@/lib/fetchSnapshot'
-import type { SnapshotData, SectorBubble } from '@/lib/types'
+import type { SnapshotData, SectorBubble, StockData } from '@/lib/types'
 
 const TABS = ['大盤關鍵資料', '產業板塊', '個股清單', '基本面'] as const
 type Tab = typeof TABS[number]
@@ -22,6 +23,7 @@ export default function AftermarketPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeSector, setActiveSector] = useState<SectorBubble | null>(null)
+  const [activeStock, setActiveStock] = useState<StockData | null>(null)
 
   useEffect(() => {
     fetchSnapshot()
@@ -137,7 +139,7 @@ export default function AftermarketPage() {
             )}
 
             {activeTab === '個股清單' && (
-              <StockTable rows={rows} />
+              <StockTable rows={rows} onStockClick={setActiveStock} />
             )}
 
             {activeTab === '產業板塊' && (
@@ -159,7 +161,14 @@ export default function AftermarketPage() {
           </>
         )}
       </main>
-      <SectorPanel sector={activeSector} onClose={() => setActiveSector(null)} allStocks={data.stocks} n={n} />
+      <SectorPanel
+        sector={activeSector}
+        onClose={() => setActiveSector(null)}
+        allStocks={data.stocks}
+        n={n}
+        onStockClick={stock => { setActiveSector(null); setActiveStock(stock) }}
+      />
+      <StockDetailSheet stock={activeStock} n={n} onClose={() => setActiveStock(null)} />
     </div>
   )
 }

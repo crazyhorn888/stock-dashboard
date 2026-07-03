@@ -1,14 +1,15 @@
 'use client'
 import { useState, useMemo } from 'react'
-import type { StockRow } from '@/lib/types'
+import type { StockRow, StockData } from '@/lib/types'
 
 interface Props {
   rows: StockRow[]
+  onStockClick?: (stock: StockData) => void
 }
 
 type SortKey = 'changePercent' | 'highDropPct' | 'lowRisePct' | 'pe' | 'eps' | 'foreignNetBuy'
 
-export default function StockTable({ rows }: Props) {
+export default function StockTable({ rows, onStockClick }: Props) {
   const [query, setQuery] = useState('')
   const [industry, setIndustry] = useState('全部')
   const [sortKey, setSortKey] = useState<SortKey>('highDropPct')
@@ -99,7 +100,10 @@ export default function StockTable({ rows }: Props) {
               const highBad = r.highDropPct <= -15
               const highGood = r.highDropPct >= -5
               return (
-                <tr key={r.code} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                <tr key={r.code}
+                  className="border-b border-slate-100 hover:bg-blue-50 transition-colors cursor-pointer"
+                  onClick={() => onStockClick?.(r)}
+                >
                   <td className="px-3 py-2 font-bold text-blue-600">{r.code}</td>
                   <td className="px-3 py-2 text-slate-700">{r.name}</td>
                   <td className="px-3 py-2 text-slate-700">{r.close.toLocaleString()}</td>
