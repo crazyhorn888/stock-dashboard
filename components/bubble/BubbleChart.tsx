@@ -321,6 +321,11 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
               .replace('工業', '')
               .replace('業', '')
 
+            // 歷史軌跡：trail（oldest first）+ 當前位置
+            const trailPts = (s.trail ?? []).map(p => toSVG(p.x, p.y, zoom, xRange, yRange))
+            const allPts = [...trailPts, { px: spx, py: spy }]
+            const trailLen = allPts.length
+
             return (
               <g
                 key={s.sectorName}
@@ -329,6 +334,31 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
                 onMouseLeave={() => setHovered(null)}
                 style={{ cursor: 'pointer' }}
               >
+                {/* 歷史軌跡：漸淡線段 + 漸淡小點 */}
+                {trailLen >= 2 && (
+                  <g style={{ pointerEvents: 'none' }}>
+                    {allPts.slice(0, -1).map((pt, i) => {
+                      const next = allPts[i + 1]
+                      const ratio = i / Math.max(trailLen - 2, 1)
+                      return (
+                        <line key={i}
+                          x1={pt.px} y1={pt.py} x2={next.px} y2={next.py}
+                          stroke={q.color} strokeWidth={1.2} strokeLinecap="round"
+                          opacity={0.12 + ratio * 0.35}
+                        />
+                      )
+                    })}
+                    {trailPts.map((pt, i) => {
+                      const ratio = i / Math.max(trailLen - 2, 1)
+                      return (
+                        <circle key={i}
+                          cx={pt.px} cy={pt.py} r={1.5 + ratio * 1.2}
+                          fill={q.color} opacity={0.15 + ratio * 0.30}
+                        />
+                      )
+                    })}
+                  </g>
+                )}
                 {/* Drop shadow circle */}
                 <circle cx={spx + 1} cy={spy + 1.5} r={r}
                   fill="#00000018" />

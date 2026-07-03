@@ -77,6 +77,7 @@ export interface SectorBubble {
   x: number          // 近5日三大法人均淨買超（千張，正=買超）
   y: number          // 加速指標 = (近5日均值/近20日均值) - 1
   size: number       // 近5日買賣均量（千張），控制泡泡半徑
+  trail?: { x: number; y: number }[]  // 歷史位置（oldest first），最多5筆
   stocks: SectorStock[]
 }
 

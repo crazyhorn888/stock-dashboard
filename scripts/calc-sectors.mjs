@@ -76,7 +76,23 @@ export function calcSectors(sectorHistory, stockMap) {
       }))
       .sort((a, b) => b.netBuy - a.netBuy)
 
-    bubbles.push({ sectorName: name, x, y, size, stocks: finalStocks })
+    // 歷史軌跡：往前最多 5 個交易日的座標（每個需要20天資料）
+    const trail = []
+    const maxTrail = Math.min(5, sectorHistory.length - 20)
+    for (let k = 1; k <= maxTrail; k++) {
+      const s5  = sectorHistory.slice(k, k + 5)
+      const s20 = sectorHistory.slice(k, k + 20)
+      const n5_k  = s5.reduce((s, d)  => s + (d.rows.find(r => r.name === name)?.net ?? 0), 0)
+      const n20_k = s20.reduce((s, d) => s + (d.rows.find(r => r.name === name)?.net ?? 0), 0)
+      const a5  = n5_k  / s5.length
+      const a20 = n20_k / s20.length
+      trail.unshift({
+        x: a5 / 1000,
+        y: a20 !== 0 ? (a5 / Math.abs(a20)) - (a20 > 0 ? 1 : -1) : 0,
+      })
+    }
+
+    bubbles.push({ sectorName: name, x, y, size, trail, stocks: finalStocks })
   }
 
   return bubbles
