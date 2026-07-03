@@ -260,12 +260,25 @@ async function main() {
     // t187ap03_L: 上市公司基本資料，取得個股 → 產業類別（= T86 板塊名）
     fetchJSON('https://openapi.twse.com.tw/v1/opendata/t187ap03_L').catch(() => []),
   ])
-  // sectorMap: code → 產業類別（e.g., "半導體業"）
+  // t187ap03_L 產業別代碼 → T86 板塊名稱對照
+  const INDUSTRY_CODE_MAP = {
+    '01':'水泥工業','02':'食品工業','03':'塑膠工業','04':'紡織纖維',
+    '05':'電機機械','06':'電器電纜','08':'玻璃陶瓷','09':'造紙工業',
+    '10':'鋼鐵工業','11':'橡膠工業','12':'汽車工業','14':'建材營造',
+    '15':'航運業',  '16':'觀光餐旅','17':'金融保險','18':'貿易百貨',
+    '20':'其他',    '21':'化學工業','22':'生技醫療','23':'綜合',
+    '24':'半導體業','25':'光電業',  '26':'其他電子業','27':'通信網路業',
+    '28':'電子零組件業','29':'電子通路業','30':'資訊服務業','31':'電腦及週邊設備業',
+    '35':'油電燃氣','36':'資訊服務業','37':'觀光餐旅','38':'汽車工業','91':'其他',
+  }
+  // sectorMap: code → 板塊名稱（e.g., "半導體業"）
   const sectorMap = {}
   for (const r of (Array.isArray(industryList) ? industryList : [])) {
-    const code = String(r['公司代號'] ?? r.Code ?? '').trim()
-    const sec  = String(r['產業類別'] ?? r.IndustryCategory ?? '').trim()
-    if (/^\d{4}$/.test(code) && sec) sectorMap[code] = sec
+    const code    = String(r['公司代號'] ?? '').trim()
+    const secCode = String(r['產業別']   ?? '').trim()
+    if (/^\d{4}$/.test(code) && INDUSTRY_CODE_MAP[secCode]) {
+      sectorMap[code] = INDUSTRY_CODE_MAP[secCode]
+    }
   }
   console.log(`[daily] TWSE 今日資料：${prices.length} 支，產業對照：${Object.keys(sectorMap).length} 支`)
 
