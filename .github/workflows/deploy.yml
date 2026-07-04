@@ -27,7 +27,7 @@ jobs:
         run: |
           npm i -g vercel@latest
           set +e
-          DEPLOY_OUTPUT=$(vercel deploy --prod --token "$VERCEL_TOKEN" 2>&1)
+          DEPLOY_OUTPUT=$(vercel deploy --prod --yes --token "$VERCEL_TOKEN" 2>&1)
           DEPLOY_EXIT=$?
           set -e
           echo "$DEPLOY_OUTPUT"
