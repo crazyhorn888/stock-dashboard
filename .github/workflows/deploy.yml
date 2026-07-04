@@ -25,7 +25,7 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
-          npm i -g vercel@latest
+          npm i -g vercel@54.19.0  # 54.20.x 改變 token 驗證方式，已知 breaking
           set +e
           DEPLOY_OUTPUT=$(vercel deploy --prod --yes --token "$VERCEL_TOKEN" 2>&1)
           DEPLOY_EXIT=$?
