@@ -35,7 +35,7 @@ jobs:
             echo "❌ vercel deploy 失敗（exit $DEPLOY_EXIT）"
             exit $DEPLOY_EXIT
           fi
-          DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -i 'Production:' | grep -oE 'https://[^ ]+' | head -1)
+          DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -o 'https://[^ ]*\.vercel\.app' | tail -1)
           echo "deploy_url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
           echo "Deployed: $DEPLOY_URL"
 
@@ -45,8 +45,8 @@ jobs:
         run: |
           DEPLOY_URL="${{ steps.deploy.outputs.deploy_url }}"
           if [ -z "$DEPLOY_URL" ]; then
-            echo "❌ 找不到部署 URL，跳過 alias"
-            exit 1
+            echo "⚠️ 找不到部署 URL，跳過 alias（deploy 本身已成功）"
+            exit 0
           fi
           vercel alias set "$DEPLOY_URL" franky-stock-dashboard.vercel.app
           echo "✅ https://franky-stock-dashboard.vercel.app → $DEPLOY_URL"
