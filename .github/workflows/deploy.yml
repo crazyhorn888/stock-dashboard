@@ -27,7 +27,7 @@ jobs:
         run: |
           npm i -g vercel@54.19.0  # 54.20.x 改變 token 驗證方式，已知 breaking
           set +e
-          DEPLOY_OUTPUT=$(vercel deploy --prod --yes --token "$VERCEL_TOKEN" 2>&1)
+          DEPLOY_OUTPUT=$(vercel deploy --prod --yes 2>&1)  # 改用 VERCEL_TOKEN env var，不傳 --token 參數
           DEPLOY_EXIT=$?
           set -e
           echo "$DEPLOY_OUTPUT"
@@ -48,5 +48,5 @@ jobs:
             echo "❌ 找不到部署 URL，跳過 alias"
             exit 1
           fi
-          vercel alias set "$DEPLOY_URL" franky-stock-dashboard.vercel.app --token "$VERCEL_TOKEN"
+          vercel alias set "$DEPLOY_URL" franky-stock-dashboard.vercel.app
           echo "✅ https://franky-stock-dashboard.vercel.app → $DEPLOY_URL"
