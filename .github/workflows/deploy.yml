@@ -50,3 +50,4 @@ jobs:
           fi
           vercel alias set "$DEPLOY_URL" franky-stock-dashboard.vercel.app
           echo "✅ https://franky-stock-dashboard.vercel.app → $DEPLOY_URL"
+
