@@ -37,6 +37,65 @@ export interface MarketSignals {
   negTriggered: boolean   // >= 7%
 }
 
+// ── 籌碼資料（每日 Phase 1 + MI_MARGN 合併）─────────────────────────────
+export interface ChipsOptionParty {
+  bc: number   // 買進Call/口
+  sc: number   // 賣出Call/口
+  bp: number   // 買進Put/口
+  sp: number   // 賣出Put/口
+}
+
+export interface ChipsRetailNet {
+  call_net: number
+  put_net: number
+}
+
+export interface ChipsData {
+  // 三大法人現貨（億元）
+  foreign_spot:  number
+  trust_spot:    number
+  dealer_self:   number
+  dealer_hedge:  number
+  inst_total:    number
+
+  // 融資（億元）
+  margin_amount: number | null
+  margin_change: number | null   // 今日 - 昨日
+
+  // 台指期
+  tx_close:  number
+  tx_change: number
+  basis:     number
+
+  // 外資大台期未平倉（口）
+  fx_tx_oi:  number
+  fx_tx_chg: number
+
+  // 散戶動能（%）
+  retail_mtx_pct: number | string
+  retail_imf_pct: number | string
+
+  // PCR / VIX
+  pcr: number | string | null
+  vix: number | string | null
+
+  // 選擇權當日交易（口）
+  opt_tr: {
+    foreign: ChipsOptionParty
+    trust:   ChipsOptionParty
+    dealer:  ChipsOptionParty
+    retail:  ChipsRetailNet
+  } | null
+
+  // 選擇權未平倉（口）
+  opt_oi: {
+    foreign: ChipsOptionParty
+    trust:   ChipsOptionParty
+    dealer:  ChipsOptionParty
+    retail:  ChipsRetailNet
+  } | null
+}
+
 export interface IndexOHLC {
   date: string    // YYYY-MM-DD
   open: number
@@ -44,6 +103,7 @@ export interface IndexOHLC {
   low: number
   close: number
   volume: number  // 成交金額（億）
+  chips?: ChipsData
 }
 
 export interface SnapshotData {

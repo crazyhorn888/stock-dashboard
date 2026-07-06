@@ -1,10 +1,169 @@
 'use client'
 import { useState, useMemo } from 'react'
-import type { IndexOHLC } from '@/lib/types'
+import type { IndexOHLC, ChipsData, ChipsOptionParty } from '@/lib/types'
 
 interface Props {
   data: IndexOHLC[]  // newest first
   n: number
+}
+
+// ── 籌碼面板 ──────────────────────────────────────────────────────────────
+const PNAME: Record<string, string> = { foreign: '外資', trust: '投信', dealer: '自營', retail: '散戶' }
+const PARTIES = ['foreign', 'trust', 'dealer', 'retail'] as const
+
+function sgn(n: number | string | null | undefined): string {
+  const v = Number(n)
+  if (isNaN(v) || n === '' || n == null) return '—'
+  return (v >= 0 ? '+' : '') + Math.round(v).toLocaleString()
+}
+function abs(n: number | string | null | undefined): string {
+  const v = Number(n)
+  return isNaN(v) || n === '' || n == null ? '—' : Math.round(Math.abs(v)).toLocaleString()
+}
+function f1(n: number | string | null | undefined): string {
+  const v = Number(n)
+  return isNaN(v) || n === '' || n == null ? '—' : v.toFixed(1)
+}
+
+function ChipsPanel({ chips }: { chips: ChipsData }) {
+  const [showOpt, setShowOpt] = useState(false)
+
+  return (
+    <div className="mt-2 pt-2 border-t border-slate-100 space-y-2">
+      {/* 三大法人現貨 + 融資 */}
+      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">籌碼</div>
+      <div className="grid grid-cols-2 gap-1">
+        <div className="bg-slate-50 rounded p-1.5">
+          <div className="text-[9px] text-slate-400 mb-0.5">三大法人現貨（億）</div>
+          <div className="space-y-0.5">
+            <div className="flex justify-between text-[10px]">
+              <span className="text-slate-500">外資</span>
+              <span className={chips.foreign_spot >= 0 ? 'text-red-500 font-bold' : 'text-green-700 font-bold'}>
+                {sgn(chips.foreign_spot)}
+              </span>
+            </div>
+            <div className="flex justify-between text-[10px]">
+              <span className="text-slate-500">投信</span>
+              <span className={chips.trust_spot >= 0 ? 'text-red-500 font-bold' : 'text-green-700 font-bold'}>
+                {sgn(chips.trust_spot)}
+              </span>
+            </div>
+            <div className="flex justify-between text-[10px]">
+              <span className="text-slate-500">自營</span>
+              <span className={(chips.dealer_self + chips.dealer_hedge) >= 0 ? 'text-red-500 font-bold' : 'text-green-700 font-bold'}>
+                {sgn(chips.dealer_self + chips.dealer_hedge)}
+              </span>
+            </div>
+            <div className="flex justify-between text-[10px] border-t border-slate-200 pt-0.5 mt-0.5">
+              <span className="text-slate-600 font-semibold">合計</span>
+              <span className={chips.inst_total >= 0 ? 'text-red-600 font-bold' : 'text-green-700 font-bold'}>
+                {sgn(chips.inst_total)}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="bg-slate-50 rounded p-1.5">
+          <div className="text-[9px] text-slate-400 mb-0.5">融資（億）</div>
+          {chips.margin_amount != null ? (
+            <>
+              <div className="text-sm font-bold text-slate-700 tabular-nums">
+                {chips.margin_amount.toLocaleString()}
+              </div>
+              {chips.margin_change != null && (
+                <div className={`text-[10px] font-bold ${chips.margin_change >= 0 ? 'text-red-500' : 'text-green-700'}`}>
+                  {sgn(chips.margin_change)} 億
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-[10px] text-slate-400">—</div>
+          )}
+          <div className="mt-1 text-[9px] text-slate-400 mb-0.5">台指期</div>
+          <div className="flex justify-between text-[10px]">
+            <span className="text-slate-500">收盤</span>
+            <span className="font-bold text-slate-700">{chips.tx_close?.toLocaleString() ?? '—'}</span>
+          </div>
+          <div className="flex justify-between text-[10px]">
+            <span className="text-slate-500">基差</span>
+            <span className={chips.basis >= 0 ? 'text-red-500 font-bold' : 'text-green-700 font-bold'}>
+              {chips.basis >= 0 ? '+' : ''}{f1(chips.basis)}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 指標列 */}
+      <div className="flex gap-2 text-[10px]">
+        <div className="flex-1 bg-slate-50 rounded p-1.5">
+          <span className="text-slate-400">PCR </span>
+          <span className="font-bold text-slate-700">{f1(chips.pcr)}</span>
+        </div>
+        <div className="flex-1 bg-slate-50 rounded p-1.5">
+          <span className="text-slate-400">VIX </span>
+          <span className="font-bold text-slate-700">{f1(chips.vix)}</span>
+        </div>
+        <div className="flex-1 bg-slate-50 rounded p-1.5">
+          <span className="text-slate-400">外資大台 </span>
+          <span className={chips.fx_tx_oi >= 0 ? 'text-red-500 font-bold' : 'text-green-700 font-bold'}>
+            {sgn(chips.fx_tx_oi)}
+          </span>
+        </div>
+      </div>
+
+      {/* 選擇權 — 收合 */}
+      <button
+        onClick={() => setShowOpt(v => !v)}
+        className="w-full text-left text-[10px] text-slate-500 flex items-center gap-1"
+      >
+        <span className={`transition-transform ${showOpt ? 'rotate-90' : ''}`}>›</span>
+        選擇權詳情 {showOpt ? '收合' : '展開'}
+      </button>
+      {showOpt && chips.opt_tr && chips.opt_oi && (
+        <div className="space-y-1.5">
+          {/* 當日交易 */}
+          <div className="text-[9px] font-semibold text-slate-400 uppercase">當日交易（口）</div>
+          <div className="grid grid-cols-5 gap-0 text-[9px] font-bold text-slate-400 text-center px-0.5">
+            <div className="text-left"></div>
+            <div>BC</div><div>SC</div><div>BP</div><div>SP</div>
+          </div>
+          {PARTIES.map(p => {
+            const row = chips.opt_tr![p]
+            if (!row || !('bc' in row)) return null
+            const r = row as ChipsOptionParty
+            return (
+              <div key={p} className="grid grid-cols-5 gap-0 text-[9px] text-center px-0.5">
+                <div className="text-left text-slate-500 font-semibold">{PNAME[p]}</div>
+                <div className="tabular-nums text-red-500">{abs(r.bc)}</div>
+                <div className="tabular-nums text-green-700">{abs(r.sc)}</div>
+                <div className="tabular-nums text-red-500">{abs(r.bp)}</div>
+                <div className="tabular-nums text-green-700">{abs(r.sp)}</div>
+              </div>
+            )
+          })}
+          {/* 未平倉 */}
+          <div className="text-[9px] font-semibold text-slate-400 uppercase mt-1">未平倉（口）</div>
+          <div className="grid grid-cols-5 gap-0 text-[9px] font-bold text-slate-400 text-center px-0.5">
+            <div className="text-left"></div>
+            <div>BC</div><div>SC</div><div>BP</div><div>SP</div>
+          </div>
+          {PARTIES.map(p => {
+            const row = chips.opt_oi![p]
+            if (!row || !('bc' in row)) return null
+            const r = row as ChipsOptionParty
+            return (
+              <div key={p} className="grid grid-cols-5 gap-0 text-[9px] text-center px-0.5">
+                <div className="text-left text-slate-500 font-semibold">{PNAME[p]}</div>
+                <div className="tabular-nums text-red-500">{abs(r.bc)}</div>
+                <div className="tabular-nums text-green-700">{abs(r.sc)}</div>
+                <div className="tabular-nums text-red-500">{abs(r.bp)}</div>
+                <div className="tabular-nums text-green-700">{abs(r.sp)}</div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // SVG viewport constants
@@ -237,6 +396,7 @@ export default function KlineChart({ data, n }: Props) {
               <span className="text-slate-400">成交金額</span>
               <span className="font-bold text-slate-700">{selected.volume.toLocaleString('zh-TW', { maximumFractionDigits: 0 })} 億</span>
             </div>
+            {selected.chips && <ChipsPanel chips={selected.chips} />}
             <button
               onClick={() => setSelected(null)}
               className="mt-2 w-full text-[10px] text-slate-400 hover:text-slate-600 text-center"

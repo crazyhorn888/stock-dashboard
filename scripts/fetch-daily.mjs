@@ -182,6 +182,64 @@ async function isMarginDataReady(date) {
   } catch { return false }
 }
 
+// ── 籌碼：讀 Supabase chips/{date}.json（N8N Phase1 寫入）─────────────────
+async function fetchChipsFromSupabase(dateYYYYMMDD) {
+  const supabaseUrl = process.env.SUPABASE_URL
+  if (!supabaseUrl) return null
+  try {
+    const url = `${supabaseUrl}/storage/v1/object/public/snapshots/chips/${dateYYYYMMDD}.json`
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+    if (!res.ok) return null
+    return res.json()
+  } catch { return null }
+}
+
+// ── 籌碼：抓今日融資餘額（仟元 → 億元）─────────────────────────────────
+async function fetchMarginAmount(dateYYYYMMDD) {
+  const url = `https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?response=json&date=${dateYYYYMMDD}&selectType=MS`
+  try {
+    const d = await fetchJSON(url)
+    if (d?.stat !== 'OK') return null
+    for (const t of d.tables ?? []) {
+      for (const row of t.data ?? []) {
+        if (String(row[0]).includes('融資金額')) {
+          const val = parseFloat(String(row[5]).replace(/,/g, ''))
+          return isNaN(val) ? null : Math.round(val / 100_000 * 100) / 100
+        }
+      }
+    }
+    return null
+  } catch { return null }
+}
+
+// ── 籌碼：組裝 ChipsData（Phase1 JSON + 融資） ──────────────────────────
+function buildChipsEntry(phase1, marginAmount, prevMarginAmount) {
+  if (!phase1) return null
+  const det = phase1.detail || {}
+  return {
+    foreign_spot:   phase1.foreign_spot  ?? 0,
+    trust_spot:     phase1.trust_spot    ?? 0,
+    dealer_self:    phase1.dealer_self   ?? 0,
+    dealer_hedge:   phase1.dealer_hedge  ?? 0,
+    inst_total:     phase1.inst_total    ?? 0,
+    margin_amount:  marginAmount ?? null,
+    margin_change:  (marginAmount != null && prevMarginAmount != null)
+                      ? Math.round((marginAmount - prevMarginAmount) * 100) / 100
+                      : null,
+    tx_close:       phase1.tx_close  ?? 0,
+    tx_change:      phase1.tx_change ?? 0,
+    basis:          phase1.basis     ?? 0,
+    fx_tx_oi:       phase1.fx_tx_oi  ?? 0,
+    fx_tx_chg:      phase1.fx_tx_chg ?? 0,
+    retail_mtx_pct: phase1.retail_mtx_pct ?? '',
+    retail_imf_pct: phase1.retail_imf_pct ?? '',
+    pcr:            phase1.pcr ?? null,
+    vix:            phase1.vix ?? null,
+    opt_tr:         det.opt_tr_raw ?? null,
+    opt_oi:         det.opt_oi_raw ?? null,
+  }
+}
+
 // ── 下載現有 Supabase 快照 ──────────────────────────
 async function downloadSnapshot() {
   const supabaseUrl = process.env.SUPABASE_URL
@@ -464,15 +522,26 @@ async function main() {
   const stocks = Object.values(stockMap)
   console.log(`[daily] TPEX 更新 ${tpexPrices.length} 支，新增 ${tpexNewCount} 支，全市場合計 ${stocks.length} 支`)
 
-  // Step 4：更新 indexHistory
+  // Step 4：更新 indexHistory（含籌碼資料）
   let indexHistory = snapshot.indexHistory ?? null
   if (!indexHistory || indexHistory.length === 0) {
     indexHistory = await buildFullIndexHistory(today)
   } else {
     const todayOHLC = todayOHLCMonth.find(r => r.date === today)
     if (todayOHLC) {
+      // 嘗試讀取今日籌碼（N8N Phase1 寫入 Supabase），失敗不影響主流程
+      const prevMarginAmount = snapshot.indexHistory[0]?.chips?.margin_amount ?? null
+      const [chipsJson, marginAmount] = await Promise.all([
+        fetchChipsFromSupabase(todayYYYYMMDD),
+        fetchMarginAmount(todayYYYYMMDD),
+      ])
+      const chips = buildChipsEntry(chipsJson, marginAmount, prevMarginAmount)
+      if (chips) console.log('[daily] 籌碼資料已合併')
+      else console.log('[daily] 今日籌碼尚未就緒，跳過')
+
       const filtered = indexHistory.filter(r => r.date !== today)
-      indexHistory = [todayOHLC, ...filtered].slice(0, 250)
+      const entry = chips ? { ...todayOHLC, chips } : todayOHLC
+      indexHistory = [entry, ...filtered].slice(0, 250)
       console.log(`[daily] indexHistory 更新今日 ${today}，共 ${indexHistory.length} 筆`)
     } else {
       console.warn('[daily] 今日 FMTQIK 無資料，indexHistory 保留舊值')
