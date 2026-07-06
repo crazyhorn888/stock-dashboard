@@ -93,11 +93,11 @@ export default function MarketSignalCards({ signals: s }: Props) {
       {/* Modal */}
       {modal && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/40"
           onClick={() => setModal(null)}
         >
           <div
-            className="w-full max-w-sm bg-white rounded-t-2xl p-5 pb-8 shadow-xl"
+            className="w-full max-w-sm bg-white rounded-2xl p-5 shadow-xl max-h-[80vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}
           >
             {/* Modal header */}
