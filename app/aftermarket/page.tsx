@@ -133,8 +133,8 @@ export default function AftermarketPage() {
           <>
             {activeTab === '大盤關鍵資料' && (
               <>
-                <MarketSignalCards signals={data.marketSignals} />
                 <KlineChart data={data.indexHistory ?? []} n={n} />
+                <MarketSignalCards signals={data.marketSignals} />
               </>
             )}
 
