@@ -79,6 +79,8 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
   const [zoom, setZoom] = useState<QuadrantId>(null)
   const [top15Active, setTop15Active] = useState(false)
   const [hovered, setHovered] = useState<string | null>(null)
+  const [clicked, setClicked] = useState<string | null>(null)
+  const [mounted, setMounted] = useState(false)
   const [vb, setVb] = useState(DEFAULT_VB)
   const svgRef = useRef<SVGSVGElement>(null)
   const touchRef = useRef<{
@@ -89,6 +91,18 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
   } | null>(null)
   const vbRef = useRef(vb)
   useEffect(() => { vbRef.current = vb }, [vb])
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setMounted(true))
+    return () => cancelAnimationFrame(id)
+  }, [])
+
+  function handleBubbleClick(s: SectorBubble) {
+    setClicked(s.sectorName)
+    setTimeout(() => {
+      setClicked(null)
+      onBubbleClick(s)
+    }, 160)
+  }
 
   const isZoomed = vb.w < W - 1 || vb.h < H - 1
 
@@ -273,6 +287,25 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
         className="w-full"
         style={{ touchAction: 'none', cursor: isZoomed ? 'grab' : 'default' }}
       >
+        <defs>
+          <style>{`
+            @keyframes bubbleIn {
+              from { opacity: 0; }
+              55%  { opacity: 0; }
+              to   { opacity: 1; }
+            }
+          `}</style>
+          {QUADRANTS.map(q => (
+            <marker key={q.id} id={`trailArrow-${q.id}`}
+              markerWidth="6" markerHeight="6"
+              refX="5" refY="3" orient="auto"
+              markerUnits="userSpaceOnUse"
+            >
+              <path d="M0,0 L0,6 L6,3 z" fill={q.color} opacity={0.55} />
+            </marker>
+          ))}
+        </defs>
+
         {/* Quadrant backgrounds */}
         {!zoom ? QUADRANTS.map(q => {
           const x1 = q.xSign < 0 ? PAD.left : CX
@@ -328,13 +361,14 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
         {/* Bubbles — render from small to large so big ones are on top */}
         {[...visibleSectors]
           .sort((a, b) => a.size - b.size)
-          .map(s => {
+          .map((s, index) => {
             const { px, py } = toSVG(s.x, s.y, zoom, xRange, yRange)
             const r = bubbleRadius(s.size, maxSize)
             const spx = clamp(px, PAD.left + r + 1, W - PAD.right - r - 1)
             const spy = clamp(py, PAD.top  + r + 1, H - PAD.bottom - r - 1)
             const q = QUADRANTS.find(q => q.id === quadrantOf(s.x, s.y))!
             const isHovered = hovered === s.sectorName
+            const isClicked = clicked === s.sectorName
             const shortName = s.sectorName
               .replace('及週邊設備業', '週邊')
               .replace('工業', '')
@@ -348,22 +382,32 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
             return (
               <g
                 key={s.sectorName}
-                onClick={() => onBubbleClick(s)}
+                onClick={() => handleBubbleClick(s)}
                 onMouseEnter={() => setHovered(s.sectorName)}
                 onMouseLeave={() => setHovered(null)}
-                style={{ cursor: 'pointer' }}
+                style={{
+                  cursor: 'pointer',
+                  transform: isClicked ? 'scale(1.22)' : 'scale(1)',
+                  transition: 'transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+                  transformOrigin: `${spx}px ${spy}px`,
+                  ...(mounted
+                    ? { animation: `bubbleIn 500ms ${index * 18}ms both` }
+                    : { opacity: 0 }),
+                }}
               >
-                {/* 歷史軌跡：漸淡線段 + 漸淡小點 */}
+                {/* 歷史軌跡：漸淡線段 + 箭頭末端 + 漸淡小點 */}
                 {trailLen >= 2 && (
                   <g style={{ pointerEvents: 'none' }}>
                     {allPts.slice(0, -1).map((pt, i) => {
                       const next = allPts[i + 1]
                       const ratio = i / Math.max(trailLen - 2, 1)
+                      const isLast = i === allPts.slice(0, -1).length - 1
                       return (
                         <line key={i}
                           x1={pt.px} y1={pt.py} x2={next.px} y2={next.py}
-                          stroke={q.color} strokeWidth={1.2} strokeLinecap="round"
-                          opacity={0.12 + ratio * 0.35}
+                          stroke={q.color} strokeWidth={1.8} strokeLinecap="round"
+                          opacity={0.20 + ratio * 0.45}
+                          markerEnd={isLast ? `url(#trailArrow-${q.id})` : undefined}
                         />
                       )
                     })}
@@ -371,8 +415,8 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
                       const ratio = i / Math.max(trailLen - 2, 1)
                       return (
                         <circle key={i}
-                          cx={pt.px} cy={pt.py} r={1.5 + ratio * 1.2}
-                          fill={q.color} opacity={0.15 + ratio * 0.30}
+                          cx={pt.px} cy={pt.py} r={1.5 + ratio * 1.4}
+                          fill={q.color} opacity={0.25 + ratio * 0.40}
                         />
                       )
                     })}
@@ -380,20 +424,20 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
                 )}
                 {/* Drop shadow circle */}
                 <circle cx={spx + 1} cy={spy + 1.5} r={r}
-                  fill="#00000018" />
+                  fill={isClicked ? `${q.color}30` : '#00000018'} />
                 {/* Main bubble */}
                 <circle cx={spx} cy={spy} r={r}
-                  fill={isHovered ? q.color : q.fill}
+                  fill={isHovered || isClicked ? q.color : q.fill}
                   stroke={q.color}
-                  strokeWidth={isHovered ? 2.5 : 1.8}
-                  opacity={isHovered ? 1 : 0.9}
+                  strokeWidth={isHovered || isClicked ? 2.5 : 1.8}
+                  opacity={isHovered || isClicked ? 1 : 0.9}
                 />
                 {/* Label inside bubble (if big enough) */}
                 {r >= 16 ? (
                   <text
                     x={spx} y={spy + 3}
                     fontSize={r >= 22 ? 8.5 : 7.5}
-                    fill={isHovered ? '#fff' : q.color}
+                    fill={isHovered || isClicked ? '#fff' : q.color}
                     textAnchor="middle"
                     fontWeight="700"
                     style={{ pointerEvents: 'none' }}

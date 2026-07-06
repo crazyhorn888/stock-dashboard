@@ -159,12 +159,17 @@ async function isAlreadyDoneToday() {
   } catch { return false }
 }
 
-// ── Guard 2：確認交易日（用 OpenAPI STOCK_DAY_ALL 的 Date 欄位比對今日）──
+// ── Guard 2：確認 STOCK_DAY_ALL 已含今日資料（更新前視為非交易日/資料未就緒）──
 async function isTradingDay(dateTW) {
   try {
     const data = await fetchTWSEAll()
     if (!data.length) return false
-    return data.some(r => String(r.Date) === dateTW)
+    const found = data.some(r => String(r.Date) === dateTW)
+    if (!found) {
+      const latest = data[0]?.Date ?? '未知'
+      console.log(`[daily] STOCK_DAY_ALL 最新日期：${latest}，今日：${dateTW}（資料未就緒或非交易日）`)
+    }
+    return found
   } catch { return false }
 }
 
@@ -308,9 +313,9 @@ async function main() {
     process.exit(0)
   }
 
-  // Guard 2：非交易日
+  // Guard 2：STOCK_DAY_ALL 尚無今日資料（非交易日 or 資料未就緒）
   if (!(await isTradingDay(dateTW))) {
-    console.log('[daily] 非交易日，跳過，exit 0')
+    console.log('[daily] STOCK_DAY_ALL 無今日資料，跳過，exit 0')
     process.exit(0)
   }
 
