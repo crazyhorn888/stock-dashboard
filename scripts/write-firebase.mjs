@@ -34,6 +34,7 @@ async function uploadToSupabase(raw) {
       'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
       'Content-Type': 'application/json',
       'x-upsert': 'true',
+      'cache-control': 'no-cache',  // CDN 不快取，每次請求都取最新版
     },
     body: raw,
   })
