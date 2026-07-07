@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { StockData } from '@/lib/types'
 import { calcStockRow } from '@/lib/calcMetrics'
-import { fetchOHLCSnapshot, getStockBars } from '@/lib/fetchStockOHLC'
+import { fetchOHLCSnapshot, getStockBars, type OHLCBar } from '@/lib/fetchStockOHLC'
 import StockKChart, { type Period } from './StockKChart'
 
 interface Props {
@@ -24,7 +24,7 @@ export default function StockDetailSheet({ stock, n, onClose }: Props) {
   // Fix: UA-detect iOS → apply fixed offset to lift sheet above the toolbar.
   const [iosOffset, setIosOffset] = useState(0)
   const [period, setPeriod] = useState<Period>('D')
-  const [ohlcBars, setOhlcBars] = useState<{ date: string; open: number; high: number; low: number; close: number }[] | null>(null)
+  const [ohlcBars, setOhlcBars] = useState<OHLCBar[] | null>(null)
   const [ohlcLoading, setOhlcLoading] = useState(false)
 
   useEffect(() => {

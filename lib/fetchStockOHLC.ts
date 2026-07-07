@@ -30,21 +30,41 @@ export async function fetchOHLCSnapshot(): Promise<OHLCSnapshot> {
   return _fetchPromise
 }
 
+export interface OHLCBar {
+  date: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume?: number   // 張，可能缺（無 v 欄位或 TPEX 歷史舊資料）
+  hasRealOHLC: boolean  // false = open/high/low 為 close 推算，非真實 intraday
+}
+
 /** 從 OHLCSnapshot 取得單支股票的每日 OHLC bars（newest first，與 closes/dates 對齊） */
 export function getStockBars(
   snapshot: OHLCSnapshot,
   code: string,
   closes: number[],
   dates: string[],
-): { date: string; open: number; high: number; low: number; close: number }[] | null {
+): OHLCBar[] | null {
   const d = snapshot.bars[code]
   if (!d) return null
-  const len = Math.min(closes.length, d.o.length, dates.length)
+  const hasOHLC = (d.o?.length ?? 0) > 0
+  const hasVol  = (d.v?.length ?? 0) > 0
+  if (!hasOHLC && !hasVol) return null
+  const len = Math.min(
+    closes.length,
+    dates.length,
+    hasOHLC ? d.o!.length : closes.length,
+    hasVol  ? d.v!.length : closes.length,
+  )
   return Array.from({ length: len }, (_, i) => ({
-    date:  dates[i],
-    open:  d.o[i],
-    high:  d.h[i],
-    low:   d.l[i],
-    close: closes[i],
+    date:        dates[i],
+    open:        d.o?.[i] ?? closes[i],
+    high:        d.h?.[i] ?? closes[i],
+    low:         d.l?.[i] ?? closes[i],
+    close:       closes[i],
+    volume:      d.v?.[i],
+    hasRealOHLC: hasOHLC,
   }))
 }

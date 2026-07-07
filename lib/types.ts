@@ -10,19 +10,21 @@ export interface StockData {
   foreignNetBuy: number // 億元
   closes: number[]     // 最近 250 個交易日收盤價，index 0 = 最新
   dates: string[]      // 對應日期 YYYY-MM-DD
-  // OHLC（TWSE 上市股票才有；TPEX 上櫃無此資料）
+  // OHLC + 成交量（cron 抓取後存入，stripped 後存 ohlc.json）
   opens?: number[]     // 開盤價，newest first，最多 250 筆
   highs?: number[]     // 最高價，newest first，最多 250 筆
   lows?: number[]      // 最低價，newest first，最多 250 筆
+  volumes?: number[]   // 成交量（張），newest first，最多 250 筆
 }
 
 // ohlc.json（Supabase Storage）的型別，前端 lazy fetch 用
 export interface OHLCSnapshot {
   updatedAt: string
   bars: Record<string, {
-    o: number[]  // opens，newest first
-    h: number[]  // highs，newest first
-    l: number[]  // lows，newest first
+    o?: number[]  // opens，newest first（TPEX 可能缺）
+    h?: number[]
+    l?: number[]
+    v?: number[]  // 成交量（張），newest first
   }>
 }
 

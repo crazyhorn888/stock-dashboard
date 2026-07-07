@@ -1,25 +1,25 @@
 'use client'
-import { useMemo } from 'react'
+import { useMemo, useState, useCallback } from 'react'
+import type { OHLCBar } from '@/lib/fetchStockOHLC'
 
 export type Period = 'D' | 'W' | 'M'
 
-interface OHLCBar { date: string; open: number; high: number; low: number; close: number }
-
 interface Props {
-  closes:   number[]   // newest first
-  dates:    string[]   // YYYY-MM-DD, newest first
-  n:        number     // N 天參考區間（距高/距低標記用）
+  closes:   number[]
+  dates:    string[]
+  n:        number
   period:   Period
-  ohlcBars: OHLCBar[] | null  // 日K OHLC（newest first），null = 尚未載入或無資料
+  ohlcBars: OHLCBar[] | null
 }
 
-const W = 600
-const H = 230
-const PAD = { top: 12, right: 14, bottom: 32, left: 50 }
-const CW = W - PAD.left - PAD.right
-const CH = H - PAD.top  - PAD.bottom
+const W   = 600
+const H_K = 210   // K線區高度
+const H_V = 52    // 量能區高度
+const H   = H_K + H_V + 34  // 總高度（含 x-axis 標籤）
+const PAD = { top: 12, right: 14, bottom: 0, left: 50 }
+const CW  = W - PAD.left - PAD.right
+const CH  = H_K - PAD.top
 
-// MA 線設定（不同 period 使用不同週期）
 const MA_CONFIG: Record<Period, { period: number; color: string; label: string }[]> = {
   D: [
     { period: 5,  color: '#f59e0b', label: 'MA5'  },
@@ -39,63 +39,60 @@ const MA_CONFIG: Record<Period, { period: number; color: string; label: string }
   ],
 }
 
-// 把 closes/dates（newest first）聚合成週或月 OHLC bars
 function aggregateBars(closes: number[], dates: string[], period: 'W' | 'M'): OHLCBar[] {
-  // 先轉成 oldest→newest 方便分組
   const dc = closes.slice(0, 250).reverse()
   const dd = dates.slice(0, 250).reverse()
-
   const groups: { key: string; bars: { c: number; d: string }[] }[] = []
-
   for (let i = 0; i < dc.length; i++) {
     const date = dd[i]
-    const key = period === 'W'
-      ? isoWeekKey(date)   // YYYY-Www
-      : date.slice(0, 7)   // YYYY-MM
-
+    const key  = period === 'W' ? isoWeekKey(date) : date.slice(0, 7)
     if (groups.length === 0 || groups[groups.length - 1].key !== key) {
       groups.push({ key, bars: [] })
     }
     groups[groups.length - 1].bars.push({ c: dc[i], d: date })
   }
-
-  // 每個 group → 一根 OHLC
   return groups
     .filter(g => g.bars.length > 0)
     .map(g => {
       const prices = g.bars.map(b => b.c)
       return {
-        date:  g.bars[g.bars.length - 1].d,  // 末日日期代表這根棒
-        open:  g.bars[0].c,
-        high:  Math.max(...prices),
-        low:   Math.min(...prices),
-        close: g.bars[g.bars.length - 1].c,
+        date:        g.bars[g.bars.length - 1].d,
+        open:        g.bars[0].c,
+        high:        Math.max(...prices),
+        low:         Math.min(...prices),
+        close:       g.bars[g.bars.length - 1].c,
+        hasRealOHLC: false,
       }
     })
-    .reverse()  // newest first
+    .reverse()
 }
 
 function isoWeekKey(dateISO: string): string {
   const d = new Date(dateISO)
-  const day = d.getDay() || 7  // Mon=1, Sun=7
-  d.setDate(d.getDate() + 4 - day)  // nearest Thursday
+  const day = d.getDay() || 7
+  d.setDate(d.getDate() + 4 - day)
   const year = d.getFullYear()
   const startOfYear = new Date(year, 0, 1)
   const week = Math.ceil(((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7)
   return `${year}-W${String(week).padStart(2, '0')}`
 }
 
+function fmtVol(v: number | undefined): string {
+  if (v == null) return '—'
+  if (v >= 10000) return `${(v / 10000).toFixed(1)} 萬張`
+  if (v >= 1000)  return `${(v / 1000).toFixed(2)} 千張`
+  return `${v} 張`
+}
+
 export default function StockKChart({ closes, dates, n, period, ohlcBars }: Props) {
   const MA_LINES = MA_CONFIG[period]
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
 
-  // 取得用於渲染的 bars
   const bars = useMemo<OHLCBar[]>(() => {
     if (period === 'D') {
       if (ohlcBars && ohlcBars.length > 0) return ohlcBars.slice(0, 120)
-      // fallback：無 OHLC 時用收盤價建假 candle（doji）
       return closes.slice(0, 120).map((c, i) => ({
-        date: dates[i] ?? '',
-        open: c, high: c, low: c, close: c,
+        date: dates[i] ?? '', open: c, high: c, low: c, close: c, hasRealOHLC: false,
       })).filter(b => b.date)
     }
     if (period === 'W') return aggregateBars(closes, dates, 'W').slice(0, 60)
@@ -104,39 +101,37 @@ export default function StockKChart({ closes, dates, n, period, ohlcBars }: Prop
 
   const chart = useMemo(() => {
     if (bars.length === 0) return null
-
-    const dc = [...bars].reverse()  // oldest → newest (left → right)
+    const dc    = [...bars].reverse()
     const COUNT = dc.length
 
-    // N-day 高低（用 closes 原始陣列，跟 MarketSignalCards 同一邏輯）
     const nSlice = closes.slice(0, Math.min(n, closes.length))
-    const nHigh = Math.max(...nSlice)
-    const nLow  = Math.min(...nSlice)
+    const nHigh  = Math.max(...nSlice)
+    const nLow   = Math.min(...nSlice)
 
-    // MA 計算（對齊 bars 陣列，index i = 對應到 bars[COUNT-1-i]，newest=bars[0]）
     function getMA(i: number, p: number): number | null {
-      // bars 是 newest-first，dc 是 oldest-first
-      // dc[i] 對應到 bars[COUNT-1-i]
       const barsIdx = COUNT - 1 - i
-      const slice = bars.slice(barsIdx, barsIdx + p).map(b => b.close)
+      const slice   = bars.slice(barsIdx, barsIdx + p).map(b => b.close)
       if (slice.length < p) return null
       return slice.reduce((s, v) => s + v, 0) / p
     }
     const maValues = MA_LINES.map(({ period: p }) => dc.map((_, i) => getMA(i, p)))
 
-    // Y range
-    const allH = Math.max(...dc.map(b => b.high))
-    const allL = Math.min(...dc.map(b => b.low))
+    const allH   = Math.max(...dc.map(b => b.high))
+    const allL   = Math.min(...dc.map(b => b.low))
     const maFlat = maValues.flat().filter((v): v is number => v !== null)
-    const yMin = Math.min(allL, ...maFlat, nLow) * 0.995
-    const yMax = Math.max(allH, ...maFlat, nHigh) * 1.005
+    const yMin   = Math.min(allL, ...maFlat, nLow) * 0.995
+    const yMax   = Math.max(allH, ...maFlat, nHigh) * 1.005
+
+    // Volume scale
+    const vols    = dc.map(b => b.volume ?? 0)
+    const maxVol  = Math.max(...vols, 1)
 
     function px(i: number) { return PAD.left + (i + 0.5) * (CW / COUNT) }
     function py(v: number) { return PAD.top + CH - ((v - yMin) / (yMax - yMin)) * CH }
+    function pv(v: number) { return H_K + H_V - (v / maxVol) * (H_V - 4) }  // volume bar bottom
 
     const barW = Math.max(1.2, (CW / COUNT) * 0.72)
 
-    // MA paths
     const maPaths = maValues.map(vals => {
       let d = ''
       vals.forEach((v, i) => {
@@ -146,40 +141,50 @@ export default function StockKChart({ closes, dates, n, period, ohlcBars }: Prop
       return d
     })
 
-    // Y-axis ticks
     const yTicks = Array.from({ length: 5 }, (_, i) => {
       const v = yMin + (i / 4) * (yMax - yMin)
       return { v, y: py(v) }
     })
 
-    // X-axis ticks
-    const step = Math.ceil(COUNT / 5)
+    const step   = Math.ceil(COUNT / 5)
     const xTicks = dc.map((_, i) => i)
       .filter(i => i === 0 || (i + 1) % step === 0 || i === COUNT - 1)
       .map(i => ({
         i,
         x: px(i),
-        label: period === 'D' ? dc[i].date.slice(5)           // MM-DD
-             : period === 'W' ? dc[i].date.slice(0, 7).slice(2)  // YY-MM
-             : dc[i].date.slice(0, 7),                          // YYYY-MM
+        label: period === 'D' ? dc[i].date.slice(5)
+             : period === 'W' ? dc[i].date.slice(2, 7)
+             : dc[i].date.slice(0, 7),
       }))
 
-    return { dc, COUNT, px, py, barW, maPaths, nHigh, nLow, yTicks, xTicks, yMin, yMax }
+    return { dc, COUNT, px, py, pv, barW, maPaths, nHigh, nLow, yTicks, xTicks, vols, maxVol }
   }, [bars, closes, n, MA_LINES, period])
 
-  const isDoji = period === 'D' && (!ohlcBars || ohlcBars.length === 0)
-  const periodLabel = period === 'D' ? `日K 近 ${bars.length} 天` : period === 'W' ? `週K 近 ${bars.length} 週` : `月K 近 ${bars.length} 月`
+  const isDoji       = period === 'D' && !(ohlcBars && ohlcBars[0]?.hasRealOHLC)
+  const hasVol       = bars.some(b => b.volume != null)
+  const periodLabel  = period === 'D' ? `日K 近 ${bars.length} 天`
+                     : period === 'W' ? `週K 近 ${bars.length} 週`
+                     :                  `月K 近 ${bars.length} 月`
+
+  // 觸控/滑鼠事件 → 更新 hoverIdx
+  const handlePointer = useCallback((clientX: number, svgRect: DOMRect) => {
+    if (!chart) return
+    const svgX = ((clientX - svgRect.left) / svgRect.width) * W
+    const raw  = Math.floor((svgX - PAD.left) / (CW / chart.COUNT))
+    setHoverIdx(Math.max(0, Math.min(chart.COUNT - 1, raw)))
+  }, [chart])
 
   if (!chart) return (
     <div className="h-40 flex items-center justify-center text-slate-400 text-xs">無資料</div>
   )
 
-  const { dc, px, py, barW, maPaths, nHigh, nLow, yTicks, xTicks } = chart
+  const { dc, COUNT, px, py, pv, barW, maPaths, nHigh, nLow, yTicks, xTicks, vols } = chart
+  const hBar = hoverIdx !== null ? dc[hoverIdx] : null
 
   return (
-    <div className="w-full">
+    <div className="w-full select-none">
       {/* Legend */}
-      <div className="flex flex-wrap gap-x-3 gap-y-1 mb-1.5 px-1 items-center">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 mb-1 px-1 items-center">
         {MA_LINES.map(({ label, color }) => (
           <span key={label} className="text-[10px] font-semibold" style={{ color }}>{label}</span>
         ))}
@@ -189,7 +194,45 @@ export default function StockKChart({ closes, dates, n, period, ohlcBars }: Prop
         )}
       </div>
 
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 250 }}>
+      {/* Hover info bar */}
+      <div className={`transition-opacity duration-100 mb-1 px-2 py-1 rounded-lg bg-slate-100 text-[10px] flex flex-wrap gap-x-2.5 gap-y-0.5 ${hBar ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        {hBar && (
+          <>
+            <span className="font-semibold text-slate-600">{hBar.date}</span>
+            {!isDoji && <>
+              <span>開 <span className="font-bold text-slate-800">{hBar.open.toFixed(2)}</span></span>
+              <span>高 <span className="font-bold text-red-500">{hBar.high.toFixed(2)}</span></span>
+              <span>低 <span className="font-bold text-green-600">{hBar.low.toFixed(2)}</span></span>
+            </>}
+            <span>收 <span className="font-bold text-slate-800">{hBar.close.toFixed(2)}</span></span>
+            {hasVol && <span>量 <span className="font-bold text-slate-600">{fmtVol(hBar.volume)}</span></span>}
+          </>
+        )}
+        {!hBar && <span className="text-slate-400 invisible">placeholder</span>}
+      </div>
+
+      {/* SVG Chart */}
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full touch-none"
+        style={{ maxHeight: 290 }}
+        onMouseMove={e => {
+          const rect = e.currentTarget.getBoundingClientRect()
+          handlePointer(e.clientX, rect)
+        }}
+        onMouseLeave={() => setHoverIdx(null)}
+        onTouchStart={e => {
+          const rect = e.currentTarget.getBoundingClientRect()
+          handlePointer(e.touches[0].clientX, rect)
+        }}
+        onTouchMove={e => {
+          e.preventDefault()
+          const rect = e.currentTarget.getBoundingClientRect()
+          handlePointer(e.touches[0].clientX, rect)
+        }}
+        onTouchEnd={() => setHoverIdx(null)}
+      >
+        {/* ── K線區 ── */}
         {/* Y grid + ticks */}
         {yTicks.map(({ v, y }) => (
           <g key={v}>
@@ -197,14 +240,6 @@ export default function StockKChart({ closes, dates, n, period, ohlcBars }: Prop
             <text x={PAD.left - 4} y={y + 3.5} textAnchor="end" fontSize={9} fill="#94a3b8">
               {v.toFixed(v >= 1000 ? 0 : 1)}
             </text>
-          </g>
-        ))}
-
-        {/* X-axis ticks */}
-        {xTicks.map(({ i, x, label }) => (
-          <g key={i}>
-            <line x1={x} y1={PAD.top + CH} x2={x} y2={PAD.top + CH + 4} stroke="#cbd5e1" strokeWidth={0.5} />
-            <text x={x} y={H - 4} textAnchor="middle" fontSize={8.5} fill="#94a3b8">{label}</text>
           </g>
         ))}
 
@@ -222,31 +257,25 @@ export default function StockKChart({ closes, dates, n, period, ohlcBars }: Prop
 
         {/* Candlesticks */}
         {dc.map((bar, i) => {
-          const cx     = px(i)
-          const isUp   = bar.close >= bar.open
-          const color  = isDoji ? '#94a3b8'  // 折線色（無 OHLC 時）
-                       : isUp  ? '#ef4444'
-                       :         '#22c55e'
+          const cx      = px(i)
+          const isUp    = bar.close >= bar.open
+          const color   = isDoji ? '#94a3b8' : isUp ? '#ef4444' : '#22c55e'
           const bodyTop = py(Math.max(bar.open, bar.close))
           const bodyBot = py(Math.min(bar.open, bar.close))
           const bodyH   = Math.max(bodyBot - bodyTop, isDoji ? 0 : 0.8)
-          const wickT   = py(bar.high)
-          const wickB   = py(bar.low)
-          const isLast  = i === dc.length - 1
+          const isLast  = i === COUNT - 1
+          const isHover = hoverIdx === i
 
           return (
             <g key={bar.date}>
-              {/* 影線（doji 模式略去上下影線） */}
               {!isDoji && (
-                <line x1={cx} y1={wickT} x2={cx} y2={wickB} stroke={color} strokeWidth={0.9} />
+                <line x1={cx} y1={py(bar.high)} x2={cx} y2={py(bar.low)} stroke={color} strokeWidth={0.9} />
               )}
-              {/* 實體（doji 模式畫折線點） */}
               {isDoji
                 ? <circle cx={cx} cy={bodyTop} r={1.2} fill={color} />
                 : <rect x={cx - barW / 2} y={bodyTop} width={barW} height={bodyH} fill={color} rx={0.5} />
               }
-              {/* 最新一根標記 */}
-              {isLast && (
+              {isLast && !isHover && (
                 <circle cx={cx} cy={bodyTop} r={Math.max(barW, 3)}
                   fill="none" stroke="#2563eb" strokeWidth={1} strokeDasharray="2,1.5" opacity={0.7} />
               )}
@@ -260,6 +289,54 @@ export default function StockKChart({ closes, dates, n, period, ohlcBars }: Prop
             <path key={label} d={maPaths[idx]} fill="none" stroke={color} strokeWidth={1.1} strokeLinejoin="round" />
           ) : null
         )}
+
+        {/* ── 量能區 ── */}
+        {/* 分隔線 */}
+        <line x1={PAD.left} y1={H_K} x2={W - PAD.right} y2={H_K} stroke="#e2e8f0" strokeWidth={0.8} />
+
+        {/* 量能 bars */}
+        {hasVol && dc.map((bar, i) => {
+          const cx    = px(i)
+          const vol   = vols[i]
+          const isUp  = bar.close >= bar.open
+          const color = isDoji ? '#cbd5e1' : isUp ? '#fca5a5' : '#86efac'  // 淺色，不搶 K 線
+          const top   = pv(vol)
+          const h     = H_K + H_V - top
+          return (
+            <rect key={bar.date} x={cx - barW / 2} y={top} width={barW} height={Math.max(h, 0.5)}
+              fill={color} rx={0.3} opacity={0.8} />
+          )
+        })}
+
+        {/* ── X 軸標籤 ── */}
+        {xTicks.map(({ i, x, label }) => (
+          <g key={i}>
+            <line x1={x} y1={H_K + H_V} x2={x} y2={H_K + H_V + 4} stroke="#cbd5e1" strokeWidth={0.5} />
+            <text x={x} y={H - 4} textAnchor="middle" fontSize={8.5} fill="#94a3b8">{label}</text>
+          </g>
+        ))}
+
+        {/* ── 十字線（hover 時顯示） ── */}
+        {hoverIdx !== null && (() => {
+          const cx  = px(hoverIdx)
+          const bar = dc[hoverIdx]
+          const cy  = py(bar.close)
+          return (
+            <g>
+              {/* 垂直虛線（貫穿整個 chart） */}
+              <line x1={cx} y1={PAD.top} x2={cx} y2={H_K + H_V}
+                stroke="#64748b" strokeWidth={0.8} strokeDasharray="3,2" opacity={0.6} />
+              {/* 水平虛線（在 K 線區收盤位置） */}
+              <line x1={PAD.left} y1={cy} x2={W - PAD.right} y2={cy}
+                stroke="#64748b" strokeWidth={0.8} strokeDasharray="3,2" opacity={0.4} />
+              {/* 收盤價標籤（右側） */}
+              <rect x={W - PAD.right + 1} y={cy - 6} width={35} height={12} fill="#64748b" rx={2} />
+              <text x={W - PAD.right + 18} y={cy + 4} textAnchor="middle" fontSize={8} fill="white" fontWeight="bold">
+                {bar.close.toFixed(bar.close >= 100 ? 1 : 2)}
+              </text>
+            </g>
+          )
+        })()}
       </svg>
     </div>
   )

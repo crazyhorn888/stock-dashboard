@@ -55,12 +55,17 @@ async function main() {
     throw new Error('marketSignals 為 null，請先執行 calc-signals.mjs')
   }
 
-  // 1a. 從 stocks 分離 OHLC → 產生 ohlc.json（前端 lazy fetch）
+  // 1a. 從 stocks 分離 OHLC + volume → 產生 ohlc.json（前端 lazy fetch）
   const ohclBars = {}
   const stocksStripped = snapshot.stocks.map(s => {
-    const { opens, highs, lows, ...rest } = s
-    if (opens?.length) {
-      ohclBars[s.code] = { o: opens, h: highs, l: lows }
+    const { opens, highs, lows, volumes, ...rest } = s
+    const hasOHLC = opens?.length > 0
+    const hasVol  = volumes?.length > 0
+    if (hasOHLC || hasVol) {
+      ohclBars[s.code] = {
+        ...(hasOHLC ? { o: opens, h: highs, l: lows } : {}),
+        ...(hasVol  ? { v: volumes } : {}),
+      }
     }
     return rest
   })

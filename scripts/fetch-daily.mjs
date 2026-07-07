@@ -305,15 +305,16 @@ async function fetchTWSEPrices() {
       const change = parseFloat(r.Change) || 0
       const prevClose = close - change
       const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0
-      const open = parseFloat(r.OpeningPrice)  || close
-      const high = parseFloat(r.HighestPrice)  || close
-      const low  = parseFloat(r.LowestPrice)   || close
+      const open   = parseFloat(r.OpeningPrice)  || close
+      const high   = parseFloat(r.HighestPrice)  || close
+      const low    = parseFloat(r.LowestPrice)   || close
+      const volume = Math.round(parseFloat(r.TradeVolume || '0') / 1000)  // 張
       return {
         code: r.Code,
         name: r.Name,
         close,
         changePercent: Math.round(changePercent * 100) / 100,
-        open, high, low,
+        open, high, low, volume,
       }
     })
 }
@@ -360,11 +361,16 @@ async function fetchTPEXPrices() {
         const close  = parseFloat(r.Close)  || 0
         const change = parseFloat(r.Change) || 0
         const prev   = close - change
+        const open   = parseFloat(r.Open)  || close
+        const high   = parseFloat(r.High)  || close
+        const low    = parseFloat(r.Low)   || close
+        const volume = Math.round(parseFloat(r.TradingShares || '0') / 1000)  // 張
         return {
           code:          r.SecuritiesCompanyCode,
           name:          r.CompanyName,
           close,
           changePercent: prev > 0 ? Math.round((change / prev) * 10000) / 100 : 0,
+          open, high, low, volume,
         }
       })
   } catch (e) {
@@ -489,22 +495,25 @@ async function main() {
     const eps = fundamentals[p.code]?.eps ?? existing?.eps ?? null
 
     if (existing) {
-      const closes = [...existing.closes]
-      const dates  = [...existing.dates]
-      const opens  = [...(existing.opens  ?? [])]
-      const highs  = [...(existing.highs  ?? [])]
-      const lows   = [...(existing.lows   ?? [])]
+      const closes  = [...existing.closes]
+      const dates   = [...existing.dates]
+      const opens   = [...(existing.opens   ?? [])]
+      const highs   = [...(existing.highs   ?? [])]
+      const lows    = [...(existing.lows    ?? [])]
+      const volumes = [...(existing.volumes ?? [])]
       if (dates[0] === today) {
-        closes[0] = p.close
-        opens[0]  = p.open
-        highs[0]  = p.high
-        lows[0]   = p.low
+        closes[0]  = p.close
+        opens[0]   = p.open
+        highs[0]   = p.high
+        lows[0]    = p.low
+        volumes[0] = p.volume
       } else {
         closes.unshift(p.close)
         dates.unshift(today)
         opens.unshift(p.open)
         highs.unshift(p.high)
         lows.unshift(p.low)
+        volumes.unshift(p.volume)
       }
       stockMap[p.code] = {
         ...existing,
@@ -513,11 +522,12 @@ async function main() {
         pe, eps,
         sector: sectorMap[p.code] ?? existing.sector,
         foreignNetBuy: foreignMap[p.code] ?? existing.foreignNetBuy,
-        closes: closes.slice(0, 250),
-        dates:  dates.slice(0, 250),
-        opens:  opens.slice(0, 250),
-        highs:  highs.slice(0, 250),
-        lows:   lows.slice(0, 250),
+        closes:  closes.slice(0, 250),
+        dates:   dates.slice(0, 250),
+        opens:   opens.slice(0, 250),
+        highs:   highs.slice(0, 250),
+        lows:    lows.slice(0, 250),
+        volumes: volumes.slice(0, 250),
       }
     } else {
       // 快照中沒有的新股票
@@ -530,6 +540,7 @@ async function main() {
         foreignNetBuy: foreignMap[p.code] ?? 0,
         closes: [p.close], dates: [today],
         opens: [p.open], highs: [p.high], lows: [p.low],
+        volumes: [p.volume],
       }
       newCount++
     }
@@ -556,13 +567,25 @@ async function main() {
     const foreignNetBuy = Math.round(foreignShares * p.close / 1e6) / 100
 
     if (existing) {
-      const closes = [...existing.closes]
-      const dates  = [...existing.dates]
+      const closes  = [...existing.closes]
+      const dates   = [...existing.dates]
+      const opens   = [...(existing.opens   ?? [])]
+      const highs   = [...(existing.highs   ?? [])]
+      const lows    = [...(existing.lows    ?? [])]
+      const volumes = [...(existing.volumes ?? [])]
       if (dates[0] === today) {
-        closes[0] = p.close
+        closes[0]  = p.close
+        opens[0]   = p.open
+        highs[0]   = p.high
+        lows[0]    = p.low
+        volumes[0] = p.volume
       } else {
         closes.unshift(p.close)
         dates.unshift(today)
+        opens.unshift(p.open)
+        highs.unshift(p.high)
+        lows.unshift(p.low)
+        volumes.unshift(p.volume)
       }
       stockMap[p.code] = {
         ...existing,
@@ -570,22 +593,30 @@ async function main() {
         changePercent: p.changePercent,
         industry,
         foreignNetBuy,
-        closes: closes.slice(0, 250),
-        dates:  dates.slice(0, 250),
+        closes:  closes.slice(0, 250),
+        dates:   dates.slice(0, 250),
+        opens:   opens.slice(0, 250),
+        highs:   highs.slice(0, 250),
+        lows:    lows.slice(0, 250),
+        volumes: volumes.slice(0, 250),
       }
     } else {
       stockMap[p.code] = {
         code:          p.code,
         name:          p.name,
         industry,
-        sector:        'OTC',   // 不進入 TWSE T86 泡泡圖
+        sector:        'OTC',
         close:         p.close,
         changePercent: p.changePercent,
         pe:            null,
         eps:           null,
         foreignNetBuy,
-        closes:        [p.close],
-        dates:         [today],
+        closes:  [p.close],
+        dates:   [today],
+        opens:   [p.open],
+        highs:   [p.high],
+        lows:    [p.low],
+        volumes: [p.volume],
       }
       tpexNewCount++
     }
