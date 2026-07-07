@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { StockData } from '@/lib/types'
 import { calcStockRow } from '@/lib/calcMetrics'
-import StockKChart from './StockKChart'
+import { fetchOHLCSnapshot, getStockBars } from '@/lib/fetchStockOHLC'
+import StockKChart, { type Period } from './StockKChart'
 
 interface Props {
   stock: StockData | null
@@ -10,12 +11,21 @@ interface Props {
   onClose: () => void
 }
 
+const PERIODS: { key: Period; label: string }[] = [
+  { key: 'D', label: '日' },
+  { key: 'W', label: '週' },
+  { key: 'M', label: '月' },
+]
+
 export default function StockDetailSheet({ stock, n, onClose }: Props) {
   const sheetRef = useRef<HTMLDivElement>(null)
   // iOS 15+ Safari compact bottom toolbar (~49px) overlays position:fixed content.
   // visualViewport.height == window.innerHeight on iOS 15+ (toolbar overlays, doesn't shrink).
   // Fix: UA-detect iOS → apply fixed offset to lift sheet above the toolbar.
   const [iosOffset, setIosOffset] = useState(0)
+  const [period, setPeriod] = useState<Period>('D')
+  const [ohlcBars, setOhlcBars] = useState<{ date: string; open: number; high: number; low: number; close: number }[] | null>(null)
+  const [ohlcLoading, setOhlcLoading] = useState(false)
 
   useEffect(() => {
     if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
@@ -28,6 +38,21 @@ export default function StockDetailSheet({ stock, n, onClose }: Props) {
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = '' }
   }, [stock])
+
+  // 每次 stock 改變時重設狀態、並 fetch 日K OHLC
+  useEffect(() => {
+    if (!stock) return
+    setPeriod('D')
+    setOhlcBars(null)
+    setOhlcLoading(true)
+    fetchOHLCSnapshot()
+      .then(snapshot => {
+        const bars = getStockBars(snapshot, stock.code, stock.closes, stock.dates)
+        setOhlcBars(bars)
+      })
+      .catch(() => setOhlcBars(null))
+      .finally(() => setOhlcLoading(false))
+  }, [stock?.code])
 
   if (!stock) return null
 
@@ -89,11 +114,38 @@ export default function StockDetailSheet({ stock, n, onClose }: Props) {
           ))}
         </div>
 
+        {/* Period switcher */}
+        <div className="flex items-center gap-1.5 px-4 py-2 border-b border-slate-100">
+          {PERIODS.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setPeriod(key)}
+              className={[
+                'px-3 py-0.5 rounded-full text-xs font-semibold border transition-colors',
+                period === key
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300 hover:text-blue-600',
+              ].join(' ')}
+            >
+              {label}K
+            </button>
+          ))}
+          {ohlcLoading && period === 'D' && (
+            <span className="text-[10px] text-slate-400 ml-1">載入中…</span>
+          )}
+        </div>
+
         {/* Chart */}
         <div className="overflow-y-auto flex-1 px-3 pt-3"
           style={{ paddingBottom: 'max(40px, env(safe-area-inset-bottom, 0px))' }}>
           {stock.closes.length > 1
-            ? <StockKChart closes={stock.closes} dates={stock.dates} n={n} />
+            ? <StockKChart
+                closes={stock.closes}
+                dates={stock.dates}
+                n={n}
+                period={period}
+                ohlcBars={period === 'D' ? ohlcBars : null}
+              />
             : <div className="flex items-center justify-center py-16 text-slate-400 text-xs">歷史資料累積中</div>
           }
         </div>

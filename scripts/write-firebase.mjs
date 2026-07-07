@@ -21,28 +21,28 @@ const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON ?? '
 initializeApp({ credential: cert(serviceAccount) })
 const db = getFirestore()
 
-// ── 上傳 snapshot 到 Supabase Storage ────────────────
-async function uploadToSupabase(raw) {
+// ── 上傳檔案到 Supabase Storage ──────────────────────
+async function uploadToSupabase(path, body, contentType = 'application/json') {
   const SUPABASE_URL = process.env.SUPABASE_URL
   const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) throw new Error('SUPABASE_URL / SUPABASE_SERVICE_KEY 未設定')
 
-  const url = `${SUPABASE_URL}/storage/v1/object/snapshots/latest.json`
+  const url = `${SUPABASE_URL}/storage/v1/object/snapshots/${path}`
   const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-      'Content-Type': 'application/json',
+      'Content-Type': contentType,
       'x-upsert': 'true',
-      'cache-control': 'no-cache',  // CDN 不快取，每次請求都取最新版
+      'cache-control': 'no-cache',
     },
-    body: raw,
+    body,
   })
   if (!res.ok) {
     const err = await res.text()
-    throw new Error(`Supabase 上傳失敗：${res.status} ${err}`)
+    throw new Error(`Supabase 上傳失敗（${path}）：${res.status} ${err}`)
   }
-  return `${SUPABASE_URL}/storage/v1/object/public/snapshots/latest.json`
+  return `${SUPABASE_URL}/storage/v1/object/public/snapshots/${path}`
 }
 
 // ── Main ─────────────────────────────────────────────
@@ -55,8 +55,22 @@ async function main() {
     throw new Error('marketSignals 為 null，請先執行 calc-signals.mjs')
   }
 
-  // 1. 上傳 snapshot JSON 到 Supabase Storage
-  const publicUrl = await uploadToSupabase(raw)
+  // 1a. 從 stocks 分離 OHLC → 產生 ohlc.json（前端 lazy fetch）
+  const ohclBars = {}
+  const stocksStripped = snapshot.stocks.map(s => {
+    const { opens, highs, lows, ...rest } = s
+    if (opens?.length) {
+      ohclBars[s.code] = { o: opens, h: highs, l: lows }
+    }
+    return rest
+  })
+  const ohlcPayload = JSON.stringify({ updatedAt: snapshot.updatedAt, bars: ohclBars })
+  const ohlcUrl = await uploadToSupabase('ohlc.json', ohlcPayload)
+  console.log(`[write] ohlc.json 上傳完成（${Object.keys(ohclBars).length} 支）：${ohlcUrl}`)
+
+  // 1b. 上傳不含 OHLC 的 latest.json（保持前端頁面 size 不變）
+  const snapshotStripped = { ...snapshot, stocks: stocksStripped }
+  const publicUrl = await uploadToSupabase('latest.json', JSON.stringify(snapshotStripped))
   console.log(`[write] Supabase Storage 上傳完成：${publicUrl}`)
 
   // 2. 寫入 Firestore market_signals

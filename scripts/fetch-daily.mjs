@@ -304,11 +304,15 @@ async function fetchTWSEPrices() {
       const change = parseFloat(r.Change) || 0
       const prevClose = close - change
       const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0
+      const open = parseFloat(r.OpeningPrice)  || close
+      const high = parseFloat(r.HighestPrice)  || close
+      const low  = parseFloat(r.LowestPrice)   || close
       return {
         code: r.Code,
         name: r.Name,
         close,
         changePercent: Math.round(changePercent * 100) / 100,
+        open, high, low,
       }
     })
 }
@@ -485,12 +489,21 @@ async function main() {
 
     if (existing) {
       const closes = [...existing.closes]
-      const dates = [...existing.dates]
+      const dates  = [...existing.dates]
+      const opens  = [...(existing.opens  ?? [])]
+      const highs  = [...(existing.highs  ?? [])]
+      const lows   = [...(existing.lows   ?? [])]
       if (dates[0] === today) {
-        closes[0] = p.close // 覆蓋同日重複
+        closes[0] = p.close
+        opens[0]  = p.open
+        highs[0]  = p.high
+        lows[0]   = p.low
       } else {
         closes.unshift(p.close)
         dates.unshift(today)
+        opens.unshift(p.open)
+        highs.unshift(p.high)
+        lows.unshift(p.low)
       }
       stockMap[p.code] = {
         ...existing,
@@ -500,7 +513,10 @@ async function main() {
         sector: sectorMap[p.code] ?? existing.sector,
         foreignNetBuy: foreignMap[p.code] ?? existing.foreignNetBuy,
         closes: closes.slice(0, 250),
-        dates: dates.slice(0, 250),
+        dates:  dates.slice(0, 250),
+        opens:  opens.slice(0, 250),
+        highs:  highs.slice(0, 250),
+        lows:   lows.slice(0, 250),
       }
     } else {
       // 快照中沒有的新股票
@@ -512,6 +528,7 @@ async function main() {
         pe, eps,
         foreignNetBuy: foreignMap[p.code] ?? 0,
         closes: [p.close], dates: [today],
+        opens: [p.open], highs: [p.high], lows: [p.low],
       }
       newCount++
     }
