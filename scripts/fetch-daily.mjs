@@ -19,14 +19,16 @@ async function fetchJSON(url) {
 
 function todayTW() {
   // 民國年格式，TWSE OpenAPI Date 欄位用（e.g. "1150623"）
-  // 用 en-CA（YYYY-MM-DD）避免 zh-TW 在 Ubuntu 上回傳民國年導致計算錯誤
-  const d = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' })
+  // DATE_OVERRIDE=YYYY-MM-DD 可強制指定日期（手動補跑用）
+  const d = process.env.DATE_OVERRIDE ||
+    new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' })
   const [yyyy, mm, dd] = d.split('-')
   return `${parseInt(yyyy) - 1911}${mm}${dd}`
 }
 
 function todayTWDate() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' })
+  return process.env.DATE_OVERRIDE ||
+    new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' })
 }
 
 /** 民國年日期字串（1150630 或 115/06/30）→ YYYY-MM-DD */
@@ -49,31 +51,62 @@ async function fetchTWSEAll() {
 
 // ── TWSE 加權指數 OHLC（FMTQIK，傳 YYYYMMDD）────────
 // 帶 module-level 快取：Guard 2 與 Step 4 共用同一次 fetch
+// 主端點：historicalData/FMTQIK（完整 OHLC）
+// 備用端點：afterTrading/FMTQIK（僅 close+change，以前日收盤推算 open，high/low 取開收盤極值）
 let _fmtqikMonthCache = null  // { key: string, rows: [] }
 async function fetchIndexOHLCForMonth(yyyymmdd) {
   if (_fmtqikMonthCache?.key === yyyymmdd) return _fmtqikMonthCache.rows
-  const url = `https://www.twse.com.tw/rwd/zh/historicalData/FMTQIK?response=json&date=${yyyymmdd}`
+
+  // 主端點（完整 OHLC）
   try {
+    const url = `https://www.twse.com.tw/rwd/zh/historicalData/FMTQIK?response=json&date=${yyyymmdd}`
     const d = await fetchJSON(url)
-    if (d?.stat !== 'OK' || !Array.isArray(d.data)) {
-      _fmtqikMonthCache = { key: yyyymmdd, rows: [] }
-      return []
+    if (d?.stat === 'OK' && Array.isArray(d.data) && d.data.length > 0) {
+      const rows = d.data.map(row => ({
+        date: rocToISO(row[0]),
+        open:   parseFloat(String(row[3]).replace(/,/g, '')) || 0,
+        high:   parseFloat(String(row[4]).replace(/,/g, '')) || 0,
+        low:    parseFloat(String(row[5]).replace(/,/g, '')) || 0,
+        close:  parseFloat(String(row[6]).replace(/,/g, '')) || 0,
+        volume: Math.round(parseFloat(String(row[2]).replace(/,/g, '')) / 1e5),
+      })).filter(r => r.close > 0)
+      _fmtqikMonthCache = { key: yyyymmdd, rows }
+      return rows
     }
-    const rows = d.data.map(row => ({
-      date: rocToISO(row[0]),
-      open:   parseFloat(String(row[3]).replace(/,/g, '')) || 0,
-      high:   parseFloat(String(row[4]).replace(/,/g, '')) || 0,
-      low:    parseFloat(String(row[5]).replace(/,/g, '')) || 0,
-      close:  parseFloat(String(row[6]).replace(/,/g, '')) || 0,
-      // 成交金額單位為千元，÷1e5 → 億
-      volume: Math.round(parseFloat(String(row[2]).replace(/,/g, '')) / 1e5),
-    })).filter(r => r.close > 0)
-    _fmtqikMonthCache = { key: yyyymmdd, rows }
-    return rows
-  } catch {
-    console.warn(`[daily] FMTQIK ${yyyymmdd} 抓取失敗`)
-    return []
-  }
+  } catch { /* 繼續嘗試備用端點 */ }
+
+  // 備用端點（afterTrading/FMTQIK）：欄位 [日期,股數,金額,筆數,收盤指數,漲跌點]
+  // open = 前日收盤（串接推算），high/low = 開收盤極值（無 intraday 資料）
+  console.warn(`[daily] historicalData/FMTQIK 失敗，改用 afterTrading/FMTQIK 備用端點`)
+  try {
+    const url2 = `https://www.twse.com.tw/rwd/zh/afterTrading/FMTQIK?response=json&date=${yyyymmdd}`
+    const d2 = await fetchJSON(url2)
+    if (d2?.stat === 'OK' && Array.isArray(d2.data) && d2.data.length > 0) {
+      const rows = []
+      let prevClose = null
+      for (const row of d2.data) {
+        const close  = parseFloat(String(row[4]).replace(/,/g, '')) || 0
+        if (!close) continue
+        const change = parseFloat(String(row[5]).replace(/,/g, '')) || 0
+        const open   = prevClose ?? (close - change)
+        rows.push({
+          date:   rocToISO(row[0]),
+          open,
+          high:   Math.max(open, close),
+          low:    Math.min(open, close),
+          close,
+          volume: Math.round(parseFloat(String(row[2]).replace(/,/g, '')) / 1e5),
+        })
+        prevClose = close
+      }
+      _fmtqikMonthCache = { key: yyyymmdd, rows }
+      return rows
+    }
+  } catch { /* 兩個端點都失敗 */ }
+
+  console.warn(`[daily] FMTQIK 兩個端點均失敗（${yyyymmdd}）`)
+  _fmtqikMonthCache = { key: yyyymmdd, rows: [] }
+  return []
 }
 
 /** 初始化 indexHistory：回填最近 13 個月，取最新 250 筆，newest first */
@@ -544,14 +577,17 @@ async function main() {
   console.log(`[daily] TPEX 更新 ${tpexPrices.length} 支，新增 ${tpexNewCount} 支，全市場合計 ${stocks.length} 支`)
 
   // Step 4：更新 indexHistory（含籌碼資料）
+  // 合併策略：補入當月 FMTQIK 中所有快照缺漏的日期（正常每日只有 1 筆，補跑時可能多筆）
   let indexHistory = snapshot.indexHistory ?? null
   if (!indexHistory || indexHistory.length === 0) {
     indexHistory = await buildFullIndexHistory(today)
   } else {
-    const todayOHLC = todayOHLCMonth.find(r => r.date === today)
-    if (todayOHLC) {
-      // 嘗試讀取今日籌碼（N8N Phase1 寫入 Supabase），失敗不影響主流程
-      const prevMarginAmount = snapshot.indexHistory[0]?.chips?.margin_amount ?? null
+    const existingDates = new Set(indexHistory.map(r => r.date))
+    const newEntries = todayOHLCMonth.filter(r => !existingDates.has(r.date))
+
+    if (newEntries.length > 0) {
+      // 僅為「目標日期」（today）嘗試讀取籌碼；其他補漏日期不帶籌碼
+      const prevMarginAmount = indexHistory[0]?.chips?.margin_amount ?? null
       const [chipsJson, marginAmount] = await Promise.all([
         fetchChipsFromSupabase(todayYYYYMMDD),
         fetchMarginAmount(todayYYYYMMDD),
@@ -560,12 +596,15 @@ async function main() {
       if (chips) console.log('[daily] 籌碼資料已合併')
       else console.log('[daily] 今日籌碼尚未就緒，跳過')
 
-      const filtered = indexHistory.filter(r => r.date !== today)
-      const entry = chips ? { ...todayOHLC, chips } : todayOHLC
-      indexHistory = [entry, ...filtered].slice(0, 250)
-      console.log(`[daily] indexHistory 更新今日 ${today}，共 ${indexHistory.length} 筆`)
+      const mergedNew = newEntries.map(r =>
+        r.date === today && chips ? { ...r, chips } : r
+      )
+      indexHistory = [...mergedNew, ...indexHistory]
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .slice(0, 250)
+      console.log(`[daily] indexHistory 補入 ${newEntries.length} 筆（${newEntries.map(r => r.date).join(', ')}），共 ${indexHistory.length} 筆`)
     } else {
-      console.warn('[daily] 今日 FMTQIK 無資料，indexHistory 保留舊值')
+      console.warn('[daily] 今日 FMTQIK 無新資料，indexHistory 保留舊值')
     }
   }
 
