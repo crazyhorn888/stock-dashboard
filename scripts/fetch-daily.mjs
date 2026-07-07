@@ -199,7 +199,11 @@ async function isAlreadyDoneToday() {
     if (uploaded !== todayTWDate()) return false
     // 若今日已上傳但 STOCK_DAY_ALL 那時還沒就緒（stocksDate 仍是舊日期），
     // 允許 re-run 以便後續 cron 補進股價資料
-    return (d.stocksDate ?? null) === todayTWDate()
+    if ((d.stocksDate ?? null) !== todayTWDate()) return false
+    // 若今日 chips.margin_amount 尚未填入，允許補跑（融資發布後由後續 cron 補填）
+    const todayEntry = d.indexHistory?.find(r => r.date === todayTWDate())
+    if (!todayEntry?.chips?.margin_amount) return false
+    return true
   } catch { return false }
 }
 
@@ -215,15 +219,6 @@ async function isTradingDay(todayISO) {
     console.log(`[daily] FMTQIK 尚無今日（${todayISO}）K 棒（非交易日或 15:30 前）`)
   }
   return found
-}
-
-// ── Guard 3：融資資料是否發布（YYYYMMDD 格式）────────
-async function isMarginDataReady(date) {
-  const url = `https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?response=json&date=${date}&selectType=MS`
-  try {
-    const d = await fetchJSON(url)
-    return d?.stat === 'OK' && Array.isArray(d?.tables?.[0]?.data) && d.tables[0].data.length > 0
-  } catch { return false }
 }
 
 // ── 籌碼：讀 Supabase chips/{date}.json（N8N Phase1 寫入）─────────────────
@@ -439,13 +434,7 @@ async function main() {
     process.exit(0)
   }
 
-  // Guard 3：融資尚未發布（傳 YYYYMMDD 格式）
-  if (!(await isMarginDataReady(today.replace(/-/g, '')))) {
-    console.log('[daily] 融資資料尚未發布，等下一個排程，exit 0')
-    process.exit(0)
-  }
-
-  console.log('[daily] 三項確認通過，開始更新')
+  console.log('[daily] 兩項確認通過，開始更新')
 
   // Step 1：下載現有快照
   console.log('[daily] 下載現有快照...')

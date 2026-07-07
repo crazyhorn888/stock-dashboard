@@ -2,27 +2,19 @@ name: 每日台股資料更新
 
 on:
   schedule:
-    # 台北時間 15:30 → 股價資料通常可取，但融資可能還沒發布 → Guard 3 會擋下，等下次 retry
-    - cron: '30 7 * * 1-5'
-    # 台北時間 16:00
-    - cron: '0 8 * * 1-5'
-    # 台北時間 16:30 → 融資資料多數時候在此前後發布
-    - cron: '30 8 * * 1-5'
-    # 台北時間 17:00
-    - cron: '0 9 * * 1-5'
-    # 台北時間 17:30
-    - cron: '30 9 * * 1-5'
+    # 台北時間 18:00 → GitHub Actions 實測最早可靠窗口；n8n Phase1 完成後也會 workflow_dispatch 提前觸發
+    - cron: '0 10 * * 1-5'
     # 台北時間 18:30
     - cron: '30 10 * * 1-5'
     # 台北時間 19:00
     - cron: '0 11 * * 1-5'
-    # 台北時間 20:00 → 補跑 STOCK_DAY_ALL 極晚更新（Guard 1 檢查 stocksDate，若股價仍舊日期則繼續更新）
+    # 台北時間 20:00 → 補跑 STOCK_DAY_ALL 極晚更新
     - cron: '0 12 * * 1-5'
     # 台北時間 21:00
     - cron: '0 13 * * 1-5'
     # 台北時間 22:00 → 最後一班
     - cron: '0 14 * * 1-5'
-  workflow_dispatch: # 允許手動觸發（測試用）
+  workflow_dispatch: # n8n Phase1 完成後觸發，或手動補跑
 
 # 同一天若有多個 run 同時跑（例如 Actions queue 延遲），後進的直接取消
 concurrency:
@@ -51,7 +43,7 @@ jobs:
       - name: Install firebase-admin
         run: npm install firebase-admin --no-save
 
-      - name: 抓取每日行情（含三道 Guard：已完成 / 非交易日 / 融資未就緒）
+      - name: 抓取每日行情（含兩道 Guard：已完成 / 非交易日）
         id: fetch
         env:
           FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
