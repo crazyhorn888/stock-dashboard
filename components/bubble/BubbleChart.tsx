@@ -5,6 +5,8 @@ import type { SectorBubble } from '@/lib/types'
 interface Props {
   sectors: SectorBubble[]
   onBubbleClick: (sector: SectorBubble) => void
+  frames?: SectorBubble[][]   // [today, yesterday, ...] newest first
+  frameDates?: string[]       // ISO dates 對應每個 frame
 }
 
 const QUADRANTS = [
@@ -75,13 +77,46 @@ function toSVG(
 
 const DEFAULT_VB = { x: 0, y: 0, w: W, h: H }
 
-export default function BubbleChart({ sectors, onBubbleClick }: Props) {
+// ── Collision resolution ──────────────────────────────────────────────────
+function resolveCollisions(
+  pts: { px: number; py: number; r: number }[],
+  iters = 18,
+): { px: number; py: number }[] {
+  const p = pts.map(({ px, py, r }) => ({ px, py, r }))
+  for (let it = 0; it < iters; it++) {
+    for (let i = 0; i < p.length; i++) {
+      for (let j = i + 1; j < p.length; j++) {
+        const dx  = p[j].px - p[i].px
+        const dy  = p[j].py - p[i].py
+        const d   = Math.hypot(dx, dy) || 0.001
+        const min = p[i].r + p[j].r + 2
+        if (d < min) {
+          const nx = dx / d
+          const ny = dy / d
+          const push = (min - d) * 0.5
+          // Smaller bubble yields more
+          const wi = p[j].r / (p[i].r + p[j].r)
+          const wj = 1 - wi
+          p[i].px -= nx * push * wi * 1.6
+          p[i].py -= ny * push * wi * 1.6
+          p[j].px += nx * push * wj * 1.6
+          p[j].py += ny * push * wj * 1.6
+        }
+      }
+    }
+  }
+  return p
+}
+
+export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates }: Props) {
   const [zoom, setZoom] = useState<QuadrantId>(null)
   const [top15Active, setTop15Active] = useState(false)
   const [hovered, setHovered] = useState<string | null>(null)
   const [clicked, setClicked] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
   const [vb, setVb] = useState(DEFAULT_VB)
+  const [frameIdx, setFrameIdx] = useState(0)
+  const [isPlaying, setIsPlaying] = useState(false)
   const svgRef = useRef<SVGSVGElement>(null)
   const touchRef = useRef<{
     type: 'pinch' | 'pan'
@@ -95,6 +130,21 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
     const id = requestAnimationFrame(() => setMounted(true))
     return () => cancelAnimationFrame(id)
   }, [])
+
+  // 回放自動播放（oldest → today）
+  useEffect(() => {
+    if (!isPlaying) return
+    const id = setInterval(() => {
+      setFrameIdx(i => {
+        if (i <= 0) { setIsPlaying(false); return 0 }
+        return i - 1
+      })
+    }, 800)
+    return () => clearInterval(id)
+  }, [isPlaying])
+
+  // 切換 zoom 時重置 frameIdx
+  useEffect(() => { setFrameIdx(0) }, [zoom])
 
   function handleBubbleClick(s: SectorBubble) {
     setClicked(s.sectorName)
@@ -201,33 +251,63 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 目前顯示的 sectors：回放時用 frames[frameIdx]，否則用 sectors prop
+  const hasFrames = frames && frames.length > 1
+  const clampedIdx = hasFrames ? Math.min(frameIdx, frames.length - 1) : 0
+  const activeSectors = hasFrames ? (frames[clampedIdx] ?? sectors) : sectors
+
   const maxSize = useMemo(
-    () => Math.max(1, ...sectors.map(s => s.size)),
-    [sectors],
+    () => Math.max(1, ...activeSectors.map(s => s.size)),
+    [activeSectors],
   )
 
   const xRange = useMemo<[number, number]>(() => {
-    const absMax = Math.max(1, ...sectors.map(s => Math.abs(s.x)))
+    const absMax = Math.max(1, ...activeSectors.map(s => Math.abs(s.x)))
     return [-absMax * 1.2, absMax * 1.2]
-  }, [sectors])
+  }, [activeSectors])
 
   const yRange = useMemo<[number, number]>(() => {
-    const absMax = Math.max(0.01, ...sectors.map(s => Math.abs(s.y)))
+    const absMax = Math.max(0.01, ...activeSectors.map(s => Math.abs(s.y)))
     return [-absMax * 1.2, absMax * 1.2]
-  }, [sectors])
+  }, [activeSectors])
 
   const top15Set = useMemo(() => {
-    const sorted = [...sectors].sort((a, b) => b.size - a.size).slice(0, 15)
+    const sorted = [...activeSectors].sort((a, b) => b.size - a.size).slice(0, 15)
     return new Set(sorted.map(s => s.sectorName))
-  }, [sectors])
+  }, [activeSectors])
 
   const visibleSectors = useMemo(() => {
-    let list = top15Active ? sectors.filter(s => top15Set.has(s.sectorName)) : sectors
+    let list = top15Active ? activeSectors.filter(s => top15Set.has(s.sectorName)) : activeSectors
     if (zoom) list = list.filter(s => quadrantOf(s.x, s.y) === zoom)
     return list
-  }, [sectors, zoom, top15Active, top15Set])
+  }, [activeSectors, zoom, top15Active, top15Set])
+
+  // 預先計算 SVG 位置並解決重疊
+  const resolvedBubbles = useMemo(() => {
+    const sorted = [...visibleSectors].sort((a, b) => a.size - b.size)
+    const raw = sorted.map(s => {
+      const { px, py } = toSVG(s.x, s.y, zoom, xRange, yRange)
+      const r = bubbleRadius(s.size, maxSize)
+      return { s, px: clamp(px, PAD.left + r + 1, W - PAD.right - r - 1), py: clamp(py, PAD.top + r + 1, H - PAD.bottom - r - 1), r }
+    })
+    const resolved = resolveCollisions(raw.map(({ px, py, r }) => ({ px, py, r })))
+    return raw.map((item, i) => ({ ...item, rpx: resolved[i].px, rpy: resolved[i].py }))
+  }, [visibleSectors, zoom, xRange, yRange, maxSize])
 
   const zeroSVG = toSVG(0, 0, zoom, xRange, yRange)
+
+  const isHistorical = clampedIdx > 0
+  const frameLabel = hasFrames
+    ? clampedIdx === 0
+      ? '今日'
+      : `${frameDates?.[clampedIdx]?.slice(5).replace('-', '/')} (${clampedIdx}天前)`
+    : ''
+
+  function handlePlay() {
+    if (isPlaying) { setIsPlaying(false); return }
+    if (clampedIdx === 0 && hasFrames) setFrameIdx((frames?.length ?? 1) - 1)
+    setIsPlaying(true)
+  }
 
   return (
     <div className="relative select-none">
@@ -280,6 +360,35 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
           )}
         </div>
       </div>
+
+      {/* 歷史回放列 */}
+      {hasFrames && (
+        <div className={`flex items-center gap-2 px-3 pb-2 ${isHistorical ? 'bg-amber-50' : ''}`}>
+          <button
+            onClick={handlePlay}
+            title={isPlaying ? '暫停' : '播放歷史回放'}
+            className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs border transition-colors ${
+              isPlaying ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-slate-300 text-slate-500 hover:border-amber-400 hover:text-amber-600'
+            }`}
+          >
+            {isPlaying ? '⏸' : '▶'}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={(frames?.length ?? 1) - 1}
+            value={(frames?.length ?? 1) - 1 - clampedIdx}
+            onChange={e => {
+              setIsPlaying(false)
+              setFrameIdx((frames?.length ?? 1) - 1 - Number(e.target.value))
+            }}
+            className="flex-1 accent-amber-500 h-1.5"
+          />
+          <span className={`text-[10px] font-semibold min-w-[72px] text-right ${isHistorical ? 'text-amber-600' : 'text-blue-500'}`}>
+            {frameLabel}
+          </span>
+        </div>
+      )}
 
       <svg
         ref={svgRef}
@@ -358,14 +467,8 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
         <text x={PAD.left - 2}       y={H - PAD.bottom - 4} fontSize={8} fill="#94a3b8" textAnchor="middle"
           transform={`rotate(-90 ${PAD.left - 12} ${H - PAD.bottom - 40})`}>↓ 放緩</text>
 
-        {/* Bubbles — render from small to large so big ones are on top */}
-        {[...visibleSectors]
-          .sort((a, b) => a.size - b.size)
-          .map((s, index) => {
-            const { px, py } = toSVG(s.x, s.y, zoom, xRange, yRange)
-            const r = bubbleRadius(s.size, maxSize)
-            const spx = clamp(px, PAD.left + r + 1, W - PAD.right - r - 1)
-            const spy = clamp(py, PAD.top  + r + 1, H - PAD.bottom - r - 1)
+        {/* Bubbles — 小→大渲染；位置已做 collision resolution */}
+        {resolvedBubbles.map(({ s, rpx, rpy, r }, index) => {
             const q = QUADRANTS.find(q => q.id === quadrantOf(s.x, s.y))!
             const isHovered = hovered === s.sectorName
             const isClicked = clicked === s.sectorName
@@ -374,9 +477,11 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
               .replace('工業', '')
               .replace('業', '')
 
-            // 歷史軌跡：trail（oldest first）+ 當前位置
-            const trailPts = (s.trail ?? []).map(p => toSVG(p.x, p.y, zoom, xRange, yRange))
-            const allPts = [...trailPts, { px: spx, py: spy }]
+            // 回放模式不顯示歷史軌跡（每個 frame 本身就是一個時間點）
+            const trailPts = isHistorical
+              ? []
+              : (s.trail ?? []).map(p => toSVG(p.x, p.y, zoom, xRange, yRange))
+            const allPts = [...trailPts, { px: rpx, py: rpy }]
             const trailLen = allPts.length
 
             return (
@@ -389,7 +494,7 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
                   cursor: 'pointer',
                   transform: isClicked ? 'scale(1.22)' : 'scale(1)',
                   transition: 'transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1)',
-                  transformOrigin: `${spx}px ${spy}px`,
+                  transformOrigin: `${rpx}px ${rpy}px`,
                   ...(mounted
                     ? { animation: `bubbleIn 500ms ${index * 18}ms both` }
                     : { opacity: 0 }),
@@ -422,20 +527,20 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
                     })}
                   </g>
                 )}
-                {/* Drop shadow circle */}
-                <circle cx={spx + 1} cy={spy + 1.5} r={r}
+                {/* Drop shadow */}
+                <circle cx={rpx + 1} cy={rpy + 1.5} r={r}
                   fill={isClicked ? `${q.color}30` : '#00000018'} />
                 {/* Main bubble */}
-                <circle cx={spx} cy={spy} r={r}
+                <circle cx={rpx} cy={rpy} r={r}
                   fill={isHovered || isClicked ? q.color : q.fill}
                   stroke={q.color}
                   strokeWidth={isHovered || isClicked ? 2.5 : 1.8}
-                  opacity={isHovered || isClicked ? 1 : 0.9}
+                  opacity={isHistorical ? 0.75 : (isHovered || isClicked ? 1 : 0.9)}
                 />
-                {/* Label inside bubble (if big enough) */}
+                {/* Label */}
                 {r >= 16 ? (
                   <text
-                    x={spx} y={spy + 3}
+                    x={rpx} y={rpy + 3}
                     fontSize={r >= 22 ? 8.5 : 7.5}
                     fill={isHovered || isClicked ? '#fff' : q.color}
                     textAnchor="middle"
@@ -445,9 +550,8 @@ export default function BubbleChart({ sectors, onBubbleClick }: Props) {
                     {shortName}
                   </text>
                 ) : (
-                  /* Tiny bubbles: label below */
                   <text
-                    x={spx} y={spy + r + 9}
+                    x={rpx} y={rpy + r + 9}
                     fontSize={7}
                     fill={q.color}
                     textAnchor="middle"

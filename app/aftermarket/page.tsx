@@ -7,6 +7,7 @@ import BubbleChart from '@/components/bubble/BubbleChart'
 import SectorPanel from '@/components/bubble/SectorPanel'
 import StockDetailSheet from '@/components/stock/StockDetailSheet'
 import { calcStockRow } from '@/lib/calcMetrics'
+import { calcSectors } from '@/lib/calcSectors'
 import { MOCK_DATA } from '@/lib/mockData'
 import { fetchSnapshot } from '@/lib/fetchSnapshot'
 import type { SnapshotData, SectorBubble, StockData, MarketSignals } from '@/lib/types'
@@ -46,6 +47,25 @@ export default function AftermarketPage() {
   const rows = useMemo(
     () => data.stocks.map(s => calcStockRow(s, n)),
     [data.stocks, n]
+  )
+
+  // 歷史回放：每個 frame = 以第 k 天為「今日」計算的 sectors
+  // frames[0]=今日, frames[1]=昨日, ...（newest first，對應 BubbleChart 的 frames prop）
+  const maxK = useMemo(() => {
+    const histLen = data.sectorHistory?.length ?? 0
+    return Math.max(0, Math.min(5, histLen - 20))
+  }, [data.sectorHistory])
+
+  const frames = useMemo<SectorBubble[][]>(() => {
+    if (!data.sectorHistory?.length || !data.stocks?.length) return []
+    return Array.from({ length: maxK + 1 }, (_, k) =>
+      calcSectors(data.sectorHistory.slice(k), data.stocks)
+    )
+  }, [data.sectorHistory, data.stocks, maxK])
+
+  const frameDates = useMemo(
+    () => (data.sectorHistory ?? []).slice(0, maxK + 1).map(d => d.date),
+    [data.sectorHistory, maxK]
   )
 
   // 用前端 n 重新計算大盤訊號（後端 marketSignals.nDays 固定為 100，不隨使用者 N 更新）
@@ -215,8 +235,10 @@ export default function AftermarketPage() {
             {activeTab === '產業板塊' && (
               <div className="rounded-xl bg-white shadow-sm overflow-hidden">
                 <BubbleChart
-                  sectors={data.sectors ?? []}
+                  sectors={frames[0] ?? data.sectors ?? []}
                   onBubbleClick={s => setActiveSector(s)}
+                  frames={frames.length > 1 ? frames : undefined}
+                  frameDates={frames.length > 1 ? frameDates : undefined}
                 />
               </div>
             )}
