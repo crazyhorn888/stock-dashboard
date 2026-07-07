@@ -108,6 +108,7 @@ export interface IndexOHLC {
 
 export interface SnapshotData {
   updatedAt: string
+  stocksDate?: string | null  // 股價資料截至日期（YYYY-MM-DD）；若 < today 表示 STOCK_DAY_ALL 當日尚未就緒
   stocks: StockData[]
   marketSignals: MarketSignals
   indexHistory: IndexOHLC[]      // 近 250 交易日，index 0 = 最新

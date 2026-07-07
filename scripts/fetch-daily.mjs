@@ -48,12 +48,18 @@ async function fetchTWSEAll() {
 }
 
 // ── TWSE 加權指數 OHLC（FMTQIK，傳 YYYYMMDD）────────
+// 帶 module-level 快取：Guard 2 與 Step 4 共用同一次 fetch
+let _fmtqikMonthCache = null  // { key: string, rows: [] }
 async function fetchIndexOHLCForMonth(yyyymmdd) {
+  if (_fmtqikMonthCache?.key === yyyymmdd) return _fmtqikMonthCache.rows
   const url = `https://www.twse.com.tw/rwd/zh/historicalData/FMTQIK?response=json&date=${yyyymmdd}`
   try {
     const d = await fetchJSON(url)
-    if (d?.stat !== 'OK' || !Array.isArray(d.data)) return []
-    return d.data.map(row => ({
+    if (d?.stat !== 'OK' || !Array.isArray(d.data)) {
+      _fmtqikMonthCache = { key: yyyymmdd, rows: [] }
+      return []
+    }
+    const rows = d.data.map(row => ({
       date: rocToISO(row[0]),
       open:   parseFloat(String(row[3]).replace(/,/g, '')) || 0,
       high:   parseFloat(String(row[4]).replace(/,/g, '')) || 0,
@@ -62,6 +68,8 @@ async function fetchIndexOHLCForMonth(yyyymmdd) {
       // 成交金額單位為千元，÷1e5 → 億
       volume: Math.round(parseFloat(String(row[2]).replace(/,/g, '')) / 1e5),
     })).filter(r => r.close > 0)
+    _fmtqikMonthCache = { key: yyyymmdd, rows }
+    return rows
   } catch {
     console.warn(`[daily] FMTQIK ${yyyymmdd} 抓取失敗`)
     return []
@@ -155,22 +163,25 @@ async function isAlreadyDoneToday() {
     const d = await res.json()
     if (!d?.updatedAt) return false
     const uploaded = new Date(d.updatedAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' })
-    return uploaded === todayTWDate()
+    if (uploaded !== todayTWDate()) return false
+    // 若今日已上傳但 STOCK_DAY_ALL 那時還沒就緒（stocksDate 仍是舊日期），
+    // 允許 re-run 以便後續 cron 補進股價資料
+    return (d.stocksDate ?? null) === todayTWDate()
   } catch { return false }
 }
 
-// ── Guard 2：確認 STOCK_DAY_ALL 已含今日資料（更新前視為非交易日/資料未就緒）──
-async function isTradingDay(dateTW) {
-  try {
-    const data = await fetchTWSEAll()
-    if (!data.length) return false
-    const found = data.some(r => String(r.Date) === dateTW)
-    if (!found) {
-      const latest = data[0]?.Date ?? '未知'
-      console.log(`[daily] STOCK_DAY_ALL 最新日期：${latest}，今日：${dateTW}（資料未就緒或非交易日）`)
-    }
-    return found
-  } catch { return false }
+// ── Guard 2：確認 FMTQIK 已含今日 K 棒（約 15:30 後就緒）────────────────────
+// 改用 FMTQIK 而非 STOCK_DAY_ALL：STOCK_DAY_ALL 在部分交易日深夜才更新，
+// 導致所有 cron（最晚 22:00 TWN）全部錯過窗口。FMTQIK 同為官方 TWSE 資料，
+// 且在收盤後 ~15:30 即可取得，不受 STOCK_DAY_ALL 遲到影響。
+async function isTradingDay(todayISO) {
+  const yyyymmdd = todayISO.replace(/-/g, '')
+  const rows = await fetchIndexOHLCForMonth(yyyymmdd)  // 有快取，Step 4 不重複 fetch
+  const found = rows.some(r => r.date === todayISO)
+  if (!found) {
+    console.log(`[daily] FMTQIK 尚無今日（${todayISO}）K 棒（非交易日或 15:30 前）`)
+  }
+  return found
 }
 
 // ── Guard 3：融資資料是否發布（YYYYMMDD 格式）────────
@@ -371,9 +382,9 @@ async function main() {
     process.exit(0)
   }
 
-  // Guard 2：STOCK_DAY_ALL 尚無今日資料（非交易日 or 資料未就緒）
-  if (!(await isTradingDay(dateTW))) {
-    console.log('[daily] STOCK_DAY_ALL 無今日資料，跳過，exit 0')
+  // Guard 2：FMTQIK 尚無今日 K 棒（非交易日 or 15:30 前）
+  if (!(await isTradingDay(today))) {
+    console.log('[daily] FMTQIK 無今日資料，跳過，exit 0')
     process.exit(0)
   }
 
@@ -424,9 +435,17 @@ async function main() {
   }
   console.log(`[daily] TWSE 今日資料：${prices.length} 支，產業對照：${Object.keys(sectorMap).length} 支`)
 
-  // Step 3：更新每支股票
+  // Step 3 前：確認 STOCK_DAY_ALL 是否已含今日資料
+  // STOCK_DAY_ALL 在部分交易日深夜才更新；若仍是舊日期，保留快照股價並繼續更新其他資料
+  const sdaIsToday = (_twseAllCache ?? []).some(r => String(r.Date) === dateTW)
+  if (!sdaIsToday) {
+    const sdaDate = _twseAllCache?.[0]?.Date ?? '未知'
+    console.log(`[daily] ⚠️  STOCK_DAY_ALL 仍為 ${sdaDate}（個股股價沿用前日快照），K 線與籌碼繼續更新`)
+  }
+
+  // Step 3：更新每支股票（STOCK_DAY_ALL 今日資料就緒才執行，避免插入錯誤日期的收盤價）
   let newCount = 0
-  for (const p of prices) {
+  if (sdaIsToday) { for (const p of prices) {
     const existing = stockMap[p.code]
     const pe = fundamentals[p.code]?.pe ?? existing?.pe ?? null
     const eps = fundamentals[p.code]?.eps ?? existing?.eps ?? null
@@ -465,7 +484,9 @@ async function main() {
     }
   }
 
-  console.log(`[daily] TWSE 更新 ${prices.length} 支，新增 ${newCount} 支`)
+  } // end if (sdaIsToday)
+  if (sdaIsToday) console.log(`[daily] TWSE 更新 ${prices.length} 支，新增 ${newCount} 支`)
+  else console.log('[daily] TWSE 股價跳過（STOCK_DAY_ALL 舊日期），保留快照值')
 
   // Step 3b：TPEX 上櫃股票
   const [tpexPrices, tpexForeignMap, tpexIndustryMap] = await Promise.all([
@@ -563,6 +584,9 @@ async function main() {
 
   const newSnapshot = {
     updatedAt: new Date().toISOString(),
+    // stocksDate：紀錄股價資料截至日期。STOCK_DAY_ALL 當日就緒則 = today，
+    // 否則保留快照舊值讓前端顯示「待更新」提示，並允許後續 cron 補跑股價。
+    stocksDate: sdaIsToday ? today : (snapshot.stocksDate ?? null),
     stocks,
     indexHistory,
     sectorHistory,

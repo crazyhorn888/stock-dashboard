@@ -61,16 +61,32 @@ export default function AftermarketPage() {
         {/* Navbar */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
           <span className="font-extrabold text-blue-600 text-base tracking-tight">StockView</span>
-          {!loading && data.updatedAt && (
-            <span className="text-xs text-amber-600 font-medium">
-              更新{' '}
-              {new Date(data.updatedAt).toLocaleString('zh-TW', {
-                timeZone: 'Asia/Taipei',
-                month: 'numeric', day: 'numeric',
-                hour: '2-digit', minute: '2-digit',
-              })}
-            </span>
-          )}
+          {!loading && data.updatedAt && (() => {
+            const klineDate = data.indexHistory?.[0]?.date ?? null
+            const stocksPending = klineDate && data.stocksDate && data.stocksDate < klineDate
+            return stocksPending ? (
+              <div className="flex flex-col items-end gap-0.5">
+                <span className="text-xs text-amber-600 font-medium">
+                  指數更新{' '}
+                  {new Date(data.updatedAt).toLocaleString('zh-TW', {
+                    timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric',
+                    hour: '2-digit', minute: '2-digit',
+                  })}
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  股價 {data.stocksDate?.slice(5).replace('-', '/')} 待更新中
+                </span>
+              </div>
+            ) : (
+              <span className="text-xs text-amber-600 font-medium">
+                更新{' '}
+                {new Date(data.updatedAt).toLocaleString('zh-TW', {
+                  timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric',
+                  hour: '2-digit', minute: '2-digit',
+                })}
+              </span>
+            )
+          })()}
         </div>
 
         {/* Tab pills */}
