@@ -9,7 +9,7 @@ import StockDetailSheet from '@/components/stock/StockDetailSheet'
 import { calcStockRow } from '@/lib/calcMetrics'
 import { MOCK_DATA } from '@/lib/mockData'
 import { fetchSnapshot } from '@/lib/fetchSnapshot'
-import type { SnapshotData, SectorBubble, StockData } from '@/lib/types'
+import type { SnapshotData, SectorBubble, StockData, MarketSignals } from '@/lib/types'
 
 const TABS = ['大盤關鍵資料', '產業板塊', '個股清單', '基本面'] as const
 type Tab = typeof TABS[number]
@@ -47,6 +47,58 @@ export default function AftermarketPage() {
     () => data.stocks.map(s => calcStockRow(s, n)),
     [data.stocks, n]
   )
+
+  // 用前端 n 重新計算大盤訊號（後端 marketSignals.nDays 固定為 100，不隨使用者 N 更新）
+  const computedSignals = useMemo<MarketSignals>(() => {
+    const history = data.indexHistory ?? []
+    const slice = history.slice(0, n) // newest first
+    if (!slice.length) return data.marketSignals
+
+    const todayBar = slice[0]
+    const todayIndex = todayBar.close
+    const todayMargin = todayBar.chips?.margin_amount ?? data.marketSignals.todayMargin
+
+    let peakBar = slice[0]
+    let troughBar = slice[0]
+    for (const d of slice) {
+      if (d.close > peakBar.close) peakBar = d
+      if (d.close < troughBar.close) troughBar = d
+    }
+
+    const peakIndex   = peakBar.close
+    const peakMargin  = peakBar.chips?.margin_amount ?? data.marketSignals.peakMargin
+    const troughIndex = troughBar.close
+    const troughMargin = troughBar.chips?.margin_amount ?? data.marketSignals.troughMargin
+
+    const indexDropPct  = peakIndex  > 0 ? Math.abs((todayIndex  - peakIndex)  / peakIndex  * 100) : 0
+    const marginDropPct = peakMargin > 0 ? Math.abs((todayMargin - peakMargin) / peakMargin * 100) : 0
+    const posGapPct     = marginDropPct - indexDropPct
+
+    const indexRisePct  = troughIndex  > 0 ? Math.abs((todayIndex  - troughIndex)  / troughIndex  * 100) : 0
+    const marginRisePct = troughMargin > 0 ? Math.abs((todayMargin - troughMargin) / troughMargin * 100) : 0
+    const negGapPct     = marginRisePct - indexRisePct
+
+    return {
+      ...data.marketSignals,
+      nDays: n,
+      todayIndex,
+      todayMargin,
+      peakDate:    peakBar.date,
+      peakIndex,
+      peakMargin,
+      indexDropPct,
+      marginDropPct,
+      posGapPct,
+      posTriggered: posGapPct >= 5,
+      troughDate:   troughBar.date,
+      troughIndex,
+      troughMargin,
+      indexRisePct,
+      marginRisePct,
+      negGapPct,
+      negTriggered: negGapPct >= 7,
+    }
+  }, [data.indexHistory, data.marketSignals, n])
 
   function commitN(val: string) {
     const v = Math.min(250, Math.max(10, parseInt(val) || 100))
@@ -150,7 +202,7 @@ export default function AftermarketPage() {
             {activeTab === '大盤關鍵資料' && (
               <>
                 <KlineChart data={data.indexHistory ?? []} n={n} />
-                <MarketSignalCards signals={data.marketSignals} />
+                <MarketSignalCards signals={computedSignals} />
               </>
             )}
 
