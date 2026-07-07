@@ -1,5 +1,5 @@
 'use client'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { StockData } from '@/lib/types'
 import { calcStockRow } from '@/lib/calcMetrics'
 import StockKChart from './StockKChart'
@@ -11,11 +11,36 @@ interface Props {
 }
 
 export default function StockDetailSheet({ stock, n, onClose }: Props) {
-  // 鎖定背景滾動
+  const sheetRef = useRef<HTMLDivElement>(null)
+
+  // 鎖定背景滾動 + 動態高度（解決 iOS Safari 底部工具列遮擋問題）
   useEffect(() => {
     if (!stock) return
     document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = '' }
+
+    // 用 visualViewport 取得真實可視區域高度（排除瀏覽器 toolbar）
+    const updateHeight = () => {
+      const sheet = sheetRef.current
+      if (!sheet) return
+      const vv = window.visualViewport
+      const vh = vv ? vv.height : window.innerHeight
+      sheet.style.maxHeight = `${Math.round(vh * 0.88)}px`
+      // 若 visualViewport 有 offset（chrome 在底部），將 sheet 往上移
+      if (vv) {
+        const bottomChrome = window.innerHeight - vv.height - vv.offsetTop
+        sheet.style.bottom = `${Math.max(0, bottomChrome)}px`
+      }
+    }
+
+    updateHeight()
+    window.visualViewport?.addEventListener('resize', updateHeight)
+    window.visualViewport?.addEventListener('scroll', updateHeight)
+
+    return () => {
+      document.body.style.overflow = ''
+      window.visualViewport?.removeEventListener('resize', updateHeight)
+      window.visualViewport?.removeEventListener('scroll', updateHeight)
+    }
   }, [stock])
 
   if (!stock) return null
@@ -41,9 +66,9 @@ export default function StockDetailSheet({ stock, n, onClose }: Props) {
         onClick={onClose}
       />
 
-      {/* Sheet */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl shadow-2xl flex flex-col"
-        style={{ maxHeight: 'calc(88svh - env(safe-area-inset-bottom, 0px))' }}>
+      {/* Sheet — maxHeight/bottom 由 JS visualViewport 動態設定，CSS 僅為初始 fallback */}
+      <div ref={sheetRef} className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl shadow-2xl flex flex-col"
+        style={{ maxHeight: '88svh' }}>
 
         {/* 拖把 handle */}
         <div className="flex justify-center pt-3 pb-1">
@@ -76,8 +101,8 @@ export default function StockDetailSheet({ stock, n, onClose }: Props) {
         </div>
 
         {/* Chart */}
-        <div className="overflow-y-auto flex-1 px-3 pt-3"
-          style={{ paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}>
+        <div className="overflow-y-auto flex-1 px-3 pt-3 pb-8"
+          style={{ paddingBottom: 'max(32px, env(safe-area-inset-bottom, 0px))' }}>
           {stock.closes.length > 1
             ? <StockKChart closes={stock.closes} dates={stock.dates} n={n} />
             : <div className="flex items-center justify-center py-16 text-slate-400 text-xs">歷史資料累積中</div>
