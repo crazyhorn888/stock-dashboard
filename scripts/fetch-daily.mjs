@@ -325,9 +325,16 @@ async function fetchStockForeign(date) {
   try {
     const d = await fetchJSON(url)
     const map = {}
+    // TWT38U row layout（外資及陸資買賣超彙總表）:
+    //   r[0]=空白, r[1]=代號, r[2]=名稱
+    //   r[3]=外資買進, r[4]=外資賣出, r[5]=外資淨買超(股)
+    //   r[6]=外資自營買進, r[7]=外資自營賣出, r[8]=外資自營淨買超(股)
+    //   r[9]=外資合計買進, r[10]=外資合計賣出, r[11]=外資合計淨買超(股) ← 使用這個
     for (const r of d?.data ?? []) {
-      const code = r[0].trim()
-      if (/^\d{4}$/.test(code)) map[code] = (parseFloat(r[10].replace(/,/g, '')) || 0) / 1e8
+      const code = r[1]?.trim() ?? ''   // code 在 r[1]，r[0] 是空白
+      if (/^\d{4}$/.test(code)) {
+        map[code] = parseFloat(r[11].replace(/,/g, '')) || 0  // 外資合計淨買超（股）
+      }
     }
     return map
   } catch {
@@ -521,7 +528,9 @@ async function main() {
         changePercent: p.changePercent,
         pe, eps,
         sector: sectorMap[p.code] ?? existing.sector,
-        foreignNetBuy: foreignMap[p.code] ?? existing.foreignNetBuy,
+        foreignNetBuy: foreignMap[p.code] !== undefined
+          ? Math.round(foreignMap[p.code] * p.close / 1e6) / 100   // shares×price→億元，與 TPEX 一致
+          : existing.foreignNetBuy,
         closes:  closes.slice(0, 250),
         dates:   dates.slice(0, 250),
         opens:   opens.slice(0, 250),
@@ -537,7 +546,9 @@ async function main() {
         sector: sectorMap[p.code],
         close: p.close, changePercent: p.changePercent,
         pe, eps,
-        foreignNetBuy: foreignMap[p.code] ?? 0,
+        foreignNetBuy: foreignMap[p.code] !== undefined
+          ? Math.round(foreignMap[p.code] * p.close / 1e6) / 100
+          : 0,
         closes: [p.close], dates: [today],
         opens: [p.open], highs: [p.high], lows: [p.low],
         volumes: [p.volume],
