@@ -1,5 +1,5 @@
 'use client'
-import { useMemo, useState, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { OHLCBar } from '@/lib/fetchStockOHLC'
 
 export type Period = 'D' | 'W' | 'M'
@@ -16,7 +16,7 @@ const W   = 600
 const H_K = 210   // K線區高度
 const H_V = 52    // 量能區高度
 const H   = H_K + H_V + 34  // 總高度（含 x-axis 標籤）
-const PAD = { top: 12, right: 14, bottom: 0, left: 50 }
+const PAD = { top: 12, right: 40, bottom: 0, left: 50 }
 const CW  = W - PAD.left - PAD.right
 const CH  = H_K - PAD.top
 
@@ -86,7 +86,12 @@ function fmtVol(v: number | undefined): string {
 
 export default function StockKChart({ closes, dates, n, period, ohlcBars }: Props) {
   const MA_LINES = MA_CONFIG[period]
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+  const [hoverIdx,      setHoverIdx]      = useState<number | null>(null)
+  const [displayCount,  setDisplayCount]  = useState<number | null>(null)
+  const pinchRef = useRef<{ startDist: number; startCount: number } | null>(null)
+
+  // 切換週期時重設縮放
+  useEffect(() => { setDisplayCount(null) }, [period])
 
   const bars = useMemo<OHLCBar[]>(() => {
     if (period === 'D') {
@@ -99,9 +104,15 @@ export default function StockKChart({ closes, dates, n, period, ohlcBars }: Prop
     return aggregateBars(closes, dates, 'M').slice(0, 36)
   }, [period, ohlcBars, closes, dates])
 
+  const MIN_DISPLAY = 20
+  const effectiveBars = useMemo(() => {
+    if (displayCount === null) return bars
+    return bars.slice(0, Math.max(MIN_DISPLAY, Math.min(displayCount, bars.length)))
+  }, [bars, displayCount])
+
   const chart = useMemo(() => {
-    if (bars.length === 0) return null
-    const dc    = [...bars].reverse()
+    if (effectiveBars.length === 0) return null
+    const dc    = [...effectiveBars].reverse()
     const COUNT = dc.length
 
     const nSlice = closes.slice(0, Math.min(n, closes.length))
@@ -110,7 +121,7 @@ export default function StockKChart({ closes, dates, n, period, ohlcBars }: Prop
 
     function getMA(i: number, p: number): number | null {
       const barsIdx = COUNT - 1 - i
-      const slice   = bars.slice(barsIdx, barsIdx + p).map(b => b.close)
+      const slice   = effectiveBars.slice(barsIdx, barsIdx + p).map(b => b.close)
       if (slice.length < p) return null
       return slice.reduce((s, v) => s + v, 0) / p
     }
@@ -158,13 +169,13 @@ export default function StockKChart({ closes, dates, n, period, ohlcBars }: Prop
       }))
 
     return { dc, COUNT, px, py, pv, barW, maPaths, nHigh, nLow, yTicks, xTicks, vols, maxVol }
-  }, [bars, closes, n, MA_LINES, period])
+  }, [effectiveBars, closes, n, MA_LINES, period])
 
   const isDoji       = period === 'D' && !(ohlcBars && ohlcBars[0]?.hasRealOHLC)
   const hasVol       = bars.some(b => b.volume != null)
-  const periodLabel  = period === 'D' ? `日K 近 ${bars.length} 天`
-                     : period === 'W' ? `週K 近 ${bars.length} 週`
-                     :                  `月K 近 ${bars.length} 月`
+  const periodLabel  = period === 'D' ? `日K 近 ${effectiveBars.length} 天`
+                     : period === 'W' ? `週K 近 ${effectiveBars.length} 週`
+                     :                  `月K 近 ${effectiveBars.length} 月`
 
   // 觸控/滑鼠事件 → 更新 hoverIdx
   const handlePointer = useCallback((clientX: number, svgRect: DOMRect) => {
@@ -222,15 +233,32 @@ export default function StockKChart({ closes, dates, n, period, ohlcBars }: Prop
         }}
         onMouseLeave={() => setHoverIdx(null)}
         onTouchStart={e => {
-          const rect = e.currentTarget.getBoundingClientRect()
-          handlePointer(e.touches[0].clientX, rect)
+          if (e.touches.length === 2) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX
+            const dy = e.touches[0].clientY - e.touches[1].clientY
+            pinchRef.current = { startDist: Math.hypot(dx, dy), startCount: displayCount ?? bars.length }
+            setHoverIdx(null)
+          } else {
+            const rect = e.currentTarget.getBoundingClientRect()
+            handlePointer(e.touches[0].clientX, rect)
+          }
         }}
         onTouchMove={e => {
           e.preventDefault()
-          const rect = e.currentTarget.getBoundingClientRect()
-          handlePointer(e.touches[0].clientX, rect)
+          if (e.touches.length === 2 && pinchRef.current) {
+            const dx      = e.touches[0].clientX - e.touches[1].clientX
+            const dy      = e.touches[0].clientY - e.touches[1].clientY
+            const newDist = Math.hypot(dx, dy)
+            const count   = Math.round(pinchRef.current.startCount * (pinchRef.current.startDist / newDist))
+            setDisplayCount(Math.max(MIN_DISPLAY, Math.min(bars.length, count)))
+          } else if (e.touches.length === 1) {
+            const rect = e.currentTarget.getBoundingClientRect()
+            handlePointer(e.touches[0].clientX, rect)
+          }
         }}
-        onTouchEnd={() => setHoverIdx(null)}
+        onTouchEnd={e => {
+          if (e.touches.length === 0) { pinchRef.current = null; setHoverIdx(null) }
+        }}
       >
         {/* ── K線區 ── */}
         {/* Y grid + ticks */}
@@ -329,9 +357,9 @@ export default function StockKChart({ closes, dates, n, period, ohlcBars }: Prop
               {/* 水平虛線（在 K 線區收盤位置） */}
               <line x1={PAD.left} y1={cy} x2={W - PAD.right} y2={cy}
                 stroke="#64748b" strokeWidth={0.8} strokeDasharray="3,2" opacity={0.4} />
-              {/* 收盤價標籤（右側） */}
-              <rect x={W - PAD.right + 1} y={cy - 6} width={35} height={12} fill="#64748b" rx={2} />
-              <text x={W - PAD.right + 18} y={cy + 4} textAnchor="middle" fontSize={8} fill="white" fontWeight="bold">
+              {/* 收盤價標籤（右軸區 PAD.right 夠寬，不會超出 viewBox） */}
+              <rect x={W - PAD.right + 2} y={cy - 6} width={36} height={12} fill="#64748b" rx={2} />
+              <text x={W - PAD.right + 20} y={cy + 4} textAnchor="middle" fontSize={8} fill="white" fontWeight="bold">
                 {bar.close.toFixed(bar.close >= 100 ? 1 : 2)}
               </text>
             </g>

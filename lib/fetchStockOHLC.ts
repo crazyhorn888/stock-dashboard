@@ -52,11 +52,12 @@ export function getStockBars(
   const hasOHLC = (d.o?.length ?? 0) > 0
   const hasVol  = (d.v?.length ?? 0) > 0
   if (!hasOHLC && !hasVol) return null
+  // v.length 故意不參與 len 計算：volumes[] 可能比 OHLC 短（逐日累積），
+  // 超出範圍的 d.v?.[i] 自然回傳 undefined，volume bar 不顯示即可
   const len = Math.min(
     closes.length,
     dates.length,
     hasOHLC ? d.o!.length : closes.length,
-    hasVol  ? d.v!.length : closes.length,
   )
   return Array.from({ length: len }, (_, i) => ({
     date:        dates[i],
