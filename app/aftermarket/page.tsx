@@ -56,7 +56,7 @@ export default function AftermarketPage() {
 
     const todayBar = slice[0]
     const todayIndex = todayBar.close
-    const todayMargin = todayBar.chips?.margin_amount ?? data.marketSignals.todayMargin
+    const todayMargin = todayBar.chips?.margin_amount ?? null
 
     let peakBar = slice[0]
     let troughBar = slice[0]
@@ -65,18 +65,20 @@ export default function AftermarketPage() {
       if (d.close < troughBar.close) troughBar = d
     }
 
-    const peakIndex   = peakBar.close
-    const peakMargin  = peakBar.chips?.margin_amount ?? data.marketSignals.peakMargin
-    const troughIndex = troughBar.close
-    const troughMargin = troughBar.chips?.margin_amount ?? data.marketSignals.troughMargin
+    const peakIndex    = peakBar.close
+    const peakMargin   = peakBar.chips?.margin_amount ?? null
+    const troughIndex  = troughBar.close
+    const troughMargin = troughBar.chips?.margin_amount ?? null
 
     const indexDropPct  = peakIndex  > 0 ? Math.abs((todayIndex  - peakIndex)  / peakIndex  * 100) : 0
-    const marginDropPct = peakMargin > 0 ? Math.abs((todayMargin - peakMargin) / peakMargin * 100) : 0
-    const posGapPct     = marginDropPct - indexDropPct
+    const marginDropPct = (peakMargin != null && todayMargin != null && peakMargin > 0)
+      ? Math.abs((todayMargin - peakMargin) / peakMargin * 100) : null
+    const posGapPct = marginDropPct != null ? marginDropPct - indexDropPct : null
 
     const indexRisePct  = troughIndex  > 0 ? Math.abs((todayIndex  - troughIndex)  / troughIndex  * 100) : 0
-    const marginRisePct = troughMargin > 0 ? Math.abs((todayMargin - troughMargin) / troughMargin * 100) : 0
-    const negGapPct     = marginRisePct - indexRisePct
+    const marginRisePct = (troughMargin != null && todayMargin != null && troughMargin > 0)
+      ? Math.abs((todayMargin - troughMargin) / troughMargin * 100) : null
+    const negGapPct = marginRisePct != null ? marginRisePct - indexRisePct : null
 
     return {
       ...data.marketSignals,
@@ -89,14 +91,14 @@ export default function AftermarketPage() {
       indexDropPct,
       marginDropPct,
       posGapPct,
-      posTriggered: posGapPct >= 5,
+      posTriggered: posGapPct != null && posGapPct >= 5,
       troughDate:   troughBar.date,
       troughIndex,
       troughMargin,
       indexRisePct,
       marginRisePct,
       negGapPct,
-      negTriggered: negGapPct >= 7,
+      negTriggered: negGapPct != null && negGapPct >= 7,
     }
   }, [data.indexHistory, data.marketSignals, n])
 

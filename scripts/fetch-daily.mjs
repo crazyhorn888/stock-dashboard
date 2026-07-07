@@ -258,25 +258,26 @@ async function fetchMarginAmount(dateYYYYMMDD) {
 
 // ── 籌碼：組裝 ChipsData（Phase1 JSON + 融資） ──────────────────────────
 function buildChipsEntry(phase1, marginAmount, prevMarginAmount) {
-  if (!phase1) return null
-  const det = phase1.detail || {}
+  // phase1 可為 null（N8N chips 尚未寫入）；只要 marginAmount 有值就允許建立 partial entry
+  if (!phase1 && marginAmount == null) return null
+  const det = (phase1?.detail) || {}
   return {
-    foreign_spot:   phase1.foreign_spot  ?? 0,
-    trust_spot:     phase1.trust_spot    ?? 0,
-    dealer_self:    phase1.dealer_self   ?? 0,
-    dealer_hedge:   phase1.dealer_hedge  ?? 0,
-    inst_total:     phase1.inst_total    ?? 0,
+    foreign_spot:   phase1?.foreign_spot  ?? null,
+    trust_spot:     phase1?.trust_spot    ?? null,
+    dealer_self:    phase1?.dealer_self   ?? null,
+    dealer_hedge:   phase1?.dealer_hedge  ?? null,
+    inst_total:     phase1?.inst_total    ?? null,
     margin_amount:  marginAmount ?? null,
     margin_change:  (marginAmount != null && prevMarginAmount != null)
                       ? Math.round((marginAmount - prevMarginAmount) * 100) / 100
                       : null,
-    tx_close:       phase1.tx_close  ?? 0,
-    tx_change:      phase1.tx_change ?? 0,
-    basis:          phase1.basis     ?? 0,
-    fx_tx_oi:       phase1.fx_tx_oi  ?? 0,
-    fx_tx_chg:      phase1.fx_tx_chg ?? 0,
-    retail_mtx_pct: phase1.retail_mtx_pct ?? '',
-    retail_imf_pct: phase1.retail_imf_pct ?? '',
+    tx_close:       phase1?.tx_close  ?? null,
+    tx_change:      phase1?.tx_change ?? null,
+    basis:          phase1?.basis     ?? null,
+    fx_tx_oi:       phase1?.fx_tx_oi  ?? null,
+    fx_tx_chg:      phase1?.fx_tx_chg ?? null,
+    retail_mtx_pct: phase1?.retail_mtx_pct ?? null,
+    retail_imf_pct: phase1?.retail_imf_pct ?? null,
     pcr:            phase1.pcr ?? null,
     vix:            phase1.vix ?? null,
     opt_tr:         det.opt_tr_raw ?? null,

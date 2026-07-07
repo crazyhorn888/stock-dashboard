@@ -26,12 +26,16 @@ function buildConditions(s: MarketSignals): Condition[] {
       name: '融資減幅 > 大盤減幅 5%',
       type: 'positive',
       formula: '( 融資減幅 − 大盤減幅 ) ≥ 5%',
-      currentGap: s.posGapPct,
+      currentGap: s.posGapPct ?? 0,
       threshold: 5,
       triggered: s.posTriggered,
       modalContent: {
-        formulaDetail: `基準日：${s.peakDate}（N日最高點）\n大盤減幅 = (${s.peakIndex.toLocaleString()} − ${s.todayIndex.toLocaleString()}) / ${s.peakIndex.toLocaleString()} = ${s.indexDropPct.toFixed(2)}%\n融資減幅 = (${s.peakMargin} − ${s.todayMargin}) / ${s.peakMargin} = ${s.marginDropPct.toFixed(2)}%\n\n差距 = ${s.marginDropPct.toFixed(2)}% − ${s.indexDropPct.toFixed(2)}% = ${s.posGapPct.toFixed(2)}%`,
-        currentCalc: `差距 ${s.posGapPct.toFixed(2)}% ${s.posTriggered ? '≥' : '<'} 門檻 5%`,
+        formulaDetail: s.posGapPct != null
+          ? `基準日：${s.peakDate}（N日最高點）\n大盤減幅 = (${s.peakIndex.toLocaleString()} − ${s.todayIndex.toLocaleString()}) / ${s.peakIndex.toLocaleString()} = ${s.indexDropPct.toFixed(2)}%\n融資減幅 = (${s.peakMargin} − ${s.todayMargin}) / ${s.peakMargin} = ${s.marginDropPct!.toFixed(2)}%\n\n差距 = ${s.marginDropPct!.toFixed(2)}% − ${s.indexDropPct.toFixed(2)}% = ${s.posGapPct.toFixed(2)}%`
+          : '融資資料累積中，計算詳情暫不可用',
+        currentCalc: s.posGapPct != null
+          ? `差距 ${s.posGapPct.toFixed(2)}% ${s.posTriggered ? '≥' : '<'} 門檻 5%`
+          : '融資資料累積中',
         meaning: '大盤從高點下跌，但融資餘額縮水幅度遠大於大盤跌幅。代表投資人已大量去化融資槓桿，恐慌性降槓桿完成，後續反彈壓力較輕。',
       },
     },
@@ -40,12 +44,16 @@ function buildConditions(s: MarketSignals): Condition[] {
       name: '融資增幅 > 大盤增幅 7%',
       type: 'negative',
       formula: '( 融資增幅 − 大盤增幅 ) ≥ 7%',
-      currentGap: s.negGapPct,
+      currentGap: s.negGapPct ?? 0,
       threshold: 7,
       triggered: s.negTriggered,
       modalContent: {
-        formulaDetail: `基準日：${s.troughDate}（N日最低點）\n大盤增幅 = (${s.todayIndex.toLocaleString()} − ${s.troughIndex.toLocaleString()}) / ${s.troughIndex.toLocaleString()} = ${s.indexRisePct.toFixed(2)}%\n融資增幅 = (${s.todayMargin} − ${s.troughMargin}) / ${s.troughMargin} = ${s.marginRisePct.toFixed(2)}%\n\n差距 = ${s.marginRisePct.toFixed(2)}% − ${s.indexRisePct.toFixed(2)}% = ${s.negGapPct.toFixed(2)}%`,
-        currentCalc: `差距 ${s.negGapPct.toFixed(2)}% ${s.negTriggered ? '≥' : '<'} 門檻 7%`,
+        formulaDetail: s.negGapPct != null
+          ? `基準日：${s.troughDate}（N日最低點）\n大盤增幅 = (${s.todayIndex.toLocaleString()} − ${s.troughIndex.toLocaleString()}) / ${s.troughIndex.toLocaleString()} = ${s.indexRisePct.toFixed(2)}%\n融資增幅 = (${s.todayMargin} − ${s.troughMargin}) / ${s.troughMargin} = ${s.marginRisePct!.toFixed(2)}%\n\n差距 = ${s.marginRisePct!.toFixed(2)}% − ${s.indexRisePct.toFixed(2)}% = ${s.negGapPct.toFixed(2)}%`
+          : '融資資料累積中，計算詳情暫不可用',
+        currentCalc: s.negGapPct != null
+          ? `差距 ${s.negGapPct.toFixed(2)}% ${s.negTriggered ? '≥' : '<'} 門檻 7%`
+          : '融資資料累積中',
         meaning: '大盤從低點反彈，但融資餘額增加幅度比大盤漲幅更快，代表散戶加速追高加槓桿，市場過熱，風險升溫。',
       },
     },

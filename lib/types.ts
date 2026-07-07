@@ -30,25 +30,25 @@ export interface MarketSignals {
   updatedAt: string
   nDays: number         // 計算基準天數（後端固定，前端可 override）
   todayIndex: number
-  todayMargin: number   // 億元
+  todayMargin: number | null   // 億元；indexHistory 缺資料時為 null
 
   // 正向：從最高點下跌
   peakDate: string
   peakIndex: number
-  peakMargin: number
-  indexDropPct: number    // 大盤減幅 %
-  marginDropPct: number   // 融資減幅 %
-  posGapPct: number       // 融資減幅 - 大盤減幅
-  posTriggered: boolean   // >= 5%
+  peakMargin: number | null
+  indexDropPct: number
+  marginDropPct: number | null  // 無 margin 資料時為 null
+  posGapPct: number | null
+  posTriggered: boolean
 
   // 負向：從最低點反彈
   troughDate: string
   troughIndex: number
-  troughMargin: number
-  indexRisePct: number    // 大盤增幅 %
-  marginRisePct: number   // 融資增幅 %
-  negGapPct: number       // 融資增幅 - 大盤增幅
-  negTriggered: boolean   // >= 7%
+  troughMargin: number | null
+  indexRisePct: number
+  marginRisePct: number | null
+  negGapPct: number | null
+  negTriggered: boolean
 }
 
 // ── 籌碼資料（每日 Phase 1 + MI_MARGN 合併）─────────────────────────────
