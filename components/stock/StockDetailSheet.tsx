@@ -43,7 +43,7 @@ export default function StockDetailSheet({ stock, n, onClose }: Props) {
 
       {/* Sheet */}
       <div className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl shadow-2xl flex flex-col"
-        style={{ maxHeight: '88vh' }}>
+        style={{ maxHeight: 'calc(88svh - env(safe-area-inset-bottom, 0px))' }}>
 
         {/* 拖把 handle */}
         <div className="flex justify-center pt-3 pb-1">
@@ -76,7 +76,8 @@ export default function StockDetailSheet({ stock, n, onClose }: Props) {
         </div>
 
         {/* Chart */}
-        <div className="overflow-y-auto flex-1 px-3 pt-3 pb-6">
+        <div className="overflow-y-auto flex-1 px-3 pt-3"
+          style={{ paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}>
           {stock.closes.length > 1
             ? <StockKChart closes={stock.closes} dates={stock.dates} n={n} />
             : <div className="flex items-center justify-center py-16 text-slate-400 text-xs">歷史資料累積中</div>
