@@ -261,16 +261,7 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
     [activeSectors],
   )
 
-  const xRange = useMemo<[number, number]>(() => {
-    const absMax = Math.max(1, ...activeSectors.map(s => Math.abs(s.x)))
-    return [-absMax * 1.2, absMax * 1.2]
-  }, [activeSectors])
-
-  const yRange = useMemo<[number, number]>(() => {
-    const absMax = Math.max(0.01, ...activeSectors.map(s => Math.abs(s.y)))
-    return [-absMax * 1.2, absMax * 1.2]
-  }, [activeSectors])
-
+  // top15Set / visibleSectors 必須在 xRange/yRange 之前，讓 zoom 模式能以可見 sectors 計算 range
   const top15Set = useMemo(() => {
     const sorted = [...activeSectors].sort((a, b) => b.size - a.size).slice(0, 15)
     return new Set(sorted.map(s => s.sectorName))
@@ -282,7 +273,20 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
     return list
   }, [activeSectors, zoom, top15Active, top15Set])
 
-  // 預先計算 SVG 位置並解決重疊
+  // zoom 模式用可見 sectors 的 range，讓泡泡充分展開；全覽用全部 sectors
+  const xRange = useMemo<[number, number]>(() => {
+    const src = zoom ? visibleSectors : activeSectors
+    const absMax = Math.max(1, ...src.map(s => Math.abs(s.x)))
+    return [-absMax * 1.2, absMax * 1.2]
+  }, [activeSectors, visibleSectors, zoom])
+
+  const yRange = useMemo<[number, number]>(() => {
+    const src = zoom ? visibleSectors : activeSectors
+    const absMax = Math.max(0.01, ...src.map(s => Math.abs(s.y)))
+    return [-absMax * 1.2, absMax * 1.2]
+  }, [activeSectors, visibleSectors, zoom])
+
+  // 預先計算 SVG 位置並解決重疊；collision 後再次 clamp 避免泡泡溢出 SVG
   const resolvedBubbles = useMemo(() => {
     const sorted = [...visibleSectors].sort((a, b) => a.size - b.size)
     const raw = sorted.map(s => {
@@ -291,7 +295,11 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
       return { s, px: clamp(px, PAD.left + r + 1, W - PAD.right - r - 1), py: clamp(py, PAD.top + r + 1, H - PAD.bottom - r - 1), r }
     })
     const resolved = resolveCollisions(raw.map(({ px, py, r }) => ({ px, py, r })))
-    return raw.map((item, i) => ({ ...item, rpx: resolved[i].px, rpy: resolved[i].py }))
+    return raw.map((item, i) => ({
+      ...item,
+      rpx: clamp(resolved[i].px, PAD.left + item.r + 1, W - PAD.right - item.r - 1),
+      rpy: clamp(resolved[i].py, PAD.top  + item.r + 1, H - PAD.bottom - item.r - 1),
+    }))
   }, [visibleSectors, zoom, xRange, yRange, maxSize])
 
   const zeroSVG = toSVG(0, 0, zoom, xRange, yRange)
@@ -447,16 +455,16 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
             fill={q.fill} />
         })()}
 
-        {/* Axes */}
+        {/* Axes — zoom 時 zeroSVG 自然落在象限邊界（仿 tide-tw.app） */}
         <line
-          x1={zoom ? PAD.left : zeroSVG.px} y1={PAD.top}
-          x2={zoom ? PAD.left : zeroSVG.px} y2={H - PAD.bottom}
-          stroke="#94a3b8" strokeWidth={zoom ? 0 : 0.8} strokeDasharray="0"
+          x1={zeroSVG.px} y1={PAD.top}
+          x2={zeroSVG.px} y2={H - PAD.bottom}
+          stroke="#94a3b8" strokeWidth={0.8}
         />
         <line
-          x1={PAD.left} y1={zoom ? H - PAD.bottom : zeroSVG.py}
-          x2={W - PAD.right} y2={zoom ? H - PAD.bottom : zeroSVG.py}
-          stroke="#94a3b8" strokeWidth={zoom ? 0 : 0.8}
+          x1={PAD.left} y1={zeroSVG.py}
+          x2={W - PAD.right} y2={zeroSVG.py}
+          stroke="#94a3b8" strokeWidth={0.8}
         />
 
         {/* Axis labels */}
