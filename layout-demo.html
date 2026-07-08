@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1100">
+  <title>StockView — Layout Demo v2 (Version A)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #d4d8de;
+      font-family: -apple-system, 'PingFang TC', 'Noto Sans TC', sans-serif;
+      padding: 32px 24px 60px;
+    }
+
+    .page-header { text-align: center; margin-bottom: 28px; }
+    .page-header h1 { font-size: 18px; font-weight: 700; color: #1a1a2e; }
+    .page-header p  { font-size: 12px; color: #888; margin-top: 4px; }
+
+    /* ── Two-phone comparison ── */
+    .compare { display: flex; gap: 40px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
+    .col { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .col-label { font-size: 12px; font-weight: 700; color: #444; text-align: center; }
+    .col-sub { font-size: 11px; color: #888; text-align: center; max-width: 300px; margin-top: -6px; }
+
+    /* ── Phone shell ── */
+    .phone {
+      width: 310px;
+      background: #fff;
+      border-radius: 44px;
+      box-shadow: 0 0 0 8px #1c1c1e, 0 24px 60px rgba(0,0,0,0.4);
+      overflow: hidden;
+    }
+    .phone-notch {
+      background: #1c1c1e; height: 28px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .notch-pill {
+      background: #000; width: 90px; height: 22px; border-radius: 0 0 14px 14px;
+    }
+    .phone-screen { height: 610px; overflow: hidden; position: relative; background: #f1f5f9; }
+
+    /* ── Status bar ── */
+    .statusbar {
+      background: #fff; padding: 6px 16px 4px;
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 10px; font-weight: 600; color: #334155;
+    }
+
+    /* ── Navbar ── */
+    .navbar {
+      background: #fff; padding: 8px 14px;
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .logo { font-size: 15px; font-weight: 800; color: #2563eb; }
+    .ts { font-size: 10px; font-weight: 500; color: #f59e0b; }
+
+    /* ── Tabs ── */
+    .tabs { display: flex; gap: 6px; padding: 9px 10px 7px; background: #f1f5f9; overflow-x: auto; }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab {
+      padding: 5px 10px; border-radius: 20px; font-size: 10.5px; font-weight: 600;
+      border: 1.5px solid #e2e8f0; white-space: nowrap; cursor: pointer;
+    }
+    .tab.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+    .tab:not(.active) { background: #fff; color: #64748b; }
+    .tab.new-tab { border-color: #bfdbfe; color: #2563eb; background: #eff6ff; }
+
+    /* ── N control ── */
+    .n-bar {
+      display: flex; align-items: center; gap: 7px;
+      padding: 6px 12px; background: #fff; border-bottom: 1px solid #e2e8f0;
+      font-size: 11px;
+    }
+    .n-label { color: #64748b; font-weight: 500; }
+    .n-input {
+      background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 7px;
+      padding: 2px 6px; font-size: 11px; font-weight: 700; color: #1e40af;
+      width: 42px; text-align: center;
+    }
+    .n-hint { color: #94a3b8; font-size: 10px; margin-left: 2px; }
+
+    /* ── Signal cards ── */
+    .cards-row { display: flex; gap: 7px; padding: 8px 10px 4px; }
+    .sig-card {
+      flex: 1; border-radius: 12px; padding: 9px 10px;
+      border: 1.5px solid transparent;
+    }
+    .sig-card.neg-card { background: #fff7f7; border-color: #fca5a5; }
+    .sig-card.pos-card { background: #f0fdf4; border-color: #86efac; }
+    .card-label { font-size: 9px; margin-bottom: 5px; line-height: 1.4; font-weight: 500; color: #64748b; }
+    .main-val { font-size: 13px; font-weight: 800; line-height: 1; margin-bottom: 1px; }
+    .main-val.red { color: #dc2626; }
+    .main-val.grn { color: #16a34a; }
+    .sub-date { font-size: 8.5px; color: #94a3b8; margin-bottom: 5px; }
+    .data-row { display: flex; justify-content: space-between; margin-bottom: 2.5px; }
+    .data-label { font-size: 8.5px; color: #94a3b8; }
+    .data-val { font-size: 9.5px; font-weight: 700; }
+    .data-val.red { color: #ef4444; }
+    .data-val.grn { color: #22c55e; }
+    .badge {
+      margin-top: 5px; font-size: 8.5px; font-weight: 700;
+      padding: 2.5px 6px; border-radius: 5px; text-align: center;
+    }
+    .badge.red { background: #fee2e2; color: #b91c1c; }
+    .badge.grn { background: #dcfce7; color: #15803d; }
+
+    /* ── K-line chart section ── */
+    .chart-section { padding: 6px 10px 4px; }
+    .chart-header {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;
+    }
+    .chart-title { font-size: 11px; font-weight: 700; color: #1e293b; }
+    .chart-legend { display: flex; gap: 9px; align-items: center; }
+    .legend-item { display: flex; align-items: center; gap: 3px; font-size: 9px; color: #64748b; }
+    .legend-dot { width: 7px; height: 7px; border-radius: 50%; }
+
+    /* ── Bottom nav ── */
+    .bottom-nav {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      display: flex; background: #fff; border-top: 1px solid #e2e8f0;
+      padding: 7px 0 14px;
+    }
+    .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .nav-label { font-size: 9px; font-weight: 600; }
+
+    /* ── Annotation list ── */
+    .ann-list { max-width: 310px; }
+    .ann-item {
+      display: flex; gap: 8px; align-items: flex-start;
+      font-size: 11px; color: #444; margin-bottom: 8px; line-height: 1.5;
+    }
+    .ann-num {
+      min-width: 20px; height: 20px; border-radius: 50%;
+      background: #2563eb; color: #fff; font-size: 10px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+
+    /* ── Divider ── */
+    .divider { border: none; border-top: 1px dashed #bbb; margin: 32px auto; max-width: 900px; }
+
+    /* ── Note box ── */
+    .note-box {
+      background: #fffbeb; border: 1px solid #fcd34d; border-radius: 10px;
+      padding: 12px 16px; max-width: 700px; margin: 0 auto 28px;
+      font-size: 12px; color: #78350f; line-height: 1.7;
+    }
+    .note-box strong { color: #92400e; }
+  </style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>StockView — Layout Demo v2 · Version A</h1>
+  <p>套用本次 4 項調整後的樣子 · 左：調整後完整畫面 / 右：K 棒點擊 Tooltip 狀態</p>
+</div>
+
+<div class="note-box">
+  <strong>本次 4 項調整摘要（已套用至下方 Demo）</strong><br>
+  ① Tab 新增「個股清單」，位置在「產業板塊」後面，共 4 tabs<br>
+  ② N 值輸入列固定顯示在 Tab 下方（影響走勢圖標記 + 個股清單計算，輸入後即時更新）<br>
+  ③ 走勢圖改為 K 線量能圖（紅漲綠跌·台股慣例），點擊 K 棒顯示當日 OHLC + 成交量<br>
+  ④ 最高最低點虛線 + 標記、今日圓圈仍保留在圖面上
+</div>
+
+<div class="compare">
+
+  <!-- ── LEFT: Full page view ── -->
+  <div class="col">
+    <div class="col-label">完整頁面（正常狀態）</div>
+    <div class="col-sub">Tab 順序 · N 值列 · K 線圖全圖</div>
+    <div class="phone">
+      <div class="phone-notch"><div class="notch-pill"></div></div>
+      <div class="phone-screen">
+        <!-- Status -->
+        <div class="statusbar"><span style="font-weight:700;">11:16</span><span>▐▐▐ 5G ⚡</span></div>
+        <!-- Navbar -->
+        <div class="navbar">
+          <span class="logo">StockView</span>
+          <span class="ts">更新 7/2 下午01:03</span>
+        </div>
+        <!-- Tabs: 4 tabs, 大盤關鍵資料 active -->
+        <div class="tabs">
+          <div class="tab active">大盤關鍵資料</div>
+          <div class="tab" style="opacity:0.45;">產業板塊</div>
+          <div class="tab new-tab" style="opacity:0.45;">個股清單</div>
+          <div class="tab" style="opacity:0.38;">基本面</div>
+        </div>
+        <!-- N control row -->
+        <div class="n-bar">
+          <span class="n-label">參考區間 N =</span>
+          <div class="n-input">100</div>
+          <span class="n-label">天</span>
+          <span class="n-hint">· 走勢標記與個股清單同步更新</span>
+        </div>
+        <!-- Signal cards -->
+        <div class="cards-row">
+          <div class="sig-card neg-card">
+            <div class="card-label">減幅指標</div>
+            <div class="main-val red">47,741 點</div>
+            <div class="sub-date">2026-06-22（N 日最高）</div>
+            <div class="data-row"><span class="data-label">今日大盤</span><span class="data-val" style="color:#334155">47,018</span></div>
+            <div class="data-row"><span class="data-label">大盤減幅</span><span class="data-val red">▼ 1.51%</span></div>
+            <div class="data-row"><span class="data-label">融資減幅</span><span class="data-val grn">▼ 0.74%</span></div>
+            <div class="data-row"><span class="data-label">差距</span><span class="data-val" style="color:#475569">−2.25%</span></div>
+            <div class="badge red">未觸發（需 ≥ 5%）</div>
+          </div>
+          <div class="sig-card pos-card">
+            <div class="card-label">增幅指標</div>
+            <div class="main-val grn">36,296 點</div>
+            <div class="sub-date">2026-04-14（N 日最低）</div>
+            <div class="data-row"><span class="data-label">今日大盤</span><span class="data-val" style="color:#334155">47,018</span></div>
+            <div class="data-row"><span class="data-label">大盤增幅</span><span class="data-val red">▲ 29.54%</span></div>
+            <div class="data-row"><span class="data-label">融資增幅</span><span class="data-val red">▲ 46.88%</span></div>
+            <div class="data-row"><span class="data-label">差距</span><span class="data-val red">+17.34%</span></div>
+            <div class="badge grn">● 觸發（差距 ≥ 7%）</div>
+          </div>
+        </div>
+
+        <!-- K-line chart -->
+        <div class="chart-section">
+          <div class="chart-header">
+            <span class="chart-title">大盤 K 線走勢</span>
+            <div class="chart-legend">
+              <div class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div>漲</div>
+              <div class="legend-item"><div class="legend-dot" style="background:#22c55e;"></div>跌</div>
+              <div class="legend-item" style="font-size:8.5px;color:#ef4444;">— N 日高</div>
+              <div class="legend-item" style="font-size:8.5px;color:#22c55e;">— N 日低</div>
+            </div>
+          </div>
+
+          <!-- K-line SVG -->
+          <svg width="290" height="145" viewBox="0 0 290 145" style="display:block;background:#fff;border-radius:10px;border:1.5px solid #e2e8f0;">
+            <!-- Grid lines -->
+            <line x1="0" y1="25" x2="290" y2="25" stroke="#f8fafc" stroke-width="1"/>
+            <line x1="0" y1="50" x2="290" y2="50" stroke="#f8fafc" stroke-width="1"/>
+            <line x1="0" y1="75" x2="290" y2="75" stroke="#f8fafc" stroke-width="1"/>
+
+            <!-- N-day high reference line (red dashed) -->
+            <line x1="0" y1="8" x2="290" y2="8" stroke="#ef4444" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
+            <!-- N-day low reference line (green dashed) -->
+            <line x1="0" y1="87" x2="290" y2="87" stroke="#22c55e" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
+
+            <!-- Volume separator -->
+            <line x1="0" y1="96" x2="290" y2="96" stroke="#f1f5f9" stroke-width="1"/>
+
+            <!-- ════ CANDLESTICK BARS ════ -->
+            <!-- Bar spacing: ~14px, 20 bars, start x=8 -->
+
+            <!-- Bar 0 trough day: green (down), ~36,296 -->
+            <line x1="8" y1="84" x2="8" y2="90" stroke="#22c55e" stroke-width="1"/>
+            <rect x="4" y="86" width="8" height="3" fill="#22c55e" rx="1"/>
+            <rect x="4" y="121" width="8" height="12" fill="#22c55e" opacity="0.4" rx="1"/>
+
+            <!-- Bar 1: red (up) small bounce -->
+            <line x1="22" y1="82" x2="22" y2="88" stroke="#ef4444" stroke-width="1"/>
+            <rect x="18" y="83" width="8" height="4" fill="#ef4444" rx="1"/>
+            <rect x="18" y="118" width="8" height="15" fill="#ef4444" opacity="0.4" rx="1"/>
+
+            <!-- Bar 2: green (down) small -->
+            <line x1="36" y1="80" x2="36" y2="88" stroke="#22c55e" stroke-width="1"/>
+            <rect x="32" y="83" width="8" height="3" fill="#22c55e" rx="1"/>
+            <rect x="32" y="124" width="8" height="9" fill="#22c55e" opacity="0.4" rx="1"/>
+
+            <!-- Bar 3: red (up) -->
+            <line x1="50" y1="77" x2="50" y2="85" stroke="#ef4444" stroke-width="1"/>
+            <rect x="46" y="78" width="8" height="5" fill="#ef4444" rx="1"/>
+            <rect x="46" y="116" width="8" height="17" fill="#ef4444" opacity="0.4" rx="1"/>
+
+            <!-- Bar 4: green small -->
+            <line x1="64" y1="75" x2="64" y2="81" stroke="#22c55e" stroke-width="1"/>
+            <rect x="60" y="76" width="8" height="3" fill="#22c55e" rx="1"/>
+            <rect x="60" y="126" width="8" height="7" fill="#22c55e" opacity="0.4" rx="1"/>
+
+            <!-- Bar 5: red up -->
+            <line x1="78" y1="70" x2="78" y2="78" stroke="#ef4444" stroke-width="1"/>
+            <rect x="74" y="71" width="8" height="5" fill="#ef4444" rx="1"/>
+            <rect x="74" y="118" width="8" height="15" fill="#ef4444" opacity="0.4" rx="1"/>
+
+            <!-- Bar 6: red big up -->
+            <line x1="92" y1="65" x2="92" y2="74" stroke="#ef4444" stroke-width="1"/>
+            <rect x="88" y="66" width="8" height="7" fill="#ef4444" rx="1"/>
+            <rect x="88" y="111" width="8" height="22" fill="#ef4444" opacity="0.4" rx="1"/>
+
+            <!-- Bar 7: green small -->
+            <line x1="106" y1="63" x2="106" y2="70" stroke="#22c55e" stroke-width="1"/>
+            <rect x="102" y="64" width="8" height="4" fill="#22c55e" rx="1"/>
+            <rect x="102" y="124" width="8" height="9" fill="#22c55e" opacity="0.4" rx="1"/>
+
+            <!-- Bar 8: red up -->
+            <line x1="120" y1="57" x2="120" y2="66" stroke="#ef4444" stroke-width="1"/>
+            <rect x="116" y="58" width="8" height="6" fill="#ef4444" rx="1"/>
+            <rect x="116" y="113" width="8" height="20" fill="#ef4444" opacity="0.4" rx="1"/>
+
+            <!-- Bar 9: red big up -->
+            <line x1="134" y1="50" x2="134" y2="60" stroke="#ef4444" stroke-width="1"/>
+            <rect x="130" y="51" width="8" height="7" fill="#ef4444" rx="1"/>
+            <rect x="130" y="108" width="8" height="25" fill="#ef4444" opacity="0.4" rx="1"/>
+
+            <!-- Bar 10: green small -->
+            <line x1="148" y1="49" x2="148" y2="56" stroke="#22c55e" stroke-width="1"/>
+            <rect x="144" y="51" width="8" height="3" fill="#22c55e" rx="1"/>
+            <rect x="144" y="122" width="8" height="11" fill="#22c55e" opacity="0.4" rx="1"/>
+
+            <!-- Bar 11: red up -->
+            <line x1="162" y1="42" x2="162" y2="52" stroke="#ef4444" stroke-width="1"/>
+            <rect x="158" y="43" width="8" height="7" fill="#ef4444" rx="1"/>
+            <rect x="158" y="114" width="8" height="19" fill="#ef4444" opacity="0.4" rx="1"/>
+
+            <!-- Bar 12: red big up -->
+            <line x1="176" y1="34" x2="176" y2="44" stroke="#ef4444" stroke-width="1"/>
+            <rect x="172" y="35" width="8" height="7" fill="#ef4444" rx="1"/>
+            <rect x="172" y="107" width="8" height="26" fill="#ef4444" opacity="0.4" rx="1"/>
+
+            <!-- Bar 13: green small -->
+            <line x1="190" y1="33" x2="190" y2="40" stroke="#22c55e" stroke-width="1"/>
+            <rect x="186" y="34" width="8" height="4" fill="#22c55e" rx="1"/>
+            <rect x="186" y="120" width="8" height="13" fill="#22c55e" opacity="0.4" rx="1"/>
+
+            <!-- Bar 14: red up -->
+            <line x1="204" y1="25" x2="204" y2="35" stroke="#ef4444" stroke-width="1"/>
+            <rect x="200" y="26" width="8" height="7" fill="#ef4444" rx="1"/>
+            <rect x="200" y="110" width="8" height="23" fill="#ef4444" opacity="0.4" rx="1"/>
+
+            <!-- Bar 15: red big up -->
+            <line x1="218" y1="17" x2="218" y2="27" stroke="#ef4444" stroke-width="1"/>
+            <rect x="214" y="18" width="8" height="7" fill="#ef4444" rx="1"/>
+            <rect x="214" y="103" width="8" height="30" fill="#ef4444" opacity="0.4" rx="1"/>
+
+            <!-- Bar 16: PEAK day (red, biggest up, tall wick) -->
+            <line x1="232" y1="5" x2="232" y2="15" stroke="#ef4444" stroke-width="1.5"/>
+            <rect x="228" y="6" width="8" height="7" fill="#ef4444" rx="1"/>
+            <!-- Peak dot -->
+            <circle cx="232" cy="8" r="3.5" fill="#ef4444" stroke="#fff" stroke-width="1"/>
+            <rect x="228" y="98" width="8" height="35" fill="#ef4444" opacity="0.45" rx="1"/>
+
+            <!-- Bar 17: green (down from peak) -->
+            <line x1="246" y1="10" x2="246" y2="18" stroke="#22c55e" stroke-width="1"/>
+            <rect x="242" y="11" width="8" height="5" fill="#22c55e" rx="1"/>
+            <rect x="242" y="113" width="8" height="20" fill="#22c55e" opacity="0.4" rx="1"/>
+
+            <!-- Bar 18: green small -->
+            <line x1="260" y1="11" x2="260" y2="19" stroke="#22c55e" stroke-width="1"/>
+            <rect x="256" y="12" width="8" height="5" fill="#22c55e" rx="1"/>
+            <rect x="256" y="117" width="8" height="16" fill="#22c55e" opacity="0.4" rx="1"/>
+
+            <!-- Bar 19: TODAY (green, slightly down) — highlighted with ring -->
+            <line x1="274" y1="10" x2="274" y2="19" stroke="#22c55e" stroke-width="1"/>
+            <rect x="270" y="11" width="8" height="6" fill="#22c55e" rx="1"/>
+            <circle cx="274" cy="14" r="8" fill="none" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="3,2"/>
+            <rect x="270" y="114" width="8" height="19" fill="#22c55e" opacity="0.4" rx="1"/>
+
+            <!-- LABELS -->
+            <!-- Peak label -->
+            <text x="284" y="6" font-size="7" fill="#ef4444" font-weight="700" text-anchor="end">▲47,741</text>
+            <!-- Trough label -->
+            <text x="5" y="94" font-size="7" fill="#22c55e" font-weight="700">▼36,296</text>
+            <!-- Today label -->
+            <text x="258" y="9" font-size="7" fill="#2563eb" font-weight="700" text-anchor="end">今47,018</text>
+
+            <!-- Y axis labels (right side) -->
+            <text x="288" y="26" font-size="6.5" fill="#94a3b8" text-anchor="end">47,000</text>
+            <text x="288" y="51" font-size="6.5" fill="#94a3b8" text-anchor="end">44,000</text>
+            <text x="288" y="76" font-size="6.5" fill="#94a3b8" text-anchor="end">41,000</text>
+
+            <!-- Volume label -->
+            <text x="5" y="105" font-size="6.5" fill="#94a3b8">成交量</text>
+          </svg>
+        </div>
+
+        <!-- Bottom nav -->
+        <div class="bottom-nav">
+          <div class="nav-item">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span class="nav-label" style="color:#94a3b8;">盤中即時</span>
+          </div>
+          <div class="nav-item">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            <span class="nav-label" style="color:#2563eb;">盤後行情</span>
+          </div>
+          <div class="nav-item">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            <span class="nav-label" style="color:#94a3b8;">市場條件</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── RIGHT: K-bar click tooltip state ── -->
+  <div class="col">
+    <div class="col-label">K 棒點擊 Tooltip 狀態</div>
+    <div class="col-sub">點擊任一 K 棒，底部彈出當日 OHLC 詳細資料</div>
+    <div class="phone">
+      <div class="phone-notch"><div class="notch-pill"></div></div>
+      <div class="phone-screen">
+        <!-- Status -->
+        <div class="statusbar"><span style="font-weight:700;">11:16</span><span>▐▐▐ 5G ⚡</span></div>
+        <div class="navbar">
+          <span class="logo">StockView</span>
+          <span class="ts">更新 7/2 下午01:03</span>
+        </div>
+        <div class="tabs">
+          <div class="tab active">大盤關鍵資料</div>
+          <div class="tab" style="opacity:0.45;">產業板塊</div>
+          <div class="tab new-tab" style="opacity:0.45;">個股清單</div>
+          <div class="tab" style="opacity:0.38;">基本面</div>
+        </div>
+        <div class="n-bar">
+          <span class="n-label">參考區間 N =</span>
+          <div class="n-input">100</div>
+          <span class="n-label">天</span>
+        </div>
+        <div class="cards-row">
+          <div class="sig-card neg-card">
+            <div class="card-label">減幅指標</div>
+            <div class="main-val red">47,741 點</div>
+            <div class="sub-date">2026-06-22（N 日最高）</div>
+            <div class="data-row"><span class="data-label">差距</span><span class="data-val" style="color:#475569">−2.25%</span></div>
+            <div class="badge red">未觸發（需 ≥ 5%）</div>
+          </div>
+          <div class="sig-card pos-card">
+            <div class="card-label">增幅指標</div>
+            <div class="main-val grn">36,296 點</div>
+            <div class="sub-date">2026-04-14（N 日最低）</div>
+            <div class="data-row"><span class="data-label">差距</span><span class="data-val red">+17.34%</span></div>
+            <div class="badge grn">● 觸發（差距 ≥ 7%）</div>
+          </div>
+        </div>
+
+        <!-- K-line with one bar selected/highlighted -->
+        <div class="chart-section">
+          <div class="chart-header">
+            <span class="chart-title">大盤 K 線走勢</span>
+            <span style="font-size:9px;color:#2563eb;font-weight:600;">點擊 K 棒查看當日資料</span>
+          </div>
+          <svg width="290" height="145" viewBox="0 0 290 145" style="display:block;background:#fff;border-radius:10px;border:1.5px solid #bfdbfe;">
+            <line x1="0" y1="25" x2="290" y2="25" stroke="#f8fafc" stroke-width="1"/>
+            <line x1="0" y1="50" x2="290" y2="50" stroke="#f8fafc" stroke-width="1"/>
+            <line x1="0" y1="75" x2="290" y2="75" stroke="#f8fafc" stroke-width="1"/>
+            <line x1="0" y1="8" x2="290" y2="8" stroke="#ef4444" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
+            <line x1="0" y1="87" x2="290" y2="87" stroke="#22c55e" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
+            <line x1="0" y1="96" x2="290" y2="96" stroke="#f1f5f9" stroke-width="1"/>
+
+            <!-- Dimmed bars (all except selected) -->
+            <g opacity="0.3">
+              <line x1="8" y1="84" x2="8" y2="90" stroke="#22c55e" stroke-width="1"/><rect x="4" y="86" width="8" height="3" fill="#22c55e" rx="1"/><rect x="4" y="121" width="8" height="12" fill="#22c55e" opacity="0.4" rx="1"/>
+              <line x1="22" y1="82" x2="22" y2="88" stroke="#ef4444" stroke-width="1"/><rect x="18" y="83" width="8" height="4" fill="#ef4444" rx="1"/><rect x="18" y="118" width="8" height="15" fill="#ef4444" opacity="0.4" rx="1"/>
+              <line x1="36" y1="80" x2="36" y2="88" stroke="#22c55e" stroke-width="1"/><rect x="32" y="83" width="8" height="3" fill="#22c55e" rx="1"/>
+              <line x1="50" y1="77" x2="50" y2="85" stroke="#ef4444" stroke-width="1"/><rect x="46" y="78" width="8" height="5" fill="#ef4444" rx="1"/>
+              <line x1="64" y1="75" x2="64" y2="81" stroke="#22c55e" stroke-width="1"/><rect x="60" y="76" width="8" height="3" fill="#22c55e" rx="1"/>
+              <line x1="78" y1="70" x2="78" y2="78" stroke="#ef4444" stroke-width="1"/><rect x="74" y="71" width="8" height="5" fill="#ef4444" rx="1"/>
+              <line x1="92" y1="65" x2="92" y2="74" stroke="#ef4444" stroke-width="1"/><rect x="88" y="66" width="8" height="7" fill="#ef4444" rx="1"/>
+              <line x1="106" y1="63" x2="106" y2="70" stroke="#22c55e" stroke-width="1"/><rect x="102" y="64" width="8" height="4" fill="#22c55e" rx="1"/>
+              <line x1="120" y1="57" x2="120" y2="66" stroke="#ef4444" stroke-width="1"/><rect x="116" y="58" width="8" height="6" fill="#ef4444" rx="1"/>
+              <line x1="134" y1="50" x2="134" y2="60" stroke="#ef4444" stroke-width="1"/><rect x="130" y="51" width="8" height="7" fill="#ef4444" rx="1"/>
+              <line x1="148" y1="49" x2="148" y2="56" stroke="#22c55e" stroke-width="1"/><rect x="144" y="51" width="8" height="3" fill="#22c55e" rx="1"/>
+              <line x1="162" y1="42" x2="162" y2="52" stroke="#ef4444" stroke-width="1"/><rect x="158" y="43" width="8" height="7" fill="#ef4444" rx="1"/>
+              <line x1="176" y1="34" x2="176" y2="44" stroke="#ef4444" stroke-width="1"/><rect x="172" y="35" width="8" height="7" fill="#ef4444" rx="1"/>
+              <line x1="190" y1="33" x2="190" y2="40" stroke="#22c55e" stroke-width="1"/><rect x="186" y="34" width="8" height="4" fill="#22c55e" rx="1"/>
+              <line x1="204" y1="25" x2="204" y2="35" stroke="#ef4444" stroke-width="1"/><rect x="200" y="26" width="8" height="7" fill="#ef4444" rx="1"/>
+              <line x1="218" y1="17" x2="218" y2="27" stroke="#ef4444" stroke-width="1"/><rect x="214" y="18" width="8" height="7" fill="#ef4444" rx="1"/>
+              <line x1="246" y1="10" x2="246" y2="18" stroke="#22c55e" stroke-width="1"/><rect x="242" y="11" width="8" height="5" fill="#22c55e" rx="1"/>
+              <line x1="260" y1="11" x2="260" y2="19" stroke="#22c55e" stroke-width="1"/><rect x="256" y="12" width="8" height="5" fill="#22c55e" rx="1"/>
+              <line x1="274" y1="10" x2="274" y2="19" stroke="#22c55e" stroke-width="1"/><rect x="270" y="11" width="8" height="6" fill="#22c55e" rx="1"/>
+            </g>
+
+            <!-- SELECTED BAR: Bar 16 (Peak day 2026-06-22) — full opacity + highlight bg -->
+            <rect x="226" y="0" width="14" height="92" fill="#fef9c3" opacity="0.6" rx="2"/>
+            <line x1="232" y1="5" x2="232" y2="15" stroke="#ef4444" stroke-width="1.5"/>
+            <rect x="228" y="6" width="8" height="7" fill="#ef4444" rx="1"/>
+            <rect x="228" y="98" width="8" height="35" fill="#ef4444" opacity="0.7" rx="1"/>
+            <circle cx="232" cy="8" r="3.5" fill="#ef4444" stroke="#fff" stroke-width="1"/>
+
+            <!-- Vertical cross line on selected bar -->
+            <line x1="232" y1="0" x2="232" y2="92" stroke="#f59e0b" stroke-width="1" stroke-dasharray="2,2" opacity="0.6"/>
+
+            <!-- Labels -->
+            <text x="284" y="6" font-size="7" fill="#ef4444" font-weight="700" text-anchor="end">▲47,741</text>
+            <text x="5" y="94" font-size="7" fill="#22c55e" font-weight="700">▼36,296</text>
+            <text x="288" y="26" font-size="6.5" fill="#94a3b8" text-anchor="end">47,000</text>
+            <text x="288" y="51" font-size="6.5" fill="#94a3b8" text-anchor="end">44,000</text>
+            <text x="5" y="105" font-size="6.5" fill="#94a3b8">成交量</text>
+          </svg>
+        </div>
+
+        <!-- Tooltip popup (bottom sheet style) -->
+        <div style="
+          margin: 6px 8px 0;
+          background: #fff;
+          border: 1.5px solid #e2e8f0;
+          border-radius: 14px;
+          padding: 10px 13px;
+          box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+        ">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span style="font-size:11px;font-weight:700;color:#1e293b;">2026-06-22（N 日最高點）</span>
+            <span style="font-size:10px;font-weight:700;color:#ef4444;background:#fee2e2;padding:2px 7px;border-radius:6px;">▲ +0.85%</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;">
+            <div style="text-align:center;">
+              <div style="font-size:8px;color:#94a3b8;margin-bottom:2px;">開</div>
+              <div style="font-size:10px;font-weight:700;color:#1e293b;">47,338</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:8px;color:#94a3b8;margin-bottom:2px;">高</div>
+              <div style="font-size:10px;font-weight:700;color:#ef4444;">47,850</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:8px;color:#94a3b8;margin-bottom:2px;">低</div>
+              <div style="font-size:10px;font-weight:700;color:#22c55e;">47,209</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:8px;color:#94a3b8;margin-bottom:2px;">收</div>
+              <div style="font-size:10px;font-weight:700;color:#ef4444;">47,741</div>
+            </div>
+          </div>
+          <div style="margin-top:7px;padding-top:6px;border-top:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:8.5px;color:#94a3b8;">成交金額</span>
+            <span style="font-size:10px;font-weight:700;color:#334155;">3,842 億</span>
+          </div>
+        </div>
+
+        <div class="bottom-nav">
+          <div class="nav-item">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span class="nav-label" style="color:#94a3b8;">盤中即時</span>
+          </div>
+          <div class="nav-item">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            <span class="nav-label" style="color:#2563eb;">盤後行情</span>
+          </div>
+          <div class="nav-item">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            <span class="nav-label" style="color:#94a3b8;">市場條件</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<hr class="divider">
+
+<!-- Annotation section -->
+<div style="max-width:680px;margin:0 auto;">
+  <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:16px;text-align:center;">設計說明</div>
+  <div class="ann-list" style="max-width:100%;">
+    <div class="ann-item">
+      <div class="ann-num">1</div>
+      <div><strong>Tab 新增「個股清單」</strong>（藍框 tab）：點擊導到 /aftermarket/stocks，與原本入口 card 功能相同。「基本面」tab 暫時保留但灰色不可點，待日後規劃。</div>
+    </div>
+    <div class="ann-item">
+      <div class="ann-num">2</div>
+      <div><strong>N 值輸入列</strong>固定在 Tab 下方：影響走勢圖的高低點標記（紅/綠虛線位置）+ 個股清單的計算基準，輸入後全部即時更新，不需另找設定頁。</div>
+    </div>
+    <div class="ann-item">
+      <div class="ann-num">3</div>
+      <div><strong>K 線量能圖</strong>：紅漲綠跌（台股慣例），主圖 + 量能柱（下方小圖）。N 日最高點紅虛線、N 日最低點綠虛線橫跨全圖，今日 K 棒有藍色圓圈標記。</div>
+    </div>
+    <div class="ann-item">
+      <div class="ann-num">4</div>
+      <div><strong>K 棒點擊 Tooltip</strong>：點選 K 棒後，該棒變亮（其餘淡化 + 黃底高亮），底部彈出今日 OHLC + 漲跌幅 + 成交金額。再次點擊或點空白收起。未來個股 K 線圖沿用同一格式。</div>
+    </div>
+    <div class="ann-item">
+      <div class="ann-num" style="background:#64748b;">?</div>
+      <div><strong>關於「個股清單」是否要直接展開在頁面內？</strong> 目前 Demo 仍保留「個股清單」為 tab 按鈕（點擊跳到獨立頁面），因為 1,088 筆資料直接顯示在同頁面會讓頁面很長。若確認要放在頁面內可以調整。</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
