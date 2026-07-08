@@ -107,6 +107,11 @@ async function main() {
   const market = {
     updatedAt:     snapshot.updatedAt,
     stocksDate:    snapshot.stocksDate ?? null,
+    // P1-6 資料鮮度：各資料塊日期戳（與 meta.json 同源）
+    indexDate:     meta.indexDate,
+    marginDate:    meta.marginDate,
+    chipsDate:     meta.chipsDate,
+    sectorDate:    meta.sectorDate,
     indexHistory:  snapshot.indexHistory ?? [],
     marketSignals: snapshot.marketSignals,
     sectors:       snapshot.sectors ?? [],

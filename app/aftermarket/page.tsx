@@ -8,6 +8,7 @@ import QuadrantSummary from '@/components/bubble/QuadrantSummary'
 import SectorRanking from '@/components/bubble/SectorRanking'
 import SectorPanel from '@/components/bubble/SectorPanel'
 import StockDetailSheet from '@/components/stock/StockDetailSheet'
+import FreshnessBar from '@/components/shared/FreshnessBar'
 import { calcStockRow } from '@/lib/calcMetrics'
 import { calcSectors } from '@/lib/calcSectors'
 import { MOCK_DATA } from '@/lib/mockData'
@@ -217,6 +218,15 @@ export default function AftermarketPage() {
             ⚠ {error}
           </div>
         )}
+        {/* Mock 模式全版面浮水印：避免示範資料被誤當真實行情（P1-6） */}
+        {error && (
+          <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center select-none">
+            <div className="-rotate-12 text-4xl sm:text-6xl font-black text-red-500/10 whitespace-nowrap">
+              示範資料 · 非真實行情
+            </div>
+          </div>
+        )}
+        {!loading && !error && <FreshnessBar data={data} />}
 
         {loading ? (
           <div className="space-y-3 animate-pulse">

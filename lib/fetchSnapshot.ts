@@ -55,6 +55,10 @@ async function fetchLayered(latestUrl: string): Promise<SnapshotData> {
   return {
     updatedAt:     market.updatedAt,
     stocksDate:    market.stocksDate ?? null,
+    indexDate:     market.indexDate ?? null,
+    marginDate:    market.marginDate ?? null,
+    chipsDate:     market.chipsDate ?? null,
+    sectorDate:    market.sectorDate ?? null,
     stocks,
     indexHistory:  market.indexHistory ?? [],
     sectorHistory: market.sectorHistory ?? [],

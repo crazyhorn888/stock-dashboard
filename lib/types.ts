@@ -125,6 +125,11 @@ export interface IndexOHLC {
 export interface SnapshotData {
   updatedAt: string
   stocksDate?: string | null  // 股價資料截至日期（YYYY-MM-DD）；若 < today 表示 STOCK_DAY_ALL 當日尚未就緒
+  // P1-6 資料鮮度戳（market.json 提供；latest.json fallback 時為 undefined）
+  indexDate?: string | null   // 大盤 K 線截至日
+  marginDate?: string | null  // 融資餘額截至日
+  chipsDate?: string | null   // 三大法人/期貨籌碼截至日
+  sectorDate?: string | null  // T86 板塊資料截至日
   stocks: StockData[]
   marketSignals: MarketSignals
   indexHistory: IndexOHLC[]      // 近 250 交易日，index 0 = 最新
