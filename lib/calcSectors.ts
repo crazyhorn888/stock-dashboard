@@ -24,9 +24,10 @@ export function calcSectors(
     const avg5  = net5  / days5.length
     const avg20 = net20 / days20.length
 
-    const x    = avg5 / 1000
+    // P1-3 起 rows 內數值已是億元，直接使用（不再 /1000 換千張）
+    const x    = avg5
     const y    = avg20 !== 0 ? (avg5 / Math.abs(avg20)) - (avg20 > 0 ? 1 : -1) : 0
-    const size = Math.abs(buy5 / days5.length / 1000)
+    const size = Math.abs(buy5 / days5.length)
 
     // 今日 T86 個股 map（只有 frame 0 有意義；歷史 frame 顯示 0）
     const todayRow  = sectorHistory[0]?.rows.find(r => r.name === name)
@@ -76,7 +77,7 @@ export function calcSectors(
       const a5  = n5 / s5.length
       const a20 = n20 / s20.length
       trail.unshift({
-        x: a5 / 1000,
+        x: a5,
         y: a20 !== 0 ? (a5 / Math.abs(a20)) - (a20 > 0 ? 1 : -1) : 0,
       })
     }

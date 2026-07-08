@@ -1,0 +1,18 @@
+{
+  "scripts/fetch-daily.mjs::isAlreadyDoneToday": ["Guard 1 冪等判斷（meta.json 快路徑 + latest.json fallback）；誤判 true 會漏更新、誤判 false 只是多跑"],
+  "scripts/fetch-daily.mjs::isTradingDay": ["Guard 2 交易日判斷（FMTQIK 有無今日 K 棒）；假日誤放行浪費配額"],
+  "scripts/fetch-daily.mjs::buildChipsEntry": ["籌碼面板全部欄位；phase1=null 時的 partial entry 路徑（融資先就緒情境）"],
+  "scripts/fetch-daily.mjs::fetchT86Sectors": ["泡泡圖資料源；億元換算（股數×該日收盤價/1e8）；sectorHistory unit='yi' 格式"],
+  "scripts/fetch-daily.mjs::main::step5": ["sectorHistory 更新與 25 天回補；舊「張」格式 filter 丟棄邏輯"],
+  "scripts/guard-check.mjs": ["Actions 前置攔截；誤攔 = 當日資料不更新（保守原則：無法判斷必須放行）"],
+  "scripts/calc-sectors.mjs::calcSectors": ["泡泡圖 X/Y/size/trail 計算（與 lib/calcSectors.ts 邏輯必須一致）"],
+  "lib/calcSectors.ts::calcSectors": ["前端歷史回放 frames 計算（與 scripts/calc-sectors.mjs 邏輯必須一致）"],
+  "scripts/calc-signals.mjs": ["市場訊號（融資增減幅等）→ Firestore；/signals 頁與訊號卡"],
+  "scripts/write-firebase.mjs": ["latest.json / ohlc.json / meta.json 上傳；meta.json 欄位是 Guard 1 與 P1-6 鮮度標示的依據"],
+  "components/bubble/BubbleChart.tsx::symX": ["symlog 座標轉換；改動影響泡泡位置、trail、刻度全部"],
+  "components/bubble/BubbleChart.tsx::toSVG": ["座標映射與象限縮放"],
+  "components/bubble/SectorPanel.tsx": ["板塊個股面板；數值單位顯示（億，toFixed(2)）"],
+  "app/aftermarket/page.tsx::computedSignals": ["前端 N 值重算訊號（不依賴後端 nDays=100）"],
+  "lib/fetchSnapshot.ts": ["快照載入；P1-1 分檔後改動點"],
+  ".github/workflows/daily-fetch.yml": ["cron 班次、concurrency 排隊、guard 前置 gate；改動需 push main 才生效"]
+}

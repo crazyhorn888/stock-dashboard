@@ -24,6 +24,13 @@ const PAD = { top: 28, right: 16, bottom: 28, left: 20 }
 const CX = PAD.left + (W - PAD.left - PAD.right) / 2
 const CY = PAD.top  + (H - PAD.top  - PAD.bottom) / 2
 
+// P1-4：X 軸 symlog 轉換（linthresh = 1 億）。
+// 板塊資金量級差距上百倍，線性刻度會把小板塊全部擠在原點附近；
+// symlog 在 ±1 億內近似線性、之外按 10 倍壓縮，保留正負號與象限語意。
+function symX(v: number): number {
+  return Math.sign(v) * Math.log10(1 + Math.abs(v))
+}
+
 function quadrantOf(x: number, y: number): typeof QUADRANTS[number]['id'] {
   if (x >= 0 && y >= 0) return 'TR'
   if (x <  0 && y >= 0) return 'TL'
@@ -276,8 +283,9 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
   // zoom 模式用可見 sectors 的 range，讓泡泡充分展開；全覽用全部 sectors
   const xRange = useMemo<[number, number]>(() => {
     const src = zoom ? visibleSectors : activeSectors
-    const absMax = Math.max(1, ...src.map(s => Math.abs(s.x)))
-    return [-absMax * 1.2, absMax * 1.2]
+    // symlog 空間中的對稱範圍（見 symX）
+    const absMax = Math.max(0.5, ...src.map(s => Math.abs(symX(s.x))))
+    return [-absMax * 1.1, absMax * 1.1]
   }, [activeSectors, visibleSectors, zoom])
 
   const yRange = useMemo<[number, number]>(() => {
@@ -290,7 +298,7 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
   const resolvedBubbles = useMemo(() => {
     const sorted = [...visibleSectors].sort((a, b) => a.size - b.size)
     const raw = sorted.map(s => {
-      const { px, py } = toSVG(s.x, s.y, zoom, xRange, yRange)
+      const { px, py } = toSVG(symX(s.x), s.y, zoom, xRange, yRange)
       const r = bubbleRadius(s.size, maxSize)
       return { s, px: clamp(px, PAD.left + r + 1, W - PAD.right - r - 1), py: clamp(py, PAD.top + r + 1, H - PAD.bottom - r - 1), r }
     })
@@ -468,12 +476,26 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
         />
 
         {/* Axis labels */}
-        <text x={W - PAD.right - 2} y={H - 6}  fontSize={8} fill="#94a3b8" textAnchor="end">買超 →</text>
-        <text x={PAD.left + 2}       y={H - 6}  fontSize={8} fill="#94a3b8" textAnchor="start">← 賣超</text>
+        <text x={W - PAD.right - 2} y={H - 6}  fontSize={8} fill="#94a3b8" textAnchor="end">買超（億/日）→</text>
+        <text x={PAD.left + 2}       y={H - 6}  fontSize={8} fill="#94a3b8" textAnchor="start">← 賣超（億/日）</text>
         <text x={PAD.left - 2}       y={PAD.top + 8} fontSize={8} fill="#94a3b8" textAnchor="middle"
           transform={`rotate(-90 ${PAD.left - 12} ${PAD.top + (H - PAD.top - PAD.bottom) / 2})`}>加速 ↑</text>
         <text x={PAD.left - 2}       y={H - PAD.bottom - 4} fontSize={8} fill="#94a3b8" textAnchor="middle"
           transform={`rotate(-90 ${PAD.left - 12} ${H - PAD.bottom - 40})`}>↓ 放緩</text>
+
+        {/* X 軸 symlog 刻度（億/日）：只渲染落在目前範圍內的刻度 */}
+        {[-500, -200, -100, -50, -20, -5, 5, 20, 50, 100, 200, 500].map(v => {
+          const tx = symX(v)
+          if (tx < xRange[0] || tx > xRange[1]) return null
+          const { px } = toSVG(tx, 0, zoom, xRange, yRange)
+          if (px < PAD.left + 6 || px > W - PAD.right - 6) return null
+          return (
+            <g key={`xtick-${v}`}>
+              <line x1={px} y1={zeroSVG.py - 2} x2={px} y2={zeroSVG.py + 2} stroke="#cbd5e1" strokeWidth={0.6} />
+              <text x={px} y={zeroSVG.py + 9} fontSize={6} fill="#b6c2d1" textAnchor="middle">{v > 0 ? `+${v}` : v}</text>
+            </g>
+          )
+        })}
 
         {/* Bubbles — 小→大渲染；位置已做 collision resolution */}
         {resolvedBubbles.map(({ s, rpx, rpy, r }, index) => {
@@ -488,7 +510,7 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
             // 回放模式不顯示歷史軌跡（每個 frame 本身就是一個時間點）
             const trailPts = isHistorical
               ? []
-              : (s.trail ?? []).map(p => toSVG(p.x, p.y, zoom, xRange, yRange))
+              : (s.trail ?? []).map(p => toSVG(symX(p.x), p.y, zoom, xRange, yRange))
             const allPts = [...trailPts, { px: rpx, py: rpy }]
             const trailLen = allPts.length
 

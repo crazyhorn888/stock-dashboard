@@ -46,10 +46,10 @@ const COLS: { key: SortKey | null; label: string; right?: boolean }[] = [
   { key: 'changePercent', label: '漲跌%',   right: true },
   { key: 'highDrop',      label: '距高',    right: true },
   { key: 'lowRise',       label: '距低',    right: true },
-  { key: 'netBuy',        label: '合計(張)', right: true },
-  { key: 'foreignNet',    label: '外資(張)', right: true },
-  { key: 'trustNet',      label: '投信(張)', right: true },
-  { key: 'dealerNet',     label: '自營(張)', right: true },
+  { key: 'netBuy',        label: '合計(億)', right: true },
+  { key: 'foreignNet',    label: '外資(億)', right: true },
+  { key: 'trustNet',      label: '投信(億)', right: true },
+  { key: 'dealerNet',     label: '自營(億)', right: true },
 ]
 
 function sign(v: number) { return v > 0 ? '+' : '' }
@@ -138,7 +138,7 @@ export default function SectorPanel({ sector, onClose, allStocks, n, onStockClic
               <span className={`text-xs font-semibold ${q.color}`}>{q.label}</span>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              法人淨買超 {sign(sector.x)}{sector.x.toFixed(1)} 千張 ·
+              法人淨買超 {sign(sector.x)}{sector.x.toFixed(1)} 億/日 ·
               加速指標 {sign(sector.y)}{(sector.y * 100).toFixed(1)}%
             </p>
           </div>
@@ -203,19 +203,19 @@ export default function SectorPanel({ sector, onClose, allStocks, n, onStockClic
                     </td>
                     {/* 合計 */}
                     <td className={`px-2.5 py-2 text-right whitespace-nowrap ${numColor(r.netBuy)}`}>
-                      {sign(r.netBuy)}{r.netBuy.toLocaleString()}
+                      {sign(r.netBuy)}{r.netBuy.toFixed(2)}
                     </td>
                     {/* 外資 */}
                     <td className={`px-2.5 py-2 text-right whitespace-nowrap ${numColor(r.foreignNet)}`}>
-                      {sign(r.foreignNet)}{r.foreignNet.toLocaleString()}
+                      {sign(r.foreignNet)}{r.foreignNet.toFixed(2)}
                     </td>
                     {/* 投信 */}
                     <td className={`px-2.5 py-2 text-right whitespace-nowrap ${numColor(r.trustNet)}`}>
-                      {sign(r.trustNet)}{r.trustNet.toLocaleString()}
+                      {sign(r.trustNet)}{r.trustNet.toFixed(2)}
                     </td>
                     {/* 自營 */}
                     <td className={`px-2.5 py-2 text-right whitespace-nowrap ${numColor(r.dealerNet)}`}>
-                      {sign(r.dealerNet)}{r.dealerNet.toLocaleString()}
+                      {sign(r.dealerNet)}{r.dealerNet.toFixed(2)}
                     </td>
                   </tr>
                 )

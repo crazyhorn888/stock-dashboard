@@ -137,15 +137,19 @@ function parseNum(v) {
  * [11]自營合計淨買 [12]自營自行買進 [13]自營自行賣出 [14]自營自行淨買
  * [15]自營避險買進 [16]自營避險賣出 [17]自營避險淨買
  * [18]三大法人合計
- * 所有數值單位：股（shares）→ ÷1000 = 張（lots）
+ * T86 原始數值單位：股（shares）。
+ * 2026-07-08 起（P1-3）：全部換算為「億元」＝ 股數 × 該日收盤價 / 1e8。
+ * 金額才能跨板塊比較（張數會高估低價股權重）；收盤價從個股歷史陣列按日期查，
+ * 查不到才退回最新 close（近似值，僅發生在極少數缺歷史的個股）。
  */
-async function fetchT86Sectors(dateYYYYMMDD, stockMap) {
+async function fetchT86Sectors(dateYYYYMMDD, dateISO, stockMap) {
   const url = `https://www.twse.com.tw/rwd/zh/fund/T86?response=json&date=${dateYYYYMMDD}&selectType=ALL`
   try {
     const d = await fetchJSON(url)
     if (d?.stat !== 'OK' || !Array.isArray(d.data)) return null
 
     const groups = {}  // sectorName → { net, buySell, stocks[] }
+    const r2 = v => Math.round(v * 100) / 100
 
     for (const row of d.data) {
       const code = String(row[0]).trim()
@@ -154,14 +158,20 @@ async function fetchT86Sectors(dateYYYYMMDD, stockMap) {
       const stock = stockMap[code]
       if (!stock?.sector) continue           // 無法對應板塊則跳過
 
-      const foreignNet = Math.round((parseNum(row[4]) + parseNum(row[7])) / 1000)  // 外資（含外資自營）張
-      const trustNet   = Math.round(parseNum(row[10]) / 1000)                       // 投信 張
-      const dealerNet  = Math.round(parseNum(row[11]) / 1000)                       // 自營合計 張
-      const netBuy     = foreignNet + trustNet + dealerNet                           // 三大法人合計 張
+      // 該日收盤價：從個股歷史找同日期；找不到用最新 close 近似
+      const di = stock.dates?.indexOf(dateISO) ?? -1
+      const close = (di >= 0 ? stock.closes?.[di] : stock.close) || stock.close
+      if (!close) continue
+      const toYi = shares => r2(shares * close / 1e8)   // 股 → 億元
+
+      const foreignNet = toYi(parseNum(row[4]) + parseNum(row[7]))  // 外資（含外資自營）億元
+      const trustNet   = toYi(parseNum(row[10]))                     // 投信 億元
+      const dealerNet  = toYi(parseNum(row[11]))                     // 自營合計 億元
+      const netBuy     = r2(foreignNet + trustNet + dealerNet)       // 三大法人合計 億元
 
       const buyVol  = parseNum(row[2])+parseNum(row[5])+parseNum(row[8])+parseNum(row[12])+parseNum(row[15])
       const sellVol = parseNum(row[3])+parseNum(row[6])+parseNum(row[9])+parseNum(row[13])+parseNum(row[16])
-      const buySell = Math.round((buyVol + sellVol) / 1000)   // 買賣合計 張（for bubble size）
+      const buySell = toYi(buyVol + sellVol)   // 買賣合計 億元（for bubble size）
 
       const sectorName = stock.sector
       if (!groups[sectorName]) groups[sectorName] = { net: 0, buySell: 0, stocks: [] }
@@ -172,8 +182,8 @@ async function fetchT86Sectors(dateYYYYMMDD, stockMap) {
 
     const rows = Object.entries(groups).map(([name, v]) => ({
       name,
-      net: v.net,
-      buySell: v.buySell,
+      net: r2(v.net),
+      buySell: r2(v.buySell),
       stocks: v.stocks.sort((a, b) => b.net - a.net),
     }))
 
@@ -186,9 +196,30 @@ async function fetchT86Sectors(dateYYYYMMDD, stockMap) {
 }
 
 // ── Guard 1：今天已上傳 ──────────────────────────────
+// 判斷條件（meta.json 與 latest.json 兩條路徑必須維持一致）：
+//   uploaded 日 = 今日 && stocksDate = 今日 && 今日融資已填 && sectorHistory >= 20 天
 async function isAlreadyDoneToday() {
   const supabaseUrl = process.env.SUPABASE_URL
   if (!supabaseUrl) return false
+  const today = todayTWDate()
+
+  // 路徑 1：輕量 meta.json（~1KB，write-firebase.mjs 產出）
+  try {
+    const res = await fetch(`${supabaseUrl}/storage/v1/object/public/snapshots/meta.json`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    })
+    if (res.ok) {
+      const m = await res.json()
+      if (!m?.updatedAt) return false
+      const uploaded = new Date(m.updatedAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' })
+      return uploaded === today
+        && (m.stocksDate ?? null) === today
+        && (m.marginDate ?? null) === today
+        && (m.sectorHistoryLen ?? 0) >= 20
+    }
+  } catch { /* fallback 到 latest.json */ }
+
+  // 路徑 2：fallback — meta.json 尚不存在（首次部署過渡期），讀 latest.json
   try {
     const url = `${supabaseUrl}/storage/v1/object/public/snapshots/latest.json`
     const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
@@ -196,12 +227,12 @@ async function isAlreadyDoneToday() {
     const d = await res.json()
     if (!d?.updatedAt) return false
     const uploaded = new Date(d.updatedAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' })
-    if (uploaded !== todayTWDate()) return false
+    if (uploaded !== today) return false
     // 若今日已上傳但 STOCK_DAY_ALL 那時還沒就緒（stocksDate 仍是舊日期），
     // 允許 re-run 以便後續 cron 補進股價資料
-    if ((d.stocksDate ?? null) !== todayTWDate()) return false
+    if ((d.stocksDate ?? null) !== today) return false
     // 若今日 chips.margin_amount 尚未填入，允許補跑（融資發布後由後續 cron 補填）
-    const todayEntry = d.indexHistory?.find(r => r.date === todayTWDate())
+    const todayEntry = d.indexHistory?.find(r => r.date === today)
     if (!todayEntry?.chips?.margin_amount) return false
     // T86 歷史天數不足 20 天 → 泡泡圖回放無法啟動，繼續跑以補齊
     if ((d.sectorHistory?.length ?? 0) < 20) return false
@@ -275,8 +306,8 @@ function buildChipsEntry(phase1, marginAmount, prevMarginAmount) {
     fx_tx_chg:      phase1?.fx_tx_chg ?? null,
     retail_mtx_pct: phase1?.retail_mtx_pct ?? null,
     retail_imf_pct: phase1?.retail_imf_pct ?? null,
-    pcr:            phase1.pcr ?? null,
-    vix:            phase1.vix ?? null,
+    pcr:            phase1?.pcr ?? null,
+    vix:            phase1?.vix ?? null,
     opt_tr:         det.opt_tr_raw ?? null,
     opt_oi:         det.opt_oi_raw ?? null,
   }
@@ -660,13 +691,15 @@ async function main() {
   }
 
   // Step 5：T86（依 stockMap sector 分組）→ sectorHistory → 泡泡圖
-  let sectorHistory = snapshot.sectorHistory ?? []
+  // P1-3：只保留億元格式（unit='yi'）的歷史；舊「張」格式無法換算（缺當日價格上下文），
+  // 直接丟棄，缺的天數由下方 5b 回補機制自動用新單位重抓
+  let sectorHistory = (snapshot.sectorHistory ?? []).filter(d => d.unit === 'yi')
 
   // 5a. 今日 T86
-  const t86Rows = await fetchT86Sectors(todayYYYYMMDD, stockMap)
+  const t86Rows = await fetchT86Sectors(todayYYYYMMDD, today, stockMap)
   if (t86Rows && t86Rows.length > 0) {
     const filtered = sectorHistory.filter(d => d.date !== today)
-    sectorHistory = [{ date: today, rows: t86Rows }, ...filtered].slice(0, 25)
+    sectorHistory = [{ date: today, unit: 'yi', rows: t86Rows }, ...filtered].slice(0, 25)
     console.log(`[daily] sectorHistory 更新今日 ${today}，${t86Rows.length} 類股`)
   } else {
     console.warn('[daily] T86 無資料，sectorHistory 保留舊值')
@@ -684,9 +717,9 @@ async function main() {
       console.log(`[daily] sectorHistory 僅 ${sectorHistory.length} 天，補抓 ${missingDates.length} 個歷史交易日...`)
       for (const date of missingDates) {
         await new Promise(r => setTimeout(r, 1500))  // TWSE rate limit 緩衝
-        const rows = await fetchT86Sectors(date.replace(/-/g, ''), stockMap)
+        const rows = await fetchT86Sectors(date.replace(/-/g, ''), date, stockMap)
         if (rows && rows.length > 0) {
-          sectorHistory.push({ date, rows })
+          sectorHistory.push({ date, unit: 'yi', rows })
           console.log(`[daily]   → ${date}：${rows.length} 類股`)
         }
       }

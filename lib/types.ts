@@ -143,35 +143,36 @@ export interface SectorStock {
   code: string
   name: string
   industry: string    // 細項分類（from StockData.industry）
-  netBuy: number      // 三大法人合計淨買超（張）
-  foreignNet: number  // 外資淨買超（張）
-  trustNet: number    // 投信淨買超（張）
-  dealerNet: number   // 自營淨買超（張）
+  netBuy: number      // 三大法人合計淨買超（億元，P1-3 起）
+  foreignNet: number  // 外資淨買超（億元）
+  trustNet: number    // 投信淨買超（億元）
+  dealerNet: number   // 自營淨買超（億元）
 }
 
 export interface SectorBubble {
   sectorName: string  // 類股名稱（e.g., 電子工業）
-  x: number          // 近5日三大法人均淨買超（千張，正=買超）
+  x: number          // 近5日三大法人均淨買超（億元/日，正=買超，P1-3 起）
   y: number          // 加速指標 = (近5日均值/近20日均值) - 1
-  size: number       // 近5日買賣均量（千張），控制泡泡半徑
+  size: number       // 近5日買賣均金額（億元/日），控制泡泡半徑
   trail?: { x: number; y: number }[]  // 歷史位置（oldest first），最多5筆
   stocks: SectorStock[]
 }
 
 export interface SectorDayRow {
   name: string       // 類股名稱
-  net: number        // 三大法人淨買超（張）
-  buySell: number    // 三大法人買賣合計（張）
+  net: number        // 三大法人淨買超（億元，P1-3 起）
+  buySell: number    // 三大法人買賣合計（億元）
   stocks: {
     code: string; name: string
-    net: number
-    foreignNet: number  // 外資淨買超（張）
-    trustNet: number    // 投信淨買超（張）
-    dealerNet: number   // 自營淨買超（張）
+    net: number         // 三大法人淨買超（億元）
+    foreignNet: number  // 外資淨買超（億元）
+    trustNet: number    // 投信淨買超（億元）
+    dealerNet: number   // 自營淨買超（億元）
   }[]
 }
 
 export interface SectorDayData {
   date: string
+  unit?: 'yi'        // 'yi' = 數值為億元（P1-3 新格式）；缺欄位 = 舊「張」格式，載入時會被丟棄重抓
   rows: SectorDayRow[]
 }

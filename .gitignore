@@ -37,7 +37,9 @@ yarn-error.log*
 .vercel
 
 # 每日抓取的暫存資料（由 CI 產生，不進 repo）
-/data/
+/data/*
+# 例外：概念股分類是版控資料（P2-1），不是 CI 產物（/data/ 需寫成 /data/* 例外才會生效）
+!/data/concept-sectors.json
 
 # typescript
 *.tsbuildinfo

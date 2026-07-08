@@ -78,6 +78,22 @@ async function main() {
   const publicUrl = await uploadToSupabase('latest.json', JSON.stringify(snapshotStripped))
   console.log(`[write] Supabase Storage 上傳完成：${publicUrl}`)
 
+  // 1c. 上傳 meta.json（~1KB）：Guard 檢查與前端鮮度標示用，避免為了看日期戳下載整包 latest.json
+  const latestWithMargin = snapshot.indexHistory?.find(r => r.chips?.margin_amount != null)
+  const latestWithChips  = snapshot.indexHistory?.find(r => r.chips?.inst_total != null)
+  const meta = {
+    updatedAt:        snapshot.updatedAt,
+    stocksDate:       snapshot.stocksDate ?? null,
+    indexDate:        snapshot.indexHistory?.[0]?.date ?? null,
+    marginDate:       latestWithMargin?.date ?? null,
+    chipsDate:        latestWithChips?.date ?? null,
+    sectorDate:       snapshot.sectorHistory?.[0]?.date ?? null,
+    sectorHistoryLen: snapshot.sectorHistory?.length ?? 0,
+    stockCount:       snapshot.stocks.length,
+  }
+  await uploadToSupabase('meta.json', JSON.stringify(meta))
+  console.log('[write] meta.json 上傳完成')
+
   // 2. 寫入 Firestore market_signals
   const signalsRef = db.collection('market_data').doc('signals')
   await signalsRef.set(snapshot.marketSignals)
