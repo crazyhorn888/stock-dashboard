@@ -4,6 +4,8 @@ import MarketSignalCards from '@/components/aftermarket/MarketSignalCards'
 import KlineChart from '@/components/aftermarket/KlineChart'
 import StockTable from '@/components/aftermarket/StockTable'
 import BubbleChart from '@/components/bubble/BubbleChart'
+import QuadrantSummary from '@/components/bubble/QuadrantSummary'
+import SectorRanking from '@/components/bubble/SectorRanking'
 import SectorPanel from '@/components/bubble/SectorPanel'
 import StockDetailSheet from '@/components/stock/StockDetailSheet'
 import { calcStockRow } from '@/lib/calcMetrics'
@@ -25,6 +27,7 @@ export default function AftermarketPage() {
   const [error, setError] = useState<string | null>(null)
   const [activeSector, setActiveSector] = useState<SectorBubble | null>(null)
   const [activeStock, setActiveStock] = useState<StockData | null>(null)
+  const [sectorView, setSectorView] = useState<'bubble' | 'ranking'>('bubble')
 
   useEffect(() => {
     fetchSnapshot()
@@ -235,12 +238,48 @@ export default function AftermarketPage() {
 
             {activeTab === '產業板塊' && (
               <div className="rounded-xl bg-white shadow-sm overflow-hidden">
-                <BubbleChart
+                {/* 四象限統計條（P1-5）：大盤漲跌% 由 indexHistory 前兩根 K 棒推算 */}
+                <QuadrantSummary
                   sectors={data.sectors ?? []}
-                  onBubbleClick={s => setActiveSector(s)}
-                  frames={frames}
-                  frameDates={frames ? frameDates : undefined}
+                  todayRows={data.sectorHistory?.[0]?.rows}
+                  marketChangePct={(() => {
+                    const [t, p] = data.indexHistory ?? []
+                    return t && p && p.close > 0 ? ((t.close - p.close) / p.close) * 100 : null
+                  })()}
                 />
+
+                {/* 泡泡圖 / 排行榜 視圖切換 */}
+                <div className="flex gap-1.5 px-3 pb-2">
+                  {([['bubble', '🫧 泡泡圖'], ['ranking', '📋 排行榜']] as const).map(([v, label]) => (
+                    <button
+                      key={v}
+                      onClick={() => setSectorView(v)}
+                      className={[
+                        'px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors',
+                        sectorView === v
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300',
+                      ].join(' ')}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {sectorView === 'bubble' ? (
+                  <BubbleChart
+                    sectors={data.sectors ?? []}
+                    onBubbleClick={s => setActiveSector(s)}
+                    frames={frames}
+                    frameDates={frames ? frameDates : undefined}
+                  />
+                ) : (
+                  <SectorRanking
+                    sectors={data.sectors ?? []}
+                    allStocks={data.stocks}
+                    onSectorClick={s => setActiveSector(s)}
+                  />
+                )}
               </div>
             )}
 
