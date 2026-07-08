@@ -455,15 +455,15 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
             fill={q.fill} />
         })()}
 
-        {/* Axes — zoom 時 zeroSVG 自然落在象限邊界（仿 tide-tw.app） */}
+        {/* Axes — 延伸至 SVG 邊界，讓泡泡與邊界之間的留白顯示出象限意象 */}
         <line
-          x1={zeroSVG.px} y1={PAD.top}
-          x2={zeroSVG.px} y2={H - PAD.bottom}
+          x1={zeroSVG.px} y1={0}
+          x2={zeroSVG.px} y2={H}
           stroke="#94a3b8" strokeWidth={0.8}
         />
         <line
-          x1={PAD.left} y1={zeroSVG.py}
-          x2={W - PAD.right} y2={zeroSVG.py}
+          x1={0} y1={zeroSVG.py}
+          x2={W} y2={zeroSVG.py}
           stroke="#94a3b8" strokeWidth={0.8}
         />
 
