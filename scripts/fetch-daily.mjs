@@ -203,6 +203,8 @@ async function isAlreadyDoneToday() {
     // 若今日 chips.margin_amount 尚未填入，允許補跑（融資發布後由後續 cron 補填）
     const todayEntry = d.indexHistory?.find(r => r.date === todayTWDate())
     if (!todayEntry?.chips?.margin_amount) return false
+    // T86 歷史天數不足 20 天 → 泡泡圖回放無法啟動，繼續跑以補齊
+    if ((d.sectorHistory?.length ?? 0) < 20) return false
     return true
   } catch { return false }
 }
@@ -659,6 +661,8 @@ async function main() {
 
   // Step 5：T86（依 stockMap sector 分組）→ sectorHistory → 泡泡圖
   let sectorHistory = snapshot.sectorHistory ?? []
+
+  // 5a. 今日 T86
   const t86Rows = await fetchT86Sectors(todayYYYYMMDD, stockMap)
   if (t86Rows && t86Rows.length > 0) {
     const filtered = sectorHistory.filter(d => d.date !== today)
@@ -667,6 +671,31 @@ async function main() {
   } else {
     console.warn('[daily] T86 無資料，sectorHistory 保留舊值')
   }
+
+  // 5b. 補齊歷史（若 < 20 天）：從 indexHistory 取得過去交易日，逐日補抓 T86
+  if (sectorHistory.length < 20 && indexHistory && indexHistory.length > 1) {
+    const existingDates = new Set(sectorHistory.map(d => d.date))
+    const missingDates = indexHistory
+      .map(r => r.date)
+      .filter(d => !existingDates.has(d))
+      .slice(0, 25 - sectorHistory.length)
+
+    if (missingDates.length > 0) {
+      console.log(`[daily] sectorHistory 僅 ${sectorHistory.length} 天，補抓 ${missingDates.length} 個歷史交易日...`)
+      for (const date of missingDates) {
+        await new Promise(r => setTimeout(r, 1500))  // TWSE rate limit 緩衝
+        const rows = await fetchT86Sectors(date.replace(/-/g, ''), stockMap)
+        if (rows && rows.length > 0) {
+          sectorHistory.push({ date, rows })
+          console.log(`[daily]   → ${date}：${rows.length} 類股`)
+        }
+      }
+      sectorHistory.sort((a, b) => b.date.localeCompare(a.date))
+      sectorHistory = sectorHistory.slice(0, 25)
+      console.log(`[daily] sectorHistory 補齊完成，共 ${sectorHistory.length} 天`)
+    }
+  }
+
   const sectors = calcSectors(sectorHistory, stockMap)
   console.log(`[daily] 計算泡泡圖：${sectors.length} 個類股`)
 
