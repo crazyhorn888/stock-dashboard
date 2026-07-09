@@ -15,7 +15,7 @@ import { calcStockRow } from '@/lib/calcMetrics'
 import { MOCK_DATA } from '@/lib/mockData'
 import { fetchSnapshot } from '@/lib/fetchSnapshot'
 import { fetchStockHistory } from '@/lib/fetchStockHistory'
-import { calcWatchlistBubbles } from '@/lib/calcWatchlistBubbles'
+import { calcWatchlistBubbles, getGhostPeers } from '@/lib/calcWatchlistBubbles'
 import { useWatchlist } from '@/lib/watchlist'
 import type { SnapshotData, SectorBubble, StockData, MarketSignals, StockHistoryDay } from '@/lib/types'
 
@@ -39,6 +39,9 @@ export default function AftermarketPage() {
   const { codes: watchlistCodes } = useWatchlist()
   const [stockHistory, setStockHistory] = useState<StockHistoryDay[]>([])
   const [stockHistoryLoading, setStockHistoryLoading] = useState(false)
+  // Ghost：同概念陪跑泡泡。conceptStockMap 是 code -> 概念[] 的靜態資料，動態 import 才不會讓一般使用者也下載到
+  const [conceptStockMap, setConceptStockMap] = useState<Record<string, string[]> | null>(null)
+  const [focusedWatchlistBubble, setFocusedWatchlistBubble] = useState<SectorBubble | null>(null)
 
   useEffect(() => {
     fetchSnapshot()
@@ -91,6 +94,20 @@ export default function AftermarketPage() {
     () => calcWatchlistBubbles(stockHistory, watchlistCodes, stockIndexByCode),
     [stockHistory, watchlistCodes, stockIndexByCode],
   )
+
+  // Ghost：只在自選股模式且已聚焦某泡泡時才需要 concept-sectors.json，動態 import 避免影響一般使用者的 JS bundle
+  useEffect(() => {
+    if (sectorSource !== 'watchlist' || !focusedWatchlistBubble || conceptStockMap) return
+    import('@/data/concept-sectors.json').then(mod => setConceptStockMap((mod.default ?? mod).stocks ?? {}))
+  }, [sectorSource, focusedWatchlistBubble, conceptStockMap])
+
+  const ghostBubbles = useMemo(() => {
+    if (sectorSource !== 'watchlist' || !focusedWatchlistBubble || !conceptStockMap) return []
+    const code = focusedWatchlistBubble.stocks[0]?.code
+    if (!code) return []
+    const peers = getGhostPeers(code, conceptStockMap, stockHistory, 8)
+    return calcWatchlistBubbles(stockHistory, peers, stockIndexByCode)
+  }, [sectorSource, focusedWatchlistBubble, conceptStockMap, stockHistory, stockIndexByCode])
 
   // P2-1/P2-5：產業板塊分類來源切換（官方 sector / 概念股 / 自選股，一股多概念）
   const activeSectors =
@@ -336,6 +353,8 @@ export default function AftermarketPage() {
                       sectors={activeSectors}
                       onBubbleClick={s => setActiveSector(s)}
                       frameDates={frameDates}
+                      onFocusChange={setFocusedWatchlistBubble}
+                      ghostBubbles={ghostBubbles}
                     />
                   )
                 ) : (

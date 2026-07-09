@@ -66,3 +66,30 @@ export function calcWatchlistBubbles(
 
   return bubbles
 }
+
+// P2-5 Ghost：找出跟 focusedCode 同概念、資金動能最大的前 N 支個股（不含自己），
+// 只用該股「第一個」概念（一股多概念時的簡化取捨，避免陪跑名單受多概念交叉影響）
+export function getGhostPeers(
+  focusedCode: string,
+  conceptStockMap: Record<string, string[]>,
+  stockHistory: StockHistoryDay[],
+  cap = 8,
+): string[] {
+  const concepts = conceptStockMap[focusedCode]
+  if (!concepts?.length) return []
+  const primaryConcept = concepts[0]
+
+  const todayByCode = Object.fromEntries(
+    (stockHistory[0]?.stocks ?? []).map(s => [s.code, s]),
+  )
+
+  return Object.entries(conceptStockMap)
+    .filter(([code, cs]) => code !== focusedCode && cs.includes(primaryConcept))
+    .map(([code]) => ({
+      code,
+      activity: Math.abs(todayByCode[code]?.net ?? 0) + Math.abs(todayByCode[code]?.buySell ?? 0),
+    }))
+    .sort((a, b) => b.activity - a.activity)
+    .slice(0, cap)
+    .map(p => p.code)
+}

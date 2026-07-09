@@ -33,5 +33,7 @@
   "lib/calcWatchlistBubbles.ts": ["P2-5 自選股泡泡 X/Y/size/trail 算法，與 lib/calcSectors.ts::calcSectors 必須維持同一套公式（只有分組單位不同：單一個股 vs 預聚合板塊）"],
   "lib/watchlist.ts": ["觀察清單 localStorage 讀寫 + useWatchlist hook；StockTable/StockDetailSheet/page.tsx 三處共用，用 CustomEvent 同步同分頁內狀態"],
   "lib/fetchStockHistory.ts": ["P2-5 lazy fetch stock-history.json，module-level cache；跟 fetchStockOHLC.ts 同一套模式"],
-  "app/aftermarket/page.tsx::sectorSource-watchlist": ["自選股模式：QuadrantSummary 故意跳過（逆勢買超概念不適用個股）；stockHistory 只在切進此模式才 fetch；watchlistCodes 空清單顯示引導文字而非空泡泡圖"]
+  "app/aftermarket/page.tsx::sectorSource-watchlist": ["自選股模式：QuadrantSummary 故意跳過（逆勢買超概念不適用個股）；stockHistory 只在切進此模式才 fetch；watchlistCodes 空清單顯示引導文字而非空泡泡圖"],
+  "lib/calcWatchlistBubbles.ts::getGhostPeers": ["Ghost 陪跑名單：只取 focusedCode 的第一個概念、依當日活動量排序前 cap 支；conceptStockMap 沒有該股（不在概念分類名單）時回傳 []"],
+  "components/bubble/BubbleChart.tsx::onFocusChange/ghostBubbles": ["Ghost overlay 疊在主角回放軌跡下方；ghostBubbles 的 trail 長度假設與主角來自同一個 stockHistory（否則 replayStep 對不齊）；onFocusChange 用 useEffect 監聽 focused state 變化，只依賴 [focused]，故意不含 focusedBubble 避免無窮迴圈"]
 }

@@ -7,6 +7,10 @@ interface Props {
   onBubbleClick: (sector: SectorBubble) => void
   // 回放日期標籤：sectorHistory 日期（newest first）。path[i] 的日期 = frameDates[trailLen - i]
   frameDates?: string[]
+  // P2-5：目前聚焦的泡泡改變時通知外部（watchlist 模式用來算 ghost 陪跑名單）
+  onFocusChange?: (sector: SectorBubble | null) => void
+  // P2-5 Ghost：回放時跟著聚焦泡泡一起動的半透明陪跑泡泡（同概念股），trail 長度須與 sectors 來源一致
+  ghostBubbles?: SectorBubble[]
 }
 
 const QUADRANTS = [
@@ -119,7 +123,7 @@ function resolveCollisions(
   return p
 }
 
-export default function BubbleChart({ sectors, onBubbleClick, frameDates }: Props) {
+export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocusChange, ghostBubbles }: Props) {
   const [zoom, setZoom] = useState<QuadrantId>(null)
   const [top15Active, setTop15Active] = useState(false)
   const [hovered, setHovered] = useState<string | null>(null)
@@ -311,6 +315,12 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates }: Prop
     ? resolvedBubbles.find(b => b.s.sectorName === focused) ?? null
     : null
 
+  // P2-5：通知外部目前聚焦的泡泡（watchlist 模式用來算 ghost 陪跑名單）
+  useEffect(() => {
+    onFocusChange?.(focusedBubble?.s ?? null)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focused])
+
   // 回放路徑：trail（oldest first）+ 今日 collision 後位置
   const focusedPath = useMemo(() => {
     if (!focusedBubble) return []
@@ -319,6 +329,16 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates }: Prop
   }, [focusedBubble, zoom, xRange, yRange])
 
   const trailLen = focusedPath.length - 1
+
+  // P2-5 Ghost：同概念陪跑泡泡的回放路徑，算法與 focusedPath 相同（trail 長度取決於 stockHistory，跟主角一致）
+  const ghostPaths = useMemo(() => {
+    if (!ghostBubbles?.length) return []
+    return ghostBubbles.map(g => {
+      const pts = (g.trail ?? []).map(p => toSVG(symX(p.x), p.y, zoom, xRange, yRange))
+      const todayPt = toSVG(symX(g.x), g.y, zoom, xRange, yRange)
+      return { bubble: g, path: [...pts, todayPt] }
+    })
+  }, [ghostBubbles, zoom, xRange, yRange])
 
   // 自動步進（oldest → today）
   useEffect(() => {
@@ -558,6 +578,33 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates }: Prop
               </g>
             )
           })}
+
+        {/* P2-5 Ghost：同概念陪跑泡泡，半透明、不可互動，同步 replayStep 一起動 */}
+        {focusedBubble && replayStep !== null && ghostPaths.map(({ bubble: g, path }) => {
+          const gr = bubbleRadius(g.size, maxSize)
+          const pos = path[Math.min(replayStep, path.length - 1)]
+          return (
+            <g key={g.sectorName} style={{ pointerEvents: 'none' }} opacity={0.35}>
+              {path.slice(0, Math.max(replayStep, 0)).map((pt, i) => {
+                const next = path[i + 1]
+                return (
+                  <line key={i}
+                    x1={pt.px} y1={pt.py} x2={next.px} y2={next.py}
+                    stroke="#94a3b8" strokeWidth={1} strokeLinecap="round" opacity={0.5}
+                  />
+                )
+              })}
+              <g style={{ transform: `translate(${pos.px}px, ${pos.py}px)`, transition: 'transform 600ms ease-in-out' }}>
+                <circle r={gr} fill="#94a3b8" stroke="#94a3b8" strokeWidth={1} opacity={0.5} />
+                {gr >= 14 && (
+                  <text y={3} fontSize={7} fill="#475569" textAnchor="middle" fontWeight="600">
+                    {shortName(g.sectorName)}
+                  </text>
+                )}
+              </g>
+            </g>
+          )
+        })}
 
         {/* 聚焦回放 overlay：軌跡漸進繪出 + 主角泡泡沿路徑移動 */}
         {focusedBubble && replayStep !== null && (() => {
