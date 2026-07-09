@@ -33,7 +33,8 @@ export interface MarketSignals {
   updatedAt: string
   nDays: number         // 計算基準天數（後端固定，前端可 override）
   todayIndex: number
-  todayMargin: number | null   // 億元；indexHistory 缺資料時為 null
+  todayMargin: number | null   // 億元；找不到任何歷史融資資料時為 null
+  todayMarginDate?: string | null  // todayMargin 實際來源日期（今天融資還沒出來時會 fallback 用最近一筆，日期會早於今天）
 
   // 正向：從最高點下跌
   peakDate: string

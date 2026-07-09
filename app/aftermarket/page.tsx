@@ -40,6 +40,7 @@ export default function AftermarketPage() {
   const { codes: watchlistCodes } = useWatchlist()
   const [stockHistory, setStockHistory] = useState<StockHistoryDay[]>([])
   const [stockHistoryLoading, setStockHistoryLoading] = useState(false)
+  const [stockHistoryFetched, setStockHistoryFetched] = useState(false)
   // Ghost：同概念陪跑泡泡。conceptStockMap 是 code -> 概念[] 的靜態資料，動態 import 才不會讓一般使用者也下載到
   const [conceptStockMap, setConceptStockMap] = useState<Record<string, string[]> | null>(null)
   const [focusedWatchlistBubble, setFocusedWatchlistBubble] = useState<SectorBubble | null>(null)
@@ -77,14 +78,18 @@ export default function AftermarketPage() {
   }
 
   // P2-5：進入自選股模式才 lazy fetch stock-history.json（module-level cache，之後切換不重抓）
+  // 用 stockHistoryFetched 標記「已經嘗試過」，不管成功或失敗都不再重試——
+  // 原本用 stockHistory.length/stockHistoryLoading 當條件，fetch 失敗時 loading 會被設回 false，
+  // 導致 effect 依賴陣列變化又重新觸發，形成無限迴圈（畫面一直閃爍）
   useEffect(() => {
-    if (sectorSource !== 'watchlist' || stockHistory.length > 0 || stockHistoryLoading) return
+    if (sectorSource !== 'watchlist' || stockHistoryFetched) return
+    setStockHistoryFetched(true)
     setStockHistoryLoading(true)
     fetchStockHistory()
       .then(setStockHistory)
       .catch(e => console.warn('[stockHistory] 載入失敗：', e.message))
       .finally(() => setStockHistoryLoading(false))
-  }, [sectorSource, stockHistory.length, stockHistoryLoading])
+  }, [sectorSource, stockHistoryFetched])
 
   const stockIndexByCode = useMemo(
     () => Object.fromEntries(data.stocks.map(s => [s.code, s])),
@@ -139,7 +144,11 @@ export default function AftermarketPage() {
 
     const todayBar = slice[0]
     const todayIndex = todayBar.close
-    const todayMargin = todayBar.chips?.margin_amount ?? null
+    // 融資通常傍晚後才發布，白天使用時「今天」大多還沒有值——往前找最近一筆有資料的日期當作顯示值，
+    // 而不是整天顯示「資料累積中」；todayMarginDate 讓前端能標示這是哪一天的數字，避免誤會成當天數字
+    const marginBar = history.find(d => d.chips?.margin_amount != null)
+    const todayMargin = marginBar?.chips?.margin_amount ?? null
+    const todayMarginDate = marginBar?.date ?? null
 
     let peakBar = slice[0]
     let troughBar = slice[0]
@@ -168,6 +177,7 @@ export default function AftermarketPage() {
       nDays: n,
       todayIndex,
       todayMargin,
+      todayMarginDate,
       peakDate:    peakBar.date,
       peakIndex,
       peakMargin,
@@ -197,7 +207,10 @@ export default function AftermarketPage() {
       <div className="sticky top-0 z-40 bg-white shadow-sm">
         {/* Navbar */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-          <span className="font-extrabold text-blue-600 text-base tracking-tight">StockView</span>
+          <div className="flex items-center gap-2">
+            <span className="font-extrabold text-blue-600 text-base tracking-tight">StockView</span>
+            <a href="/review" className="text-slate-300 hover:text-slate-500 text-sm" title="審核與維護">⚙️</a>
+          </div>
           {!loading && data.updatedAt && (() => {
             const klineDate = data.indexHistory?.[0]?.date ?? null
             const stocksPending = klineDate && data.stocksDate && data.stocksDate < klineDate

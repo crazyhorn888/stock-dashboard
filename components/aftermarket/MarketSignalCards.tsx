@@ -24,6 +24,8 @@ export default function MarketSignalCards({ signals: s }: Props) {
   const posTriggered = s.posTriggered
   const negTriggered = s.negTriggered
   const hasMargin    = s.todayMargin != null
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' })
+  const marginIsStale = hasMargin && !!s.todayMarginDate && s.todayMarginDate !== todayStr
   const n = s.nDays
   const [modal, setModal] = useState<'pos' | 'neg' | null>(null)
 
@@ -47,7 +49,9 @@ export default function MarketSignalCards({ signals: s }: Props) {
           </div>
         </div>
         <div className="bg-slate-50 rounded-lg p-2.5">
-          <div className="text-[10px] text-slate-400 mb-0.5">融資餘額</div>
+          <div className="text-[10px] text-slate-400 mb-0.5">
+            融資餘額{marginIsStale && s.todayMarginDate ? `（${s.todayMarginDate.slice(5).replace('-', '/')}）` : ''}
+          </div>
           {hasMargin ? (
             <>
               <div className="text-base font-extrabold text-slate-800 tabular-nums">
@@ -141,7 +145,7 @@ export default function MarketSignalCards({ signals: s }: Props) {
                 <Row label="今日大盤" value={`${s.todayIndex.toLocaleString()} 點`} />
                 <Row label="大盤減幅" value={`▼ ${s.indexDropPct.toFixed(2)}%`} color="text-green-600" />
                 <Row label="最高點融資餘額" value={fmt(s.peakMargin, ' 億')} color={s.peakMargin != null ? 'text-blue-600' : 'text-slate-400'} />
-                <Row label="今日融資餘額" value={fmt(s.todayMargin, ' 億')} />
+                <Row label={marginIsStale ? `融資餘額（${s.todayMarginDate?.slice(5).replace('-','/')}）` : "今日融資餘額"} value={fmt(s.todayMargin, ' 億')} />
                 <Row label="融資減幅" value={s.marginDropPct != null ? `▼ ${fmtPct(s.marginDropPct)}` : '—'} color="text-green-600" />
                 {s.posGapPct != null ? (
                   <>
@@ -171,7 +175,7 @@ export default function MarketSignalCards({ signals: s }: Props) {
                 <Row label="今日大盤" value={`${s.todayIndex.toLocaleString()} 點`} />
                 <Row label="大盤增幅" value={`▲ ${s.indexRisePct.toFixed(2)}%`} color="text-red-500" />
                 <Row label="最低點融資餘額" value={fmt(s.troughMargin, ' 億')} color={s.troughMargin != null ? 'text-blue-600' : 'text-slate-400'} />
-                <Row label="今日融資餘額" value={fmt(s.todayMargin, ' 億')} />
+                <Row label={marginIsStale ? `融資餘額（${s.todayMarginDate?.slice(5).replace('-','/')}）` : "今日融資餘額"} value={fmt(s.todayMargin, ' 億')} />
                 <Row label="融資增幅" value={s.marginRisePct != null ? `▲ ${fmtPct(s.marginRisePct)}` : '—'} color="text-red-500" />
                 {s.negGapPct != null ? (
                   <>
