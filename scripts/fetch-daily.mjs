@@ -148,7 +148,8 @@ function parseNum(v) {
  * 查不到才退回最新 close（近似值，僅發生在極少數缺歷史的個股）。
  */
 // P2-1：conceptMap 為 code -> 概念名稱陣列（一股多概念），與官方 sector 分組共用同一份 T86 response，
-// 不需額外呼叫 TWSE。回傳 { sectorRows, conceptRows }，conceptMap 未傳入時 conceptRows 為 []
+// 不需額外呼叫 TWSE。回傳 { sectorRows, conceptRows, stockRows }，conceptMap 未傳入時 conceptRows 為 []
+// P2-5：stockRows 是當日全部 T86 活躍個股的扁平清單（含 buySell），供 stockHistory 累積、watchlist 泡泡回放用
 async function fetchT86Sectors(dateYYYYMMDD, dateISO, stockMap, conceptMap = {}) {
   const url = `https://www.twse.com.tw/rwd/zh/fund/T86?response=json&date=${dateYYYYMMDD}&selectType=ALL`
   try {
@@ -157,6 +158,7 @@ async function fetchT86Sectors(dateYYYYMMDD, dateISO, stockMap, conceptMap = {})
 
     const groups = {}        // sectorName → { net, buySell, stocks[] }
     const conceptGroups = {} // conceptName → { net, buySell, stocks[] }
+    const stockRows = []     // 當日全部 T86 活躍個股（扁平，一股一筆）
     const r2 = v => Math.round(v * 100) / 100
 
     for (const row of d.data) {
@@ -197,6 +199,8 @@ async function fetchT86Sectors(dateYYYYMMDD, dateISO, stockMap, conceptMap = {})
         conceptGroups[conceptName].buySell += buySell
         conceptGroups[conceptName].stocks.push(stockEntry)
       }
+
+      stockRows.push({ ...stockEntry, buySell })
     }
 
     const toRows = groupMap => Object.entries(groupMap).map(([name, v]) => ({
@@ -209,7 +213,7 @@ async function fetchT86Sectors(dateYYYYMMDD, dateISO, stockMap, conceptMap = {})
     const sectorRows = toRows(groups)
     const conceptRows = toRows(conceptGroups)
     console.log(`[daily] T86 分組：${sectorRows.length} 個板塊、${conceptRows.length} 個概念，${sectorRows.reduce((s, r) => s + r.stocks.length, 0)} 支個股`)
-    return sectorRows.length > 0 ? { sectorRows, conceptRows } : null
+    return sectorRows.length > 0 ? { sectorRows, conceptRows, stockRows } : null
   } catch (e) {
     console.warn('[daily] T86 抓取失敗:', e.message)
     return null
@@ -342,6 +346,20 @@ async function downloadSnapshot() {
   const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
   if (!res.ok) throw new Error(`無法下載現有快照：HTTP ${res.status}（請先執行 seed-history.mjs → write-firebase.mjs）`)
   return res.json()
+}
+
+// P2-5：獨立 lazy-load 檔（不進 market.json，避免首屏變大），只在使用者開「自選股模式」時才被前端下載
+async function downloadStockHistory() {
+  const supabaseUrl = process.env.SUPABASE_URL
+  try {
+    const res = await fetch(`${supabaseUrl}/storage/v1/object/public/snapshots/stock-history.json`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    })
+    if (!res.ok) return []
+    return (await res.json()).stockHistory ?? []
+  } catch {
+    return []  // 首次執行，檔案還不存在
+  }
 }
 
 // ── TWSE 今日股價（全市場，用 OpenAPI，Guard 2 已確認今日資料存在）──────
@@ -718,17 +736,21 @@ async function main() {
   // 直接丟棄，缺的天數由下方 5b 回補機制自動用新單位重抓
   let sectorHistory  = (snapshot.sectorHistory  ?? []).filter(d => d.unit === 'yi')
   let conceptHistory = (snapshot.conceptHistory ?? []).filter(d => d.unit === 'yi')
+  // P2-5：stockHistory 獨立存在 stock-history.json（lazy-load），不在 latest.json/snapshot 裡，另外下載
+  let stockHistory = (await downloadStockHistory()).filter(d => d.unit === 'yi')
 
-  // 5a. 今日 T86（同一份 response 同時產出官方分組與概念分組，不額外呼叫 TWSE）
+  // 5a. 今日 T86（同一份 response 同時產出官方分組、概念分組、個股扁平清單，不額外呼叫 TWSE）
   const t86Today = await fetchT86Sectors(todayYYYYMMDD, today, stockMap, conceptStockMap)
   if (t86Today) {
     const filtered  = sectorHistory.filter(d => d.date !== today)
     sectorHistory  = [{ date: today, unit: 'yi', rows: t86Today.sectorRows }, ...filtered].slice(0, 25)
     const filteredC = conceptHistory.filter(d => d.date !== today)
     conceptHistory = [{ date: today, unit: 'yi', rows: t86Today.conceptRows }, ...filteredC].slice(0, 25)
-    console.log(`[daily] sectorHistory/conceptHistory 更新今日 ${today}`)
+    const filteredS = stockHistory.filter(d => d.date !== today)
+    stockHistory   = [{ date: today, unit: 'yi', stocks: t86Today.stockRows }, ...filteredS].slice(0, 25)
+    console.log(`[daily] sectorHistory/conceptHistory/stockHistory 更新今日 ${today}`)
   } else {
-    console.warn('[daily] T86 無資料，sectorHistory/conceptHistory 保留舊值')
+    console.warn('[daily] T86 無資料，sectorHistory/conceptHistory/stockHistory 保留舊值')
   }
 
   // 5b. 補齊歷史（若 < 20 天）：從 indexHistory 取得過去交易日，逐日補抓 T86
@@ -747,6 +769,7 @@ async function main() {
         if (t86h) {
           sectorHistory.push({ date, unit: 'yi', rows: t86h.sectorRows })
           conceptHistory.push({ date, unit: 'yi', rows: t86h.conceptRows })
+          stockHistory.push({ date, unit: 'yi', stocks: t86h.stockRows })
           console.log(`[daily]   → ${date}：${t86h.sectorRows.length} 板塊、${t86h.conceptRows.length} 概念`)
         }
       }
@@ -754,6 +777,8 @@ async function main() {
       sectorHistory = sectorHistory.slice(0, 25)
       conceptHistory.sort((a, b) => b.date.localeCompare(a.date))
       conceptHistory = conceptHistory.slice(0, 25)
+      stockHistory.sort((a, b) => b.date.localeCompare(a.date))
+      stockHistory = stockHistory.slice(0, 25)
       console.log(`[daily] sectorHistory 補齊完成，共 ${sectorHistory.length} 天`)
     }
   }
@@ -772,6 +797,7 @@ async function main() {
     sectorHistory,
     sectors,
     conceptHistory,
+    stockHistory,
     concepts,
     marketSignals: snapshot.marketSignals ?? null,
   }

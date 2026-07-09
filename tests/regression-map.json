@@ -27,5 +27,11 @@
   "lib/calcMA.ts::resampleWeekly": ["ISO 週重採樣（週一為週首），台股 K 線與全球指數 Modal 共用；週線 MA120 因資料量不足刻意不提供（見 KlineChart MA_LINES 的 dailyOnly）"],
   "components/aftermarket/KlineChart.tsx": ["台股大盤 K 線 + P2-3 起全球指數 Modal 共用元件；MA 疊線與日/週切換改動要同時驗證兩種呼叫方（indexHistory 全量 vs 全球指數 250 天）"],
   "components/aftermarket/GlobalIndexLights.tsx": ["P2-3 燈號邏輯：找價格低於的最短天期 MA；紅=偏多（在均線之上）、綠=偏空（在均線之下），對應台股紅漲綠跌慣例"],
-  "scripts/write-firebase.mjs::globalIndices": ["讀 Supabase 上的 global-indices.json 併進 market.json，不在本 pipeline 呼叫 Yahoo；讀取失敗時 globalIndices 留空物件，前端會整塊隱藏"]
+  "scripts/write-firebase.mjs::globalIndices": ["讀 Supabase 上的 global-indices.json 併進 market.json，不在本 pipeline 呼叫 Yahoo；讀取失敗時 globalIndices 留空物件，前端會整塊隱藏"],
+  "scripts/fetch-daily.mjs::stockHistory": ["P2-5 個股歷史（stock-history.json 來源）；與 sectorHistory/conceptHistory 用同一份 T86 response 同步累積，25天滾動、5b回補邏輯必須三者同步增減，改一處要改三處"],
+  "scripts/write-firebase.mjs::stock-history.json": ["P2-5 獨立 lazy-load 檔，刻意不併入 market.json（避免首屏變大）；前端只在開自選股模式才會 fetch"],
+  "lib/calcWatchlistBubbles.ts": ["P2-5 自選股泡泡 X/Y/size/trail 算法，與 lib/calcSectors.ts::calcSectors 必須維持同一套公式（只有分組單位不同：單一個股 vs 預聚合板塊）"],
+  "lib/watchlist.ts": ["觀察清單 localStorage 讀寫 + useWatchlist hook；StockTable/StockDetailSheet/page.tsx 三處共用，用 CustomEvent 同步同分頁內狀態"],
+  "lib/fetchStockHistory.ts": ["P2-5 lazy fetch stock-history.json，module-level cache；跟 fetchStockOHLC.ts 同一套模式"],
+  "app/aftermarket/page.tsx::sectorSource-watchlist": ["自選股模式：QuadrantSummary 故意跳過（逆勢買超概念不適用個股）；stockHistory 只在切進此模式才 fetch；watchlistCodes 空清單顯示引導文字而非空泡泡圖"]
 }

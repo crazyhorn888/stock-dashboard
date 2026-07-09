@@ -14,7 +14,10 @@ import FreshnessBar from '@/components/shared/FreshnessBar'
 import { calcStockRow } from '@/lib/calcMetrics'
 import { MOCK_DATA } from '@/lib/mockData'
 import { fetchSnapshot } from '@/lib/fetchSnapshot'
-import type { SnapshotData, SectorBubble, StockData, MarketSignals } from '@/lib/types'
+import { fetchStockHistory } from '@/lib/fetchStockHistory'
+import { calcWatchlistBubbles } from '@/lib/calcWatchlistBubbles'
+import { useWatchlist } from '@/lib/watchlist'
+import type { SnapshotData, SectorBubble, StockData, MarketSignals, StockHistoryDay } from '@/lib/types'
 
 const TABS = ['大盤關鍵資料', '產業板塊', '個股清單', '基本面'] as const
 type Tab = typeof TABS[number]
@@ -30,8 +33,12 @@ export default function AftermarketPage() {
   const [activeSector, setActiveSector] = useState<SectorBubble | null>(null)
   const [activeStock, setActiveStock] = useState<StockData | null>(null)
   const [sectorView, setSectorView] = useState<'bubble' | 'ranking'>('bubble')
-  const [sectorSource, setSectorSource] = useState<'official' | 'concept'>('official')
+  const [sectorSource, setSectorSource] = useState<'official' | 'concept' | 'watchlist'>('official')
   const [globalModalKey, setGlobalModalKey] = useState<string | null>(null)
+  // P2-5：觀察清單 + 自選股泡泡回放
+  const { codes: watchlistCodes } = useWatchlist()
+  const [stockHistory, setStockHistory] = useState<StockHistoryDay[]>([])
+  const [stockHistoryLoading, setStockHistoryLoading] = useState(false)
 
   useEffect(() => {
     fetchSnapshot()
@@ -65,9 +72,40 @@ export default function AftermarketPage() {
     setActiveSector(bubble)
   }
 
-  // P2-1：產業板塊分類來源切換（官方 sector / 概念股，一股多概念）
-  const activeSectors = sectorSource === 'official' ? (data.sectors ?? []) : (data.concepts ?? [])
-  const activeSectorHistory = sectorSource === 'official' ? data.sectorHistory : data.conceptHistory
+  // P2-5：進入自選股模式才 lazy fetch stock-history.json（module-level cache，之後切換不重抓）
+  useEffect(() => {
+    if (sectorSource !== 'watchlist' || stockHistory.length > 0 || stockHistoryLoading) return
+    setStockHistoryLoading(true)
+    fetchStockHistory()
+      .then(setStockHistory)
+      .catch(e => console.warn('[stockHistory] 載入失敗：', e.message))
+      .finally(() => setStockHistoryLoading(false))
+  }, [sectorSource, stockHistory.length, stockHistoryLoading])
+
+  const stockIndexByCode = useMemo(
+    () => Object.fromEntries(data.stocks.map(s => [s.code, s])),
+    [data.stocks],
+  )
+
+  const watchlistBubbles = useMemo(
+    () => calcWatchlistBubbles(stockHistory, watchlistCodes, stockIndexByCode),
+    [stockHistory, watchlistCodes, stockIndexByCode],
+  )
+
+  // P2-1/P2-5：產業板塊分類來源切換（官方 sector / 概念股 / 自選股，一股多概念）
+  const activeSectors =
+    sectorSource === 'official'  ? (data.sectors ?? []) :
+    sectorSource === 'concept'   ? (data.concepts ?? []) :
+    watchlistBubbles
+  const activeSectorHistory =
+    sectorSource === 'official'  ? data.sectorHistory :
+    sectorSource === 'concept'   ? data.conceptHistory :
+    stockHistory
+  // QuadrantSummary 的「逆勢買超」概念定義在板塊/概念層級，自選股模式不適用，故只在前兩種模式提供
+  const activeTodayRows =
+    sectorSource === 'official' ? data.sectorHistory?.[0]?.rows :
+    sectorSource === 'concept'  ? data.conceptHistory?.[0]?.rows :
+    undefined
 
   // 聚焦回放的日期標籤：trail 最多 5 點 + 今日 = 6 個日期（newest first）
   const frameDates = useMemo(
@@ -251,19 +289,21 @@ export default function AftermarketPage() {
 
             {activeTab === '產業板塊' && (
               <div className="rounded-xl bg-white shadow-sm overflow-hidden">
-                {/* 四象限統計條（P1-5）：大盤漲跌% 由 indexHistory 前兩根 K 棒推算 */}
-                <QuadrantSummary
-                  sectors={activeSectors}
-                  todayRows={activeSectorHistory?.[0]?.rows}
-                  marketChangePct={(() => {
-                    const [t, p] = data.indexHistory ?? []
-                    return t && p && p.close > 0 ? ((t.close - p.close) / p.close) * 100 : null
-                  })()}
-                />
+                {/* 四象限統計條（P1-5）：大盤漲跌% 由 indexHistory 前兩根 K 棒推算；自選股模式不適用 */}
+                {sectorSource !== 'watchlist' && (
+                  <QuadrantSummary
+                    sectors={activeSectors}
+                    todayRows={activeTodayRows}
+                    marketChangePct={(() => {
+                      const [t, p] = data.indexHistory ?? []
+                      return t && p && p.close > 0 ? ((t.close - p.close) / p.close) * 100 : null
+                    })()}
+                  />
+                )}
 
-                {/* 官方分類 / 概念分類 資料來源切換（P2-1） */}
-                <div className="flex items-center gap-1.5 px-3 pt-2">
-                  {([['official', '官方分類'], ['concept', '概念分類']] as const).map(([v, label]) => (
+                {/* 官方分類 / 概念分類 / 自選股 資料來源切換（P2-1、P2-5） */}
+                <div className="flex items-center gap-1.5 px-3 pt-2 flex-wrap">
+                  {([['official', '官方分類'], ['concept', '概念分類'], ['watchlist', '⭐ 自選股']] as const).map(([v, label]) => (
                     <button
                       key={v}
                       onClick={() => setSectorSource(v)}
@@ -282,36 +322,56 @@ export default function AftermarketPage() {
                   )}
                 </div>
 
-                {/* 泡泡圖 / 排行榜 視圖切換 */}
-                <div className="flex gap-1.5 px-3 py-2">
-                  {([['bubble', '🫧 泡泡圖'], ['ranking', '📋 排行榜']] as const).map(([v, label]) => (
-                    <button
-                      key={v}
-                      onClick={() => setSectorView(v)}
-                      className={[
-                        'px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors',
-                        sectorView === v
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300',
-                      ].join(' ')}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-
-                {sectorView === 'bubble' ? (
-                  <BubbleChart
-                    sectors={activeSectors}
-                    onBubbleClick={s => setActiveSector(s)}
-                    frameDates={frameDates}
-                  />
+                {sectorSource === 'watchlist' ? (
+                  watchlistCodes.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-14 text-slate-400 gap-1">
+                      <div className="text-3xl mb-1">⭐</div>
+                      <p className="text-xs font-medium">還沒有觀察清單</p>
+                      <p className="text-[10px]">到「個股清單」點股票列最左邊的 ★ 加入觀察</p>
+                    </div>
+                  ) : stockHistoryLoading ? (
+                    <div className="py-14 text-center text-xs text-slate-400">個股歷史資料載入中...</div>
+                  ) : (
+                    <BubbleChart
+                      sectors={activeSectors}
+                      onBubbleClick={s => setActiveSector(s)}
+                      frameDates={frameDates}
+                    />
+                  )
                 ) : (
-                  <SectorRanking
-                    sectors={activeSectors}
-                    allStocks={data.stocks}
-                    onSectorClick={s => setActiveSector(s)}
-                  />
+                  <>
+                    {/* 泡泡圖 / 排行榜 視圖切換 */}
+                    <div className="flex gap-1.5 px-3 py-2">
+                      {([['bubble', '🫧 泡泡圖'], ['ranking', '📋 排行榜']] as const).map(([v, label]) => (
+                        <button
+                          key={v}
+                          onClick={() => setSectorView(v)}
+                          className={[
+                            'px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors',
+                            sectorView === v
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300',
+                          ].join(' ')}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {sectorView === 'bubble' ? (
+                      <BubbleChart
+                        sectors={activeSectors}
+                        onBubbleClick={s => setActiveSector(s)}
+                        frameDates={frameDates}
+                      />
+                    ) : (
+                      <SectorRanking
+                        sectors={activeSectors}
+                        allStocks={data.stocks}
+                        onSectorClick={s => setActiveSector(s)}
+                      />
+                    )}
+                  </>
                 )}
               </div>
             )}

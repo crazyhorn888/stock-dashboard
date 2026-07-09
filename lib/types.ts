@@ -194,3 +194,19 @@ export interface SectorDayData {
   unit?: 'yi'        // 'yi' = 數值為億元（P1-3 新格式）；缺欄位 = 舊「張」格式，載入時會被丟棄重抓
   rows: SectorDayRow[]
 }
+
+// ── P2-5：個股歷史（stock-history.json，lazy-load，不進 market.json）───────
+export interface StockHistoryEntry {
+  code: string; name: string
+  net: number         // 三大法人淨買超（億元）
+  foreignNet: number
+  trustNet: number
+  dealerNet: number
+  buySell: number      // 買賣合計（億元），watchlist 泡泡的 size 用
+}
+
+export interface StockHistoryDay {
+  date: string
+  unit?: 'yi'
+  stocks: StockHistoryEntry[]  // 當日全部 T86 活躍個股
+}

@@ -5,6 +5,7 @@ import { calcStockRow } from '@/lib/calcMetrics'
 import { fetchOHLCSnapshot, getStockBars, type OHLCBar } from '@/lib/fetchStockOHLC'
 import StockKChart, { type Period } from './StockKChart'
 import ConceptTags from '@/components/shared/ConceptTags'
+import { useWatchlist } from '@/lib/watchlist'
 
 interface Props {
   stock: StockData | null
@@ -21,6 +22,7 @@ const PERIODS: { key: Period; label: string }[] = [
 
 export default function StockDetailSheet({ stock, n, onClose, onConceptClick }: Props) {
   const sheetRef = useRef<HTMLDivElement>(null)
+  const { isWatched, toggle: toggleWatch } = useWatchlist()
   // iOS 15+ Safari compact bottom toolbar (~49px) overlays position:fixed content.
   // visualViewport.height == window.innerHeight on iOS 15+ (toolbar overlays, doesn't shrink).
   // Fix: UA-detect iOS → apply fixed offset to lift sheet above the toolbar.
@@ -94,6 +96,13 @@ export default function StockDetailSheet({ stock, n, onClose, onConceptClick }: 
         {/* Header */}
         <div className="flex items-center justify-between px-4 pb-3 pt-1 border-b border-slate-100">
           <div className="flex items-baseline gap-2">
+            <button
+              onClick={() => toggleWatch(stock.code)}
+              className={isWatched(stock.code) ? 'text-amber-400 text-lg' : 'text-slate-200 hover:text-slate-300 text-lg'}
+              title={isWatched(stock.code) ? '移除觀察' : '加入觀察'}
+            >
+              ★
+            </button>
             <span className="text-blue-600 font-bold text-base">{stock.code}</span>
             <span className="text-slate-800 font-semibold text-sm">{stock.name}</span>
           </div>

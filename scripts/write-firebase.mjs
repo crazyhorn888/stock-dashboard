@@ -138,6 +138,15 @@ async function main() {
   await uploadToSupabase('market.json', JSON.stringify(market))
   console.log('[write] market.json 上傳完成')
 
+  // P2-5：stock-history.json —— 獨立 lazy-load 檔，只在使用者開「自選股模式」才會被前端下載，
+  // 不併入 market.json（個股層級 25 天歷史資料量較大，不該影響首屏載入）
+  const stockHistoryPayload = JSON.stringify({
+    updatedAt: snapshot.updatedAt,
+    stockHistory: snapshot.stockHistory ?? [],
+  })
+  await uploadToSupabase('stock-history.json', stockHistoryPayload)
+  console.log(`[write] stock-history.json 上傳完成（${(snapshot.stockHistory ?? []).length} 天）`)
+
   // 1e. stocks-lite.json（~300KB）：個股清單欄位，不含任何歷史陣列
   const stocksLite = snapshot.stocks.map(({ closes, dates, opens, highs, lows, volumes, ...rest }) => rest)
   await uploadToSupabase('stocks-lite.json', JSON.stringify({ updatedAt: snapshot.updatedAt, stocks: stocksLite }))

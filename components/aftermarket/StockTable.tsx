@@ -2,6 +2,7 @@
 import { useState, useMemo } from 'react'
 import type { StockRow, StockData } from '@/lib/types'
 import ConceptTags from '@/components/shared/ConceptTags'
+import { useWatchlist } from '@/lib/watchlist'
 
 interface Props {
   rows: StockRow[]
@@ -12,6 +13,7 @@ interface Props {
 type SortKey = 'changePercent' | 'highDropPct' | 'lowRisePct' | 'pe' | 'eps' | 'foreignNetBuy'
 
 export default function StockTable({ rows, onStockClick, onConceptClick }: Props) {
+  const { isWatched, toggle: toggleWatch } = useWatchlist()
   const [query, setQuery] = useState('')
   const [industry, setIndustry] = useState('全部')
   const [sortKey, setSortKey] = useState<SortKey>('highDropPct')
@@ -71,6 +73,7 @@ export default function StockTable({ rows, onStockClick, onConceptClick }: Props
         <table className="w-full text-xs border-collapse">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50">
+              <th className="px-2 py-2 text-left text-xs font-semibold text-slate-400 whitespace-nowrap">⭐</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 whitespace-nowrap">代號</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400">名稱</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400">收盤</th>
@@ -107,6 +110,15 @@ export default function StockTable({ rows, onStockClick, onConceptClick }: Props
                   className="border-b border-slate-100 hover:bg-blue-50 transition-colors cursor-pointer"
                   onClick={() => onStockClick?.(r)}
                 >
+                  <td className="px-2 py-2">
+                    <button
+                      onClick={e => { e.stopPropagation(); toggleWatch(r.code) }}
+                      className={isWatched(r.code) ? 'text-amber-400' : 'text-slate-200 hover:text-slate-300'}
+                      title={isWatched(r.code) ? '移除觀察' : '加入觀察'}
+                    >
+                      ★
+                    </button>
+                  </td>
                   <td className="px-3 py-2 font-bold text-blue-600">{r.code}</td>
                   <td className="px-3 py-2 text-slate-700">{r.name}</td>
                   <td className="px-3 py-2 text-slate-700">{r.close.toLocaleString()}</td>
