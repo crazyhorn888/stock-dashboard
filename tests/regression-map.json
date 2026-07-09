@@ -12,6 +12,7 @@
   "data/concept-sectors.json": ["一股多概念分類資料正本；fetch-daily.mjs 在模組載入時同步讀取，格式跑掉會讓整個 pipeline 起不來"],
   "scripts/calc-signals.mjs": ["市場訊號（融資增減幅等）→ Firestore；/signals 頁與訊號卡"],
   "scripts/write-firebase.mjs": ["latest.json / ohlc.json / meta.json 上傳；meta.json 欄位是 Guard 1 與 P1-6 鮮度標示的依據；market.json 的 conceptHistory 剝離規則需與 sectorHistory 一致（day0 才留 stocks）"],
+  "scripts/write-firebase.mjs::uploadToSupabase-retry": ["2026-07-09 加的重試機制（3次，間隔3/6秒）；Supabase/Cloudflare 偶發暫時性400/5xx，重試可吸收掉大部分，減少GitHub Actions失敗信；改動這裡要保留『最後一次失敗才真的throw』的邏輯，不要變成第一次失敗就丟"],
   "components/bubble/BubbleChart.tsx::symX": ["symlog 座標轉換；改動影響泡泡位置、trail、刻度全部"],
   "components/bubble/BubbleChart.tsx::toSVG": ["座標映射與象限縮放"],
   "components/bubble/BubbleChart.tsx::focusReplay": ["Tide 式聚焦回放：首頁不得出現常駐軌跡線；點泡泡→聚焦小卡；回放路徑 = trail+今日，日期 = frameDates[trailLen - step]"],

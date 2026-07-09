@@ -74,25 +74,41 @@ initializeApp({ credential: cert(serviceAccount) })
 const db = getFirestore()
 
 // ── 上傳檔案到 Supabase Storage ──────────────────────
+// 2026-07-09：加重試——Supabase/Cloudflare 偶爾會回暫時性 400/5xx（跟程式碼、payload 內容無關，
+// 手動重送同樣的 payload 就成功過），重試 3 次可以吸收掉大部分這種雜訊，減少 GitHub Actions 失敗信
 async function uploadToSupabase(path, body, contentType = 'application/json', cacheControl = 'no-cache') {
   const SUPABASE_URL = process.env.SUPABASE_URL
   const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) throw new Error('SUPABASE_URL / SUPABASE_SERVICE_KEY 未設定')
 
   const url = `${SUPABASE_URL}/storage/v1/object/snapshots/${path}`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-      'Content-Type': contentType,
-      'x-upsert': 'true',
-      'cache-control': cacheControl,
-    },
-    body,
-  })
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Supabase 上傳失敗（${path}）：${res.status} ${err}`)
+  const maxAttempts = 3
+  let lastErr = ''
+  let lastStatus = 0
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+        'Content-Type': contentType,
+        'x-upsert': 'true',
+        'cache-control': cacheControl,
+      },
+      body,
+    })
+    if (res.ok) {
+      if (attempt > 1) console.log(`[write] ${path} 上傳在第 ${attempt} 次重試後成功`)
+      break
+    }
+    lastStatus = res.status
+    lastErr = await res.text()
+    if (attempt < maxAttempts) {
+      console.warn(`[write] ${path} 上傳失敗（第 ${attempt} 次，${lastStatus}），${attempt * 3} 秒後重試...`)
+      await new Promise(r => setTimeout(r, attempt * 3000))
+    } else {
+      throw new Error(`Supabase 上傳失敗（${path}，已重試 ${maxAttempts} 次）：${lastStatus} ${lastErr}`)
+    }
   }
   return `${SUPABASE_URL}/storage/v1/object/public/snapshots/${path}`
 }
