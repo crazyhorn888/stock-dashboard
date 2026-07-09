@@ -157,5 +157,11 @@
     "逆勢買超小卡從純顯示改成可點擊按鈕，counterTrendList 從單純 count 改成完整 {name,net} 陣列並按 net 降冪排序",
     "點板塊列會用 sectors.find(s => s.sectorName === name) 反查 SectorBubble 物件再呼叫 onSectorClick，若 sectors 陣列不含該板塊（理論上不會發生，因為 todayRows 與 sectors 同源）則不會有反應",
     "onSectorClick 為 optional prop，呼叫端在 app/aftermarket/page.tsx 用 onSectorClick={s => setActiveSector(s)} 接上既有 SectorPanel 開啟邏輯"
+  ],
+  "components/aftermarket/GlobalIndexLights.tsx::dateLabel": [
+    "每個指數列固定顯示自己 bars[0].date 的 MM/DD（非條件式判斷是否過期）——因為美股收盤是台北時間隔夜資料，跟台北當日比對『是否過期』本身沒有意義，US indices 幾乎永遠會被誤判成落後一天，故改成一律顯示日期讓使用者自行判斷，不做 stale 二元判斷"
+  ],
+  "app/aftermarket/page.tsx::sectorDataIsStale": [
+    "板塊/概念泡泡圖(BubbleChart)/象限統計(QuadrantSummary)/排行榜(SectorRanking) 共用同一組 activeSectorHistory，T86 若當天沒有新資料 fetch-daily.mjs 只會 log 警告、不會阻擋畫面，會靜默沿用前一天資料。新增 sectorDataIsStale（sectorHistory[0].date !== 台北今日）在官方/概念分類 toggle 旁顯示琥珀色提示，自選股模式不適用（無此驗證邏輯）"
   ]
 }

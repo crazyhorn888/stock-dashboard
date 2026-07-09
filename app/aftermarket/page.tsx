@@ -130,6 +130,11 @@ export default function AftermarketPage() {
     sectorSource === 'concept'  ? data.conceptHistory?.[0]?.rows :
     undefined
 
+  // 板塊/概念資料若非今日（T86 尚未更新），泡泡圖/象限/排行榜會靜默沿用前一天資料，加日期標示避免誤讀
+  const sectorDataDate = (sectorSource === 'official' ? data.sectorHistory : data.conceptHistory)?.[0]?.date ?? null
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' })
+  const sectorDataIsStale = !!sectorDataDate && sectorDataDate !== todayStr
+
   // 聚焦回放的日期標籤：trail 最多 5 點 + 今日 = 6 個日期（newest first）
   const frameDates = useMemo(
     () => (activeSectorHistory ?? []).slice(0, 6).map(d => d.date),
@@ -352,6 +357,11 @@ export default function AftermarketPage() {
                   ))}
                   {sectorSource === 'concept' && (
                     <span className="text-[10px] text-slate-400 ml-1">一股可能屬於多個概念，資金會重複計算</span>
+                  )}
+                  {sectorSource !== 'watchlist' && sectorDataIsStale && sectorDataDate && (
+                    <span className="text-[10px] text-amber-500 ml-1">
+                      板塊資料（{sectorDataDate.slice(5).replace('-', '/')}）尚未更新至今日
+                    </span>
                   )}
                 </div>
 

@@ -47,7 +47,10 @@ export default function GlobalIndexLights({ indices, onSelect }: Props) {
             className="flex items-center gap-1 text-[11px] text-slate-600 hover:text-blue-600 text-left"
           >
             <span className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${r.belowPeriod != null ? 'bg-green-500' : 'bg-red-500'}`} />
-            <span className="truncate">{r.name} {r.belowPeriod != null ? `位在 ${r.belowPeriod} 日線以下` : '偏多'}</span>
+            <span className="truncate">
+              {r.name} {r.belowPeriod != null ? `位在 ${r.belowPeriod} 日線以下` : '偏多'}
+              <span className="text-slate-300"> ({r.date.slice(5).replace('-', '/')})</span>
+            </span>
           </button>
         ))}
       </div>
