@@ -330,6 +330,7 @@ export default function AftermarketPage() {
                       const [t, p] = data.indexHistory ?? []
                       return t && p && p.close > 0 ? ((t.close - p.close) / p.close) * 100 : null
                     })()}
+                    onSectorClick={s => setActiveSector(s)}
                   />
                 )}
 

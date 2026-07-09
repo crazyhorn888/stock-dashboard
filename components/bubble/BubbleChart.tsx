@@ -486,11 +486,11 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
           stroke="#94a3b8" strokeWidth={0.8}
         />
 
-        {/* Axis labels */}
-        <text x={W - PAD.right - 2} y={H - 6}  fontSize={8} fill="#94a3b8" textAnchor="end">買超（億/日）→</text>
-        <text x={PAD.left + 2}       y={H - 6}  fontSize={8} fill="#94a3b8" textAnchor="start">← 賣超（億/日）</text>
+        {/* Axis labels：軸的意思＋單位，放在軸兩端對應位置 */}
+        <text x={W - PAD.right - 2} y={H - 6}  fontSize={8} fill="#94a3b8" textAnchor="end">X：買超（億/日）→</text>
+        <text x={PAD.left + 2}       y={H - 6}  fontSize={8} fill="#94a3b8" textAnchor="start">← 賣超</text>
         <text x={PAD.left - 2}       y={PAD.top + 8} fontSize={8} fill="#94a3b8" textAnchor="middle"
-          transform={`rotate(-90 ${PAD.left - 12} ${PAD.top + (H - PAD.top - PAD.bottom) / 2})`}>加速 ↑</text>
+          transform={`rotate(-90 ${PAD.left - 12} ${PAD.top + (H - PAD.top - PAD.bottom) / 2})`}>Y：加速指標(%) ↑</text>
         <text x={PAD.left - 2}       y={H - PAD.bottom - 4} fontSize={8} fill="#94a3b8" textAnchor="middle"
           transform={`rotate(-90 ${PAD.left - 12} ${H - PAD.bottom - 40})`}>↓ 放緩</text>
 
@@ -504,6 +504,20 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
             <g key={`xtick-${v}`}>
               <line x1={px} y1={zeroSVG.py - 2} x2={px} y2={zeroSVG.py + 2} stroke="#cbd5e1" strokeWidth={0.6} />
               <text x={px} y={zeroSVG.py + 9} fontSize={6} fill="#b6c2d1" textAnchor="middle">{v > 0 ? `+${v}` : v}</text>
+            </g>
+          )
+        })}
+
+        {/* Y 軸刻度（加速指標，%）：線性軸，只渲染落在目前範圍內的刻度 */}
+        {[-100, -50, -20, -10, 10, 20, 50, 100].map(pct => {
+          const v = pct / 100
+          if (v < yRange[0] || v > yRange[1]) return null
+          const { py } = toSVG(0, v, zoom, xRange, yRange)
+          if (py < PAD.top + 6 || py > H - PAD.bottom - 6) return null
+          return (
+            <g key={`ytick-${pct}`}>
+              <line x1={zeroSVG.px - 2} y1={py} x2={zeroSVG.px + 2} y2={py} stroke="#cbd5e1" strokeWidth={0.6} />
+              <text x={zeroSVG.px + 4} y={py + 2} fontSize={6} fill="#b6c2d1" textAnchor="start">{pct > 0 ? `+${pct}%` : `${pct}%`}</text>
             </g>
           )
         })}

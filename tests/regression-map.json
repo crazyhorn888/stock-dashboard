@@ -1,52 +1,161 @@
 {
-  "scripts/fetch-daily.mjs::isAlreadyDoneToday": ["Guard 1 冪等判斷（meta.json 快路徑 + latest.json fallback）；誤判 true 會漏更新、誤判 false 只是多跑"],
-  "scripts/fetch-daily.mjs::isTradingDay": ["Guard 2 交易日判斷（FMTQIK 有無今日 K 棒）；假日誤放行浪費配額"],
-  "scripts/fetch-daily.mjs::buildChipsEntry": ["籌碼面板全部欄位；phase1=null 時的 partial entry 路徑（融資先就緒情境）"],
-  "scripts/fetch-daily.mjs::sdaIsToday": ["2026-07-09 修過的坑：STOCK_DAY_ALL 判斷改成『比快照 stocksDate 新』而非『剛好等於今天』，否則錯過一次抓取窗口 stocksDate 會永久卡住不動（Franky 回報個股清單卡在07-06才發現）。stocksDate/dates[0] 都要用 sdaDateISO（STOCK_DAY_ALL 實際代表的日期），不能用 today 硬編碼——TPEX 那段（第二個 dates[0]===today）不受影響，維持原樣，TPEX 資料來源沒有這個延遲問題"],
-  "scripts/fetch-daily.mjs::fetchT86Sectors": ["泡泡圖資料源；億元換算（股數×該日收盤價/1e8）；sectorHistory unit='yi' 格式；P2-1 起同一份 T86 response 同時回傳 sectorRows/conceptRows，一股可計入多個概念"],
-  "scripts/fetch-daily.mjs::main::step5": ["sectorHistory/conceptHistory 更新與 25 天回補；舊「張」格式 filter 丟棄邏輯；兩個 history 陣列必須同步增減"],
-  "scripts/guard-check.mjs": ["Actions 前置攔截；誤攔 = 當日資料不更新（保守原則：無法判斷必須放行）"],
-  "scripts/calc-sectors.mjs::calcSectors": ["泡泡圖 X/Y/size/trail 計算（與 lib/calcSectors.ts 邏輯必須一致）；matchFn 參數化供 calcConcepts 共用"],
-  "scripts/calc-sectors.mjs::calcConcepts": ["概念泡泡圖計算，靠 conceptMap（code→概念[]）判斷分組，一股多概念；與 lib/calcSectors.ts::calcConcepts 邏輯必須一致"],
-  "lib/calcSectors.ts::calcSectors": ["泡泡圖 X/Y/size/trail 計算（與 scripts/calc-sectors.mjs 邏輯必須一致）；trail 是聚焦回放的資料源；matchFn 參數化供 calcConcepts 共用"],
-  "lib/calcSectors.ts::calcConcepts": ["概念泡泡圖計算，與 scripts/calc-sectors.mjs::calcConcepts 邏輯必須一致"],
-  "data/concept-sectors.json": ["一股多概念分類資料正本；fetch-daily.mjs 在模組載入時同步讀取，格式跑掉會讓整個 pipeline 起不來"],
-  "scripts/calc-signals.mjs": ["市場訊號（融資增減幅等）→ Firestore；/signals 頁與訊號卡"],
-  "scripts/write-firebase.mjs": ["latest.json / ohlc.json / meta.json 上傳；meta.json 欄位是 Guard 1 與 P1-6 鮮度標示的依據；market.json 的 conceptHistory 剝離規則需與 sectorHistory 一致（day0 才留 stocks）"],
-  "scripts/write-firebase.mjs::uploadToSupabase-retry": ["2026-07-09 加的重試機制（3次，間隔3/6秒）；Supabase/Cloudflare 偶發暫時性400/5xx，重試可吸收掉大部分，減少GitHub Actions失敗信；改動這裡要保留『最後一次失敗才真的throw』的邏輯，不要變成第一次失敗就丟"],
-  "components/bubble/BubbleChart.tsx::symX": ["symlog 座標轉換；改動影響泡泡位置、trail、刻度全部"],
-  "components/bubble/BubbleChart.tsx::toSVG": ["座標映射與象限縮放"],
-  "components/bubble/BubbleChart.tsx::focusReplay": ["Tide 式聚焦回放：首頁不得出現常駐軌跡線；點泡泡→聚焦小卡；回放路徑 = trail+今日，日期 = frameDates[trailLen - step]"],
-  "components/bubble/SectorPanel.tsx": ["板塊個股面板；數值單位顯示（億，toFixed(2)）；P2-2 概念 tag 欄位靠 stockIndex[code].concepts 取得，非 sector.stocks 本身"],
-  "components/shared/ConceptTags.tsx": ["P2-2 一股多概念 tag chips，StockTable/StockDetailSheet/SectorPanel 三處共用；無概念時回傳 null"],
-  "app/aftermarket/page.tsx::handleConceptClick": ["P2-2 點 tag → 從 data.concepts 找對應 SectorBubble 開啟 SectorPanel；concepts 找不到時靜默忽略"],
-  "app/aftermarket/page.tsx::computedSignals": ["前端 N 值重算訊號（不依賴後端 nDays=100）"],
-  "app/aftermarket/page.tsx::sectorSource": ["P2-1 官方分類/概念分類 切換；activeSectors/activeSectorHistory 是 BubbleChart/SectorRanking/QuadrantSummary/frameDates 共用的資料源，改動需同步四處"],
-  "lib/fetchSnapshot.ts": ["快照載入；P1-1 分檔後改動點；P2-1 起 market.json 的 conceptHistory/concepts 也要一併還原"],
-  ".github/workflows/daily-fetch.yml": ["cron 班次、concurrency 排隊、guard 前置 gate；改動需 push main 才生效；P2-3 起 06:07 班次靠 github.event.schedule 字串比對切到 fetch-global-indices job，兩處 cron 字串必須完全一致"],
-  "scripts/fetch-global.mjs": ["P2-3 全球指數獨立輕量腳本；Yahoo Finance chart API 是非官方端點，symbol 或回應格式跑掉會整批悄悄失敗（有 try/catch 保留舊值，不會噴掉整個 run，但要留意 log）"],
-  "lib/calcMA.ts::calcMA": ["MA 計算，lookback 不足回傳 null（KlineChart 據此斷開畫線）；bars 必須 newest first"],
-  "lib/calcMA.ts::resampleWeekly": ["ISO 週重採樣（週一為週首），台股 K 線與全球指數 Modal 共用；週線 MA120 因資料量不足刻意不提供（見 KlineChart MA_LINES 的 dailyOnly）"],
-  "components/aftermarket/KlineChart.tsx": ["台股大盤 K 線 + P2-3 起全球指數 Modal 共用元件；MA 疊線與日/週切換改動要同時驗證兩種呼叫方（indexHistory 全量 vs 全球指數 250 天）"],
-  "components/aftermarket/GlobalIndexLights.tsx": ["P2-3 燈號邏輯：找價格低於的最短天期 MA；紅=偏多（在均線之上）、綠=偏空（在均線之下），對應台股紅漲綠跌慣例；2026-07-09 改 grid-cols-2 固定兩欄，不要改回 flex-wrap（文字長度不一會左右對不齊）"],
-  "components/aftermarket/GlobalIndexModal.tsx": ["2026-07-09 從底部 sheet 改成置中 Modal（比照 MarketSignalCards 的 Modal 寫法）——底部 sheet 在手機瀏覽器會被瀏覽器自己的框架擋住看不到 K 棒點擊後的數值"],
-  "scripts/write-firebase.mjs::globalIndices": ["讀 Supabase 上的 global-indices.json 併進 market.json，不在本 pipeline 呼叫 Yahoo；讀取失敗時 globalIndices 留空物件，前端會整塊隱藏"],
-  "scripts/fetch-daily.mjs::stockHistory": ["P2-5 個股歷史（stock-history.json 來源）；與 sectorHistory/conceptHistory 用同一份 T86 response 同步累積，25天滾動、5b回補邏輯必須三者同步增減，改一處要改三處"],
-  "scripts/write-firebase.mjs::stock-history.json": ["P2-5 獨立 lazy-load 檔，刻意不併入 market.json（避免首屏變大）；前端只在開自選股模式才會 fetch"],
-  "lib/calcWatchlistBubbles.ts": ["P2-5 自選股泡泡 X/Y/size/trail 算法，與 lib/calcSectors.ts::calcSectors 必須維持同一套公式（只有分組單位不同：單一個股 vs 預聚合板塊）"],
-  "lib/watchlist.ts": ["觀察清單 localStorage 讀寫 + useWatchlist hook；StockTable/StockDetailSheet/page.tsx 三處共用，用 CustomEvent 同步同分頁內狀態"],
-  "lib/fetchStockHistory.ts": ["P2-5 lazy fetch stock-history.json，module-level cache；跟 fetchStockOHLC.ts 同一套模式"],
-  "app/aftermarket/page.tsx::sectorSource-watchlist": ["自選股模式：QuadrantSummary 故意跳過（逆勢買超概念不適用個股）；stockHistory 只在切進此模式才 fetch（用 stockHistoryFetched 旗標卡「只嘗試一次」，不可以改回用 stockHistory.length/loading 當條件——fetch 失敗會造成無限重試閃爍，2026-07-09 修過一次）；watchlistCodes 空清單顯示引導文字而非空泡泡圖"],
-  "app/aftermarket/page.tsx::computedSignals-margin": ["融資餘額白天大多還沒發布，todayMargin 會 fallback 找最近一筆有資料的日期（todayMarginDate），不是只看今天這筆 K 棒；MarketSignalCards 靠 todayMarginDate !== 今天日期 判斷要不要在標籤加註日期"],
-  "scripts/write-firebase.mjs::computeDailyBriefFacts": ["P2-4 盤後總結事實統計；必須用未剝離的 snapshot.sectorHistory（非 sectorHistoryLite）計算 top3Performance，否則 yesterdayRows 抓不到 stocks 明細；summary 欄位靠讀舊 daily-brief-facts.json 保留，同日期才沿用，換日重置為 null"],
-  "components/aftermarket/DailyBriefCard.tsx": ["P2-4 盤後總結卡片；summary 為 null 時仍顯示事實統計（AC(b) 前端對應版本），不整塊隱藏"],
-  "n8n_workflow_daily_brief.json": ["P2-4 盤後總結 n8n workflow 備份（ID PdUpW4fqEqBjRBVc）；目前 inactive，Franky 手動測試 activate 後這裡的狀態要回頭更新；LINE 已換成 Email（Outlook credential AANpomatlEG71IKz）；改動走 API PUT 後同樣要 deactivate→activate 清快取"],
-  "lib/reviewAuth.ts": ["P2-6 /review 頁面密碼機制，存在 Supabase 私有 bucket 'review'（非 public，SUPABASE_SERVICE_KEY 才讀得到）；密碼明文存（比照 gym-tracker），不是雜湊"],
-  "app/api/review/confirm/route.ts": ["寫入 confirm-queue.json 供 n8n 輪詢，不是即時 webhook（n8n 沒有對外網域，跟 LINE Bot 事件同一個限制）；items 的 concepts 是完整取代該股全部概念，不是疊加"],
-  "app/review/PendingTab.tsx": ["P2-6 待審核批次 UI；送出的 items 用畫面當下的值（Franky 改過的），不是 AI 原始建議"],
-  "app/review/EditTab.tsx": ["既有分類編輯 UI；儲存時送完整概念陣列（取代該股全部概念）"],
-  "n8n_workflow_concept_review_poller.json": ["P2-6 確認處理 workflow（ID 8gjZEAvqTcGA4OKf），每10分鐘輪詢 confirm-queue.json；『處理並Commit』節點有 git status 安全檢查，concept-sectors.json 若有未 commit 異動會整輪跳過（避免蓋掉其他 session 的工作），這段邏輯改動要非常小心"],
-  "n8n_workflow_concept_monthly_scan.json": ["P2-6 月度掃描 workflow（ID GpXlJvBK97ER09Fd），每月1號09:00；候選股上限30支/月，避免 Email/審核頁面一次太長"],
-  "lib/calcWatchlistBubbles.ts::getGhostPeers": ["Ghost 陪跑名單：只取 focusedCode 的第一個概念、依當日活動量排序前 cap 支；conceptStockMap 沒有該股（不在概念分類名單）時回傳 []"],
-  "components/bubble/BubbleChart.tsx::onFocusChange/ghostBubbles": ["Ghost overlay 疊在主角回放軌跡下方；ghostBubbles 的 trail 長度假設與主角來自同一個 stockHistory（否則 replayStep 對不齊）；onFocusChange 用 useEffect 監聽 focused state 變化，只依賴 [focused]，故意不含 focusedBubble 避免無窮迴圈"]
+  "scripts/fetch-daily.mjs::isAlreadyDoneToday": [
+    "Guard 1 冪等判斷（meta.json 快路徑 + latest.json fallback）；誤判 true 會漏更新、誤判 false 只是多跑"
+  ],
+  "scripts/fetch-daily.mjs::isTradingDay": [
+    "Guard 2 交易日判斷（FMTQIK 有無今日 K 棒）；假日誤放行浪費配額"
+  ],
+  "scripts/fetch-daily.mjs::buildChipsEntry": [
+    "籌碼面板全部欄位；phase1=null 時的 partial entry 路徑（融資先就緒情境）"
+  ],
+  "scripts/fetch-daily.mjs::sdaIsToday": [
+    "2026-07-09 修過的坑：STOCK_DAY_ALL 判斷改成『比快照 stocksDate 新』而非『剛好等於今天』，否則錯過一次抓取窗口 stocksDate 會永久卡住不動（Franky 回報個股清單卡在07-06才發現）。stocksDate/dates[0] 都要用 sdaDateISO（STOCK_DAY_ALL 實際代表的日期），不能用 today 硬編碼——TPEX 那段（第二個 dates[0]===today）不受影響，維持原樣，TPEX 資料來源沒有這個延遲問題"
+  ],
+  "scripts/fetch-daily.mjs::fetchT86Sectors": [
+    "泡泡圖資料源；億元換算（股數×該日收盤價/1e8）；sectorHistory unit='yi' 格式；P2-1 起同一份 T86 response 同時回傳 sectorRows/conceptRows，一股可計入多個概念"
+  ],
+  "scripts/fetch-daily.mjs::main::step5": [
+    "sectorHistory/conceptHistory 更新與 25 天回補；舊「張」格式 filter 丟棄邏輯；兩個 history 陣列必須同步增減"
+  ],
+  "scripts/guard-check.mjs": [
+    "Actions 前置攔截；誤攔 = 當日資料不更新（保守原則：無法判斷必須放行）"
+  ],
+  "scripts/calc-sectors.mjs::calcSectors": [
+    "泡泡圖 X/Y/size/trail 計算（與 lib/calcSectors.ts 邏輯必須一致）；matchFn 參數化供 calcConcepts 共用"
+  ],
+  "scripts/calc-sectors.mjs::calcConcepts": [
+    "概念泡泡圖計算，靠 conceptMap（code→概念[]）判斷分組，一股多概念；與 lib/calcSectors.ts::calcConcepts 邏輯必須一致"
+  ],
+  "lib/calcSectors.ts::calcSectors": [
+    "泡泡圖 X/Y/size/trail 計算（與 scripts/calc-sectors.mjs 邏輯必須一致）；trail 是聚焦回放的資料源；matchFn 參數化供 calcConcepts 共用"
+  ],
+  "lib/calcSectors.ts::calcConcepts": [
+    "概念泡泡圖計算，與 scripts/calc-sectors.mjs::calcConcepts 邏輯必須一致"
+  ],
+  "data/concept-sectors.json": [
+    "一股多概念分類資料正本；fetch-daily.mjs 在模組載入時同步讀取，格式跑掉會讓整個 pipeline 起不來"
+  ],
+  "scripts/calc-signals.mjs": [
+    "市場訊號（融資增減幅等）→ Firestore；/signals 頁與訊號卡"
+  ],
+  "scripts/write-firebase.mjs": [
+    "latest.json / ohlc.json / meta.json 上傳；meta.json 欄位是 Guard 1 與 P1-6 鮮度標示的依據；market.json 的 conceptHistory 剝離規則需與 sectorHistory 一致（day0 才留 stocks）"
+  ],
+  "scripts/write-firebase.mjs::uploadToSupabase-retry": [
+    "2026-07-09 加的重試機制（3次，間隔3/6秒）；Supabase/Cloudflare 偶發暫時性400/5xx，重試可吸收掉大部分，減少GitHub Actions失敗信；改動這裡要保留『最後一次失敗才真的throw』的邏輯，不要變成第一次失敗就丟"
+  ],
+  "components/bubble/BubbleChart.tsx::symX": [
+    "symlog 座標轉換；改動影響泡泡位置、trail、刻度全部"
+  ],
+  "components/bubble/BubbleChart.tsx::toSVG": [
+    "座標映射與象限縮放"
+  ],
+  "components/bubble/BubbleChart.tsx::focusReplay": [
+    "Tide 式聚焦回放：首頁不得出現常駐軌跡線；點泡泡→聚焦小卡；回放路徑 = trail+今日，日期 = frameDates[trailLen - step]"
+  ],
+  "components/bubble/SectorPanel.tsx": [
+    "板塊個股面板；數值單位顯示（億，toFixed(2)）；P2-2 概念 tag 欄位靠 stockIndex[code].concepts 取得，非 sector.stocks 本身"
+  ],
+  "components/shared/ConceptTags.tsx": [
+    "P2-2 一股多概念 tag chips，StockTable/StockDetailSheet/SectorPanel 三處共用；無概念時回傳 null"
+  ],
+  "app/aftermarket/page.tsx::handleConceptClick": [
+    "P2-2 點 tag → 從 data.concepts 找對應 SectorBubble 開啟 SectorPanel；concepts 找不到時靜默忽略"
+  ],
+  "app/aftermarket/page.tsx::computedSignals": [
+    "前端 N 值重算訊號（不依賴後端 nDays=100）"
+  ],
+  "app/aftermarket/page.tsx::sectorSource": [
+    "P2-1 官方分類/概念分類 切換；activeSectors/activeSectorHistory 是 BubbleChart/SectorRanking/QuadrantSummary/frameDates 共用的資料源，改動需同步四處"
+  ],
+  "lib/fetchSnapshot.ts": [
+    "快照載入；P1-1 分檔後改動點；P2-1 起 market.json 的 conceptHistory/concepts 也要一併還原"
+  ],
+  ".github/workflows/daily-fetch.yml": [
+    "cron 班次、concurrency 排隊、guard 前置 gate；改動需 push main 才生效；P2-3 起 06:07 班次靠 github.event.schedule 字串比對切到 fetch-global-indices job，兩處 cron 字串必須完全一致"
+  ],
+  "scripts/fetch-global.mjs": [
+    "P2-3 全球指數獨立輕量腳本；Yahoo Finance chart API 是非官方端點，symbol 或回應格式跑掉會整批悄悄失敗（有 try/catch 保留舊值，不會噴掉整個 run，但要留意 log）"
+  ],
+  "lib/calcMA.ts::calcMA": [
+    "MA 計算，lookback 不足回傳 null（KlineChart 據此斷開畫線）；bars 必須 newest first"
+  ],
+  "lib/calcMA.ts::resampleWeekly": [
+    "ISO 週重採樣（週一為週首），台股 K 線與全球指數 Modal 共用；週線 MA120 因資料量不足刻意不提供（見 KlineChart MA_LINES 的 dailyOnly）"
+  ],
+  "components/aftermarket/KlineChart.tsx": [
+    "台股大盤 K 線 + P2-3 起全球指數 Modal 共用元件；MA 疊線與日/週切換改動要同時驗證兩種呼叫方（indexHistory 全量 vs 全球指數 250 天）"
+  ],
+  "components/aftermarket/GlobalIndexLights.tsx": [
+    "P2-3 燈號邏輯：找價格低於的最短天期 MA；紅=偏多（在均線之上）、綠=偏空（在均線之下），對應台股紅漲綠跌慣例；2026-07-09 改 grid-cols-2 固定兩欄，不要改回 flex-wrap（文字長度不一會左右對不齊）"
+  ],
+  "components/aftermarket/GlobalIndexModal.tsx": [
+    "2026-07-09 從底部 sheet 改成置中 Modal（比照 MarketSignalCards 的 Modal 寫法）——底部 sheet 在手機瀏覽器會被瀏覽器自己的框架擋住看不到 K 棒點擊後的數值"
+  ],
+  "scripts/write-firebase.mjs::globalIndices": [
+    "讀 Supabase 上的 global-indices.json 併進 market.json，不在本 pipeline 呼叫 Yahoo；讀取失敗時 globalIndices 留空物件，前端會整塊隱藏"
+  ],
+  "scripts/fetch-daily.mjs::stockHistory": [
+    "P2-5 個股歷史（stock-history.json 來源）；與 sectorHistory/conceptHistory 用同一份 T86 response 同步累積，25天滾動、5b回補邏輯必須三者同步增減，改一處要改三處"
+  ],
+  "scripts/write-firebase.mjs::stock-history.json": [
+    "P2-5 獨立 lazy-load 檔，刻意不併入 market.json（避免首屏變大）；前端只在開自選股模式才會 fetch"
+  ],
+  "lib/calcWatchlistBubbles.ts": [
+    "P2-5 自選股泡泡 X/Y/size/trail 算法，與 lib/calcSectors.ts::calcSectors 必須維持同一套公式（只有分組單位不同：單一個股 vs 預聚合板塊）"
+  ],
+  "lib/watchlist.ts": [
+    "觀察清單 localStorage 讀寫 + useWatchlist hook；StockTable/StockDetailSheet/page.tsx 三處共用，用 CustomEvent 同步同分頁內狀態"
+  ],
+  "lib/fetchStockHistory.ts": [
+    "P2-5 lazy fetch stock-history.json，module-level cache；跟 fetchStockOHLC.ts 同一套模式"
+  ],
+  "app/aftermarket/page.tsx::sectorSource-watchlist": [
+    "自選股模式：QuadrantSummary 故意跳過（逆勢買超概念不適用個股）；stockHistory 只在切進此模式才 fetch（用 stockHistoryFetched 旗標卡「只嘗試一次」，不可以改回用 stockHistory.length/loading 當條件——fetch 失敗會造成無限重試閃爍，2026-07-09 修過一次）；watchlistCodes 空清單顯示引導文字而非空泡泡圖"
+  ],
+  "app/aftermarket/page.tsx::computedSignals-margin": [
+    "融資餘額白天大多還沒發布，todayMargin 會 fallback 找最近一筆有資料的日期（todayMarginDate），不是只看今天這筆 K 棒；MarketSignalCards 靠 todayMarginDate !== 今天日期 判斷要不要在標籤加註日期"
+  ],
+  "scripts/write-firebase.mjs::computeDailyBriefFacts": [
+    "P2-4 盤後總結事實統計；必須用未剝離的 snapshot.sectorHistory（非 sectorHistoryLite）計算 top3Performance，否則 yesterdayRows 抓不到 stocks 明細；summary 欄位靠讀舊 daily-brief-facts.json 保留，同日期才沿用，換日重置為 null"
+  ],
+  "components/aftermarket/DailyBriefCard.tsx": [
+    "P2-4 盤後總結卡片；summary 為 null 時仍顯示事實統計（AC(b) 前端對應版本），不整塊隱藏"
+  ],
+  "n8n_workflow_daily_brief.json": [
+    "P2-4 盤後總結 n8n workflow 備份（ID PdUpW4fqEqBjRBVc）；目前 inactive，Franky 手動測試 activate 後這裡的狀態要回頭更新；LINE 已換成 Email（Outlook credential AANpomatlEG71IKz）；改動走 API PUT 後同樣要 deactivate→activate 清快取"
+  ],
+  "lib/reviewAuth.ts": [
+    "P2-6 /review 頁面密碼機制，存在 Supabase 私有 bucket 'review'（非 public，SUPABASE_SERVICE_KEY 才讀得到）；密碼明文存（比照 gym-tracker），不是雜湊"
+  ],
+  "app/api/review/confirm/route.ts": [
+    "寫入 confirm-queue.json 供 n8n 輪詢，不是即時 webhook（n8n 沒有對外網域，跟 LINE Bot 事件同一個限制）；items 的 concepts 是完整取代該股全部概念，不是疊加"
+  ],
+  "app/review/PendingTab.tsx": [
+    "P2-6 待審核批次 UI；送出的 items 用畫面當下的值（Franky 改過的），不是 AI 原始建議"
+  ],
+  "app/review/EditTab.tsx": [
+    "既有分類編輯 UI；儲存時送完整概念陣列（取代該股全部概念）"
+  ],
+  "n8n_workflow_concept_review_poller.json": [
+    "P2-6 確認處理 workflow（ID 8gjZEAvqTcGA4OKf），每10分鐘輪詢 confirm-queue.json；『處理並Commit』節點有 git status 安全檢查，concept-sectors.json 若有未 commit 異動會整輪跳過（避免蓋掉其他 session 的工作），這段邏輯改動要非常小心"
+  ],
+  "n8n_workflow_concept_monthly_scan.json": [
+    "P2-6 月度掃描 workflow（ID GpXlJvBK97ER09Fd），每月1號09:00；候選股上限30支/月，避免 Email/審核頁面一次太長"
+  ],
+  "lib/calcWatchlistBubbles.ts::getGhostPeers": [
+    "Ghost 陪跑名單：只取 focusedCode 的第一個概念、依當日活動量排序前 cap 支；conceptStockMap 沒有該股（不在概念分類名單）時回傳 []"
+  ],
+  "components/bubble/BubbleChart.tsx::onFocusChange/ghostBubbles": [
+    "Ghost overlay 疊在主角回放軌跡下方；ghostBubbles 的 trail 長度假設與主角來自同一個 stockHistory（否則 replayStep 對不齊）；onFocusChange 用 useEffect 監聽 focused state 變化，只依賴 [focused]，故意不含 focusedBubble 避免無窮迴圈"
+  ],
+  "components/bubble/BubbleChart.tsx::yAxisTicks": [
+    "Y 軸（加速指標%）刻度線，仿照既有 X 軸 symlog 刻度樣式；固定刻度值 [-100,-50,-20,-10,10,20,50,100]% 對應 v=pct/100，超出 yRange 或太靠邊界(6px)會跳過不畫，避免與軸線文字重疊",
+    "軸兩端另外加了 X/Y 意義文字說明（買超/賣超、加速/放緩），純顯示無邏輯依賴"
+  ],
+  "components/bubble/QuadrantSummary.tsx::counterTrendModal": [
+    "逆勢買超小卡從純顯示改成可點擊按鈕，counterTrendList 從單純 count 改成完整 {name,net} 陣列並按 net 降冪排序",
+    "點板塊列會用 sectors.find(s => s.sectorName === name) 反查 SectorBubble 物件再呼叫 onSectorClick，若 sectors 陣列不含該板塊（理論上不會發生，因為 todayRows 與 sectors 同源）則不會有反應",
+    "onSectorClick 為 optional prop，呼叫端在 app/aftermarket/page.tsx 用 onSectorClick={s => setActiveSector(s)} 接上既有 SectorPanel 開啟邏輯"
+  ]
 }
