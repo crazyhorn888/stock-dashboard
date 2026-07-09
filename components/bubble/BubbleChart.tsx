@@ -5,8 +5,8 @@ import type { SectorBubble } from '@/lib/types'
 interface Props {
   sectors: SectorBubble[]
   onBubbleClick: (sector: SectorBubble) => void
-  frames?: SectorBubble[][]   // [today, yesterday, ...] newest first
-  frameDates?: string[]       // ISO dates 對應每個 frame
+  // 回放日期標籤：sectorHistory 日期（newest first）。path[i] 的日期 = frameDates[trailLen - i]
+  frameDates?: string[]
 }
 
 const QUADRANTS = [
@@ -43,6 +43,10 @@ function bubbleRadius(size: number, maxSize: number): number {
   const minR = 8
   const maxR = 36
   return minR + Math.sqrt(size / maxSize) * (maxR - minR)
+}
+
+function shortName(name: string): string {
+  return name.replace('及週邊設備業', '週邊').replace('工業', '').replace('業', '')
 }
 
 function clamp(v: number, lo: number, hi: number) {
@@ -115,15 +119,17 @@ function resolveCollisions(
   return p
 }
 
-export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates }: Props) {
+export default function BubbleChart({ sectors, onBubbleClick, frameDates }: Props) {
   const [zoom, setZoom] = useState<QuadrantId>(null)
   const [top15Active, setTop15Active] = useState(false)
   const [hovered, setHovered] = useState<string | null>(null)
   const [clicked, setClicked] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
   const [vb, setVb] = useState(DEFAULT_VB)
-  const [frameIdx, setFrameIdx] = useState(0)
-  const [isPlaying, setIsPlaying] = useState(false)
+  // 聚焦回放（Tide 式）：點泡泡進聚焦模式，按回放才顯示軌跡動畫
+  const [focused, setFocused] = useState<string | null>(null)
+  const [replayStep, setReplayStep] = useState<number | null>(null)
+  const [replaying, setReplaying] = useState(false)
   const svgRef = useRef<SVGSVGElement>(null)
   const touchRef = useRef<{
     type: 'pinch' | 'pan'
@@ -138,27 +144,18 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
     return () => cancelAnimationFrame(id)
   }, [])
 
-  // 回放自動播放（oldest → today）
-  useEffect(() => {
-    if (!isPlaying) return
-    const id = setInterval(() => {
-      setFrameIdx(i => {
-        if (i <= 0) { setIsPlaying(false); return 0 }
-        return i - 1
-      })
-    }, 800)
-    return () => clearInterval(id)
-  }, [isPlaying])
-
-  // 切換 zoom 時重置 frameIdx
-  useEffect(() => { setFrameIdx(0) }, [zoom])
+  function exitFocus() {
+    setFocused(null)
+    setReplayStep(null)
+    setReplaying(false)
+  }
 
   function handleBubbleClick(s: SectorBubble) {
     setClicked(s.sectorName)
-    setTimeout(() => {
-      setClicked(null)
-      onBubbleClick(s)
-    }, 160)
+    setTimeout(() => setClicked(null), 160)
+    setReplayStep(null)
+    setReplaying(false)
+    setFocused(f => (f === s.sectorName ? null : s.sectorName))
   }
 
   const isZoomed = vb.w < W - 1 || vb.h < H - 1
@@ -258,10 +255,7 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 目前顯示的 sectors：回放時用 frames[frameIdx]，否則用 sectors prop
-  const hasFrames = frames && frames.length > 1
-  const clampedIdx = hasFrames ? Math.min(frameIdx, frames.length - 1) : 0
-  const activeSectors = hasFrames ? (frames[clampedIdx] ?? sectors) : sectors
+  const activeSectors = sectors
 
   const maxSize = useMemo(
     () => Math.max(1, ...activeSectors.map(s => s.size)),
@@ -312,18 +306,52 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
 
   const zeroSVG = toSVG(0, 0, zoom, xRange, yRange)
 
-  const isHistorical = clampedIdx > 0
-  const frameLabel = hasFrames
-    ? clampedIdx === 0
-      ? '今日'
-      : `${frameDates?.[clampedIdx]?.slice(5).replace('-', '/')} (${clampedIdx}天前)`
-    : ''
+  // ── 聚焦回放 ──────────────────────────────────────────────
+  const focusedBubble = focused
+    ? resolvedBubbles.find(b => b.s.sectorName === focused) ?? null
+    : null
 
-  function handlePlay() {
-    if (isPlaying) { setIsPlaying(false); return }
-    if (clampedIdx === 0 && hasFrames) setFrameIdx((frames?.length ?? 1) - 1)
-    setIsPlaying(true)
+  // 回放路徑：trail（oldest first）+ 今日 collision 後位置
+  const focusedPath = useMemo(() => {
+    if (!focusedBubble) return []
+    const pts = (focusedBubble.s.trail ?? []).map(p => toSVG(symX(p.x), p.y, zoom, xRange, yRange))
+    return [...pts, { px: focusedBubble.rpx, py: focusedBubble.rpy }]
+  }, [focusedBubble, zoom, xRange, yRange])
+
+  const trailLen = focusedPath.length - 1
+
+  // 自動步進（oldest → today）
+  useEffect(() => {
+    if (!replaying) return
+    const id = setInterval(() => {
+      setReplayStep(s => {
+        if (s === null || s >= focusedPath.length - 1) { setReplaying(false); return s }
+        return s + 1
+      })
+    }, 650)
+    return () => clearInterval(id)
+  }, [replaying, focusedPath.length])
+
+  // 聚焦的板塊被篩掉（象限/熱門15 切換）時退出聚焦
+  useEffect(() => {
+    if (focused && !visibleSectors.some(s => s.sectorName === focused)) {
+      setFocused(null)
+      setReplayStep(null)
+      setReplaying(false)
+    }
+  }, [visibleSectors, focused])
+
+  function handleReplay() {
+    if (focusedPath.length < 2) return
+    if (replaying) { setReplaying(false); return }
+    if (replayStep === null || replayStep >= focusedPath.length - 1) setReplayStep(0)
+    setReplaying(true)
   }
+
+  // path[i] 的日期：i = trailLen → 今日（frameDates[0]）
+  const replayDate = replayStep !== null && frameDates
+    ? frameDates[trailLen - replayStep]?.slice(5).replace('-', '/')
+    : null
 
   return (
     <div className="relative select-none">
@@ -377,35 +405,6 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
         </div>
       </div>
 
-      {/* 歷史回放列 */}
-      {hasFrames && (
-        <div className={`flex items-center gap-2 px-3 pb-2 ${isHistorical ? 'bg-amber-50' : ''}`}>
-          <button
-            onClick={handlePlay}
-            title={isPlaying ? '暫停' : '播放歷史回放'}
-            className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs border transition-colors ${
-              isPlaying ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-slate-300 text-slate-500 hover:border-amber-400 hover:text-amber-600'
-            }`}
-          >
-            {isPlaying ? '⏸' : '▶'}
-          </button>
-          <input
-            type="range"
-            min={0}
-            max={(frames?.length ?? 1) - 1}
-            value={(frames?.length ?? 1) - 1 - clampedIdx}
-            onChange={e => {
-              setIsPlaying(false)
-              setFrameIdx((frames?.length ?? 1) - 1 - Number(e.target.value))
-            }}
-            className="flex-1 accent-amber-500 h-1.5"
-          />
-          <span className={`text-[10px] font-semibold min-w-[72px] text-right ${isHistorical ? 'text-amber-600' : 'text-blue-500'}`}>
-            {frameLabel}
-          </span>
-        </div>
-      )}
-
       <svg
         ref={svgRef}
         viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
@@ -420,15 +419,6 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
               to   { opacity: 1; }
             }
           `}</style>
-          {QUADRANTS.map(q => (
-            <marker key={q.id} id={`trailArrow-${q.id}`}
-              markerWidth="6" markerHeight="6"
-              refX="5" refY="3" orient="auto"
-              markerUnits="userSpaceOnUse"
-            >
-              <path d="M0,0 L0,6 L6,3 z" fill={q.color} opacity={0.55} />
-            </marker>
-          ))}
         </defs>
 
         {/* Quadrant backgrounds */}
@@ -441,7 +431,7 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
             <g key={q.id}>
               <rect x={x1} y={y1} width={w} height={h}
                 fill={q.fill} className="cursor-pointer"
-                onClick={() => setZoom(q.id)} />
+                onClick={() => focused ? exitFocus() : setZoom(q.id)} />
               {/* Corner label */}
               <text
                 x={x1 + (q.xSign < 0 ? 5 : w - 5)}
@@ -460,7 +450,8 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
           return <rect x={PAD.left} y={PAD.top}
             width={W - PAD.left - PAD.right}
             height={H - PAD.top - PAD.bottom}
-            fill={q.fill} />
+            fill={q.fill}
+            onClick={() => focused && exitFocus()} />
         })()}
 
         {/* Axes — 延伸至 SVG 邊界，讓泡泡與邊界之間的留白顯示出象限意象 */}
@@ -497,22 +488,18 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
           )
         })}
 
-        {/* Bubbles — 小→大渲染；位置已做 collision resolution */}
+        {/* Bubbles — 小→大渲染；位置已做 collision resolution。首頁不畫軌跡（Tide 式：回放才有） */}
         {resolvedBubbles.map(({ s, rpx, rpy, r }, index) => {
             const q = QUADRANTS.find(q => q.id === quadrantOf(s.x, s.y))!
             const isHovered = hovered === s.sectorName
             const isClicked = clicked === s.sectorName
-            const shortName = s.sectorName
-              .replace('及週邊設備業', '週邊')
-              .replace('工業', '')
-              .replace('業', '')
+            const isFocused = focused === s.sectorName
+            const dimmed = focused !== null && !isFocused
 
-            // 回放模式不顯示歷史軌跡（每個 frame 本身就是一個時間點）
-            const trailPts = isHistorical
-              ? []
-              : (s.trail ?? []).map(p => toSVG(symX(p.x), p.y, zoom, xRange, yRange))
-            const allPts = [...trailPts, { px: rpx, py: rpy }]
-            const trailLen = allPts.length
+            // 回放時主角改由 overlay 呈現
+            if (isFocused && replayStep !== null) return null
+
+            const active = isHovered || isClicked || isFocused
 
             return (
               <g
@@ -523,61 +510,37 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
                 style={{
                   cursor: 'pointer',
                   transform: isClicked ? 'scale(1.22)' : 'scale(1)',
-                  transition: 'transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+                  transition: 'transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 200ms',
                   transformOrigin: `${rpx}px ${rpy}px`,
-                  ...(mounted
-                    ? { animation: `bubbleIn 500ms ${index * 18}ms both` }
-                    : { opacity: 0 }),
+                  // 聚焦時其他泡泡淡出（dimmed 情況停用進場動畫，避免 fill-mode 蓋掉 opacity）
+                  ...(dimmed
+                    ? { opacity: 0.15 }
+                    : mounted
+                      ? { animation: `bubbleIn 500ms ${index * 18}ms both` }
+                      : { opacity: 0 }),
                 }}
               >
-                {/* 歷史軌跡：漸淡線段 + 箭頭末端 + 漸淡小點 */}
-                {trailLen >= 2 && (
-                  <g style={{ pointerEvents: 'none' }}>
-                    {allPts.slice(0, -1).map((pt, i) => {
-                      const next = allPts[i + 1]
-                      const ratio = i / Math.max(trailLen - 2, 1)
-                      const isLast = i === allPts.slice(0, -1).length - 1
-                      return (
-                        <line key={i}
-                          x1={pt.px} y1={pt.py} x2={next.px} y2={next.py}
-                          stroke={q.color} strokeWidth={1.8} strokeLinecap="round"
-                          opacity={0.20 + ratio * 0.45}
-                          markerEnd={isLast ? `url(#trailArrow-${q.id})` : undefined}
-                        />
-                      )
-                    })}
-                    {trailPts.map((pt, i) => {
-                      const ratio = i / Math.max(trailLen - 2, 1)
-                      return (
-                        <circle key={i}
-                          cx={pt.px} cy={pt.py} r={1.5 + ratio * 1.4}
-                          fill={q.color} opacity={0.25 + ratio * 0.40}
-                        />
-                      )
-                    })}
-                  </g>
-                )}
                 {/* Drop shadow */}
                 <circle cx={rpx + 1} cy={rpy + 1.5} r={r}
                   fill={isClicked ? `${q.color}30` : '#00000018'} />
                 {/* Main bubble */}
                 <circle cx={rpx} cy={rpy} r={r}
-                  fill={isHovered || isClicked ? q.color : q.fill}
+                  fill={active ? q.color : q.fill}
                   stroke={q.color}
-                  strokeWidth={isHovered || isClicked ? 2.5 : 1.8}
-                  opacity={isHistorical ? 0.75 : (isHovered || isClicked ? 1 : 0.9)}
+                  strokeWidth={active ? 2.5 : 1.8}
+                  opacity={active ? 1 : 0.9}
                 />
                 {/* Label */}
                 {r >= 16 ? (
                   <text
                     x={rpx} y={rpy + 3}
                     fontSize={r >= 22 ? 8.5 : 7.5}
-                    fill={isHovered || isClicked ? '#fff' : q.color}
+                    fill={active ? '#fff' : q.color}
                     textAnchor="middle"
                     fontWeight="700"
                     style={{ pointerEvents: 'none' }}
                   >
-                    {shortName}
+                    {shortName(s.sectorName)}
                   </text>
                 ) : (
                   <text
@@ -589,16 +552,95 @@ export default function BubbleChart({ sectors, onBubbleClick, frames, frameDates
                     opacity="0.85"
                     style={{ pointerEvents: 'none' }}
                   >
-                    {shortName}
+                    {shortName(s.sectorName)}
                   </text>
                 )}
               </g>
             )
           })}
+
+        {/* 聚焦回放 overlay：軌跡漸進繪出 + 主角泡泡沿路徑移動 */}
+        {focusedBubble && replayStep !== null && (() => {
+          const fb = focusedBubble
+          const q = QUADRANTS.find(q => q.id === quadrantOf(fb.s.x, fb.s.y))!
+          const pos = focusedPath[Math.min(replayStep, focusedPath.length - 1)]
+          return (
+            <g style={{ pointerEvents: 'none' }}>
+              {focusedPath.slice(0, Math.max(replayStep, 0)).map((pt, i) => {
+                const next = focusedPath[i + 1]
+                const ratio = trailLen > 1 ? i / (trailLen - 1) : 1
+                return (
+                  <g key={i}>
+                    <line
+                      x1={pt.px} y1={pt.py} x2={next.px} y2={next.py}
+                      stroke={q.color} strokeWidth={1.8} strokeLinecap="round"
+                      opacity={0.25 + ratio * 0.45}
+                    />
+                    <circle cx={pt.px} cy={pt.py} r={2} fill={q.color} opacity={0.35 + ratio * 0.35} />
+                  </g>
+                )
+              })}
+              <g style={{ transform: `translate(${pos.px}px, ${pos.py}px)`, transition: 'transform 600ms ease-in-out' }}>
+                <circle r={fb.r} fill={q.color} stroke={q.color} strokeWidth={2.5} opacity={0.95} />
+                {fb.r >= 16 && (
+                  <text y={3} fontSize={fb.r >= 22 ? 8.5 : 7.5} fill="#fff" textAnchor="middle" fontWeight="700">
+                    {shortName(fb.s.sectorName)}
+                  </text>
+                )}
+              </g>
+            </g>
+          )
+        })()}
       </svg>
 
+      {/* 聚焦資訊卡 */}
+      {focusedBubble && (() => {
+        const fb = focusedBubble
+        const q = QUADRANTS.find(q => q.id === quadrantOf(fb.s.x, fb.s.y))!
+        return (
+          <div className="absolute bottom-7 left-1/2 -translate-x-1/2 z-10 max-w-[94%] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-slate-200 px-3 py-2 flex items-center gap-2.5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                <span className="text-xs font-bold text-slate-800">{fb.s.sectorName}</span>
+                <span className="text-[10px] font-semibold" style={{ color: q.color }}>{q.label}</span>
+                {replayDate && (
+                  <span className="text-[10px] font-semibold text-amber-600">
+                    {replayDate}{replayStep === trailLen ? '（今日）' : ''}
+                  </span>
+                )}
+              </div>
+              <p className="text-[10px] text-slate-400 whitespace-nowrap">
+                淨買超 {fb.s.x >= 0 ? '+' : ''}{fb.s.x.toFixed(1)} 億/日 · 加速 {fb.s.y >= 0 ? '+' : ''}{(fb.s.y * 100).toFixed(1)}%
+              </p>
+            </div>
+            <button
+              onClick={handleReplay}
+              disabled={focusedPath.length < 2}
+              title={focusedPath.length < 2 ? '無歷史軌跡資料' : undefined}
+              className="flex-shrink-0 px-2 py-1 rounded-md text-[11px] font-semibold bg-amber-500 text-white disabled:opacity-40"
+            >
+              {replaying ? '⏸ 暫停' : '▶ 回放'}
+            </button>
+            <button
+              onClick={() => onBubbleClick(fb.s)}
+              className="flex-shrink-0 px-2 py-1 rounded-md text-[11px] font-semibold bg-blue-600 text-white"
+            >
+              個股清單
+            </button>
+            <button
+              onClick={exitFocus}
+              className="flex-shrink-0 text-slate-400 text-sm leading-none px-0.5"
+            >
+              ✕
+            </button>
+          </div>
+        )
+      })()}
+
       <p className="text-center text-[10px] text-slate-400 pb-2">
-        {zoom ? '點擊泡泡查看個股' : '點擊象限或上方按鈕放大 · 點擊泡泡查看個股'}
+        {focused
+          ? '▶ 回放看資金軌跡 · 點空白處返回'
+          : zoom ? '點擊泡泡聚焦' : '點擊象限或上方按鈕放大 · 點擊泡泡聚焦'}
       </p>
     </div>
   )

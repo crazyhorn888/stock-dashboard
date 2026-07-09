@@ -10,7 +10,6 @@ import SectorPanel from '@/components/bubble/SectorPanel'
 import StockDetailSheet from '@/components/stock/StockDetailSheet'
 import FreshnessBar from '@/components/shared/FreshnessBar'
 import { calcStockRow } from '@/lib/calcMetrics'
-import { calcSectors } from '@/lib/calcSectors'
 import { MOCK_DATA } from '@/lib/mockData'
 import { fetchSnapshot } from '@/lib/fetchSnapshot'
 import type { SnapshotData, SectorBubble, StockData, MarketSignals } from '@/lib/types'
@@ -53,24 +52,10 @@ export default function AftermarketPage() {
     [data.stocks, n]
   )
 
-  // 歷史回放：frames[0] = 今日（用 data.sectors 確保與伺服器一致），frames[1+] = 往前推算
-  const maxK = useMemo(() => {
-    const histLen = data.sectorHistory?.length ?? 0
-    return Math.max(0, Math.min(5, histLen - 20))
-  }, [data.sectorHistory])
-
-  const frames = useMemo<SectorBubble[][] | undefined>(() => {
-    if (!data.sectors?.length || !data.sectorHistory?.length || maxK < 1) return undefined
-    // frame 0 = 伺服器預算的今日資料（最準確），frame 1+ = 前幾日
-    const historical = Array.from({ length: maxK }, (_, k) =>
-      calcSectors(data.sectorHistory.slice(k + 1), data.stocks)
-    )
-    return [data.sectors, ...historical]
-  }, [data.sectors, data.sectorHistory, data.stocks, maxK])
-
+  // 聚焦回放的日期標籤：trail 最多 5 點 + 今日 = 6 個日期（newest first）
   const frameDates = useMemo(
-    () => (data.sectorHistory ?? []).slice(0, maxK + 1).map(d => d.date),
-    [data.sectorHistory, maxK]
+    () => (data.sectorHistory ?? []).slice(0, 6).map(d => d.date),
+    [data.sectorHistory]
   )
 
   // 用前端 n 重新計算大盤訊號（後端 marketSignals.nDays 固定為 100，不隨使用者 N 更新）
@@ -280,8 +265,7 @@ export default function AftermarketPage() {
                   <BubbleChart
                     sectors={data.sectors ?? []}
                     onBubbleClick={s => setActiveSector(s)}
-                    frames={frames}
-                    frameDates={frames ? frameDates : undefined}
+                    frameDates={frameDates}
                   />
                 ) : (
                   <SectorRanking
