@@ -4,6 +4,7 @@ import MarketSignalCards from '@/components/aftermarket/MarketSignalCards'
 import KlineChart from '@/components/aftermarket/KlineChart'
 import StockTable from '@/components/aftermarket/StockTable'
 import GlobalIndexLights from '@/components/aftermarket/GlobalIndexLights'
+import DailyBriefCard from '@/components/aftermarket/DailyBriefCard'
 import GlobalIndexModal from '@/components/aftermarket/GlobalIndexModal'
 import BubbleChart from '@/components/bubble/BubbleChart'
 import QuadrantSummary from '@/components/bubble/QuadrantSummary'
@@ -294,6 +295,7 @@ export default function AftermarketPage() {
           <>
             {activeTab === '大盤關鍵資料' && (
               <>
+                <DailyBriefCard brief={data.dailyBrief} />
                 <GlobalIndexLights indices={data.globalIndices} onSelect={setGlobalModalKey} />
                 <KlineChart data={data.indexHistory ?? []} n={n} />
                 <MarketSignalCards signals={computedSignals} />

@@ -1,0 +1,252 @@
+{
+  "name": "9. [Stock] Dashboard 概念月度掃描",
+  "nodes": [
+    {
+      "id": "p26s-trigger",
+      "name": "Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 9 1 * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "p26s-fetch-history",
+      "name": "抓stock-history",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const result = await new Promise((resolve) => {\n  require('https').get('https://bliybylxjwemgzjvazyc.supabase.co/storage/v1/object/public/snapshots/stock-history.json', (res) => {\n    let data = '';\n    res.on('data', d => data += d);\n    res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { resolve({ stockHistory: [] }); } });\n  }).on('error', () => resolve({ stockHistory: [] }));\n});\nreturn [{ json: result }];\n"
+      }
+    },
+    {
+      "id": "p26s-fetch-concepts",
+      "name": "抓concept-sectors",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        160
+      ],
+      "parameters": {
+        "jsCode": "const result = await new Promise((resolve) => {\n  require('https').get('https://raw.githubusercontent.com/crazyhorn888/stock-dashboard/main/data/concept-sectors.json', (res) => {\n    let data = '';\n    res.on('data', d => data += d);\n    res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { resolve({ concepts: {}, stocks: {} }); } });\n  }).on('error', () => resolve({ concepts: {}, stocks: {} }));\n});\nreturn [{ json: result }];\n"
+      }
+    },
+    {
+      "id": "p26s-compute",
+      "name": "算未覆蓋活躍股",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        80
+      ],
+      "parameters": {
+        "jsCode": "const stockHistoryData = $('抓stock-history').item.json;\nconst conceptData = $('抓concept-sectors').item.json;\n\nconst stockHistory = stockHistoryData.stockHistory || [];\nconst covered = new Set(Object.keys(conceptData.stocks || {}));\n\nconst activityMap = {};\nfor (const day of stockHistory) {\n  for (const s of (day.stocks || [])) {\n    if (!activityMap[s.code]) activityMap[s.code] = { name: s.name, activity: 0 };\n    activityMap[s.code].activity += Math.abs(s.net) + Math.abs(s.buySell);\n  }\n}\n\nconst isETF = code => code.startsWith('00');\nconst candidates = Object.entries(activityMap)\n  .filter(([code]) => !covered.has(code) && !isETF(code))\n  .map(([code, v]) => ({ code, name: v.name, activity: Math.round(v.activity) }))\n  .sort((a, b) => b.activity - a.activity)\n  .slice(0, 30);\n\nreturn [{ json: { candidates, conceptNames: Object.keys(conceptData.concepts || {}) } }];\n"
+      }
+    },
+    {
+      "id": "p26s-if-candidates",
+      "name": "有候選股？",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        660,
+        80
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-candidates-len",
+              "leftValue": "={{ $json.candidates.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "p26s-noop",
+      "name": "本月無新候選",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        880,
+        220
+      ]
+    },
+    {
+      "id": "p26s-openai",
+      "name": "呼叫OpenAI建議分類",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "const { candidates, conceptNames } = $json;\nconst apiKey = $env.OPENAI_API_KEY;\n\nconst prompt = `你是台股產業分類專家。以下是既有的概念分類清單：\n${conceptNames.join('、')}\n\n請幫以下個股建議最適合的概念分類（可從既有清單選，或建議一個新概念名稱）。用 JSON 陣列回答，格式：\n[{\"code\":\"股票代號\",\"concept\":\"建議概念名稱\"}, ...]\n只回傳 JSON，不要其他文字。\n\n個股清單：\n${candidates.map(c => `${c.code} ${c.name}`).join('\\n')}`;\n\nconst body = JSON.stringify({\n  model: 'gpt-5.4-mini',\n  messages: [{ role: 'user', content: prompt }],\n  max_tokens: 2000,\n});\n\nconst https = require('https');\nconst result = await new Promise((resolve) => {\n  const req = https.request({\n    hostname: 'api.openai.com', path: '/v1/chat/completions', method: 'POST',\n    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },\n  }, (res) => {\n    let data = '';\n    res.on('data', d => data += d);\n    res.on('end', () => {\n      try {\n        const json = JSON.parse(data);\n        const content = json.choices?.[0]?.message?.content || '[]';\n        const match = content.match(/\\[[\\s\\S]*\\]/);\n        resolve(match ? JSON.parse(match[0]) : []);\n      } catch (e) { resolve([]); }\n    });\n  });\n  req.on('error', () => resolve([]));\n  req.write(body);\n  req.end();\n});\n\nconst suggestionByCode = Object.fromEntries(result.map(r => [r.code, r.concept]));\nconst items = candidates.map(c => ({\n  code: c.code,\n  name: c.name,\n  activity: c.activity,\n  suggestedConcepts: suggestionByCode[c.code] ? [suggestionByCode[c.code]] : [],\n}));\n\nreturn [{ json: { items } }];\n"
+      }
+    },
+    {
+      "id": "p26s-write-pending",
+      "name": "寫入pending",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "const { items } = $json;\nconst SUPABASE_KEY = $env.SUPABASE_SERVICE_KEY;\nconst https = require('https');\n\nconst getResult = await new Promise((resolve) => {\n  https.get({\n    hostname: 'bliybylxjwemgzjvazyc.supabase.co',\n    path: '/storage/v1/object/review/pending.json',\n    headers: { Authorization: `Bearer ${SUPABASE_KEY}` },\n  }, (res) => {\n    let d = '';\n    res.on('data', c => d += c);\n    res.on('end', () => resolve({ status: res.statusCode, body: d }));\n  }).on('error', () => resolve({ status: 0, body: '' }));\n});\n\nlet pending = { batches: [] };\nif (getResult.status === 200) {\n  try { pending = JSON.parse(getResult.body); } catch (e) { /* keep default */ }\n}\npending.batches = pending.batches || [];\n\nconst batchId = `${Date.now()}`;\npending.batches.push({ id: batchId, createdAt: new Date().toISOString(), items });\n\nconst body = JSON.stringify(pending);\nawait new Promise((resolve) => {\n  const req = https.request({\n    hostname: 'bliybylxjwemgzjvazyc.supabase.co',\n    path: '/storage/v1/object/review/pending.json',\n    method: 'POST',\n    headers: {\n      Authorization: `Bearer ${SUPABASE_KEY}`,\n      'Content-Type': 'application/json',\n      'Content-Length': Buffer.byteLength(body),\n      'x-upsert': 'true',\n    },\n  }, (res) => { res.on('data', () => {}); res.on('end', resolve); });\n  req.on('error', resolve);\n  req.write(body);\n  req.end();\n});\n\nreturn [{ json: { batchId, count: items.length } }];\n"
+      }
+    },
+    {
+      "id": "p26s-notify",
+      "name": "寄送Email通知",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        -40
+      ],
+      "parameters": {
+        "toRecipients": "crazyhorn888@hotmail.com",
+        "subject": "={{ '📋 本月概念分類待審核（' + $json.count + ' 支）' }}",
+        "bodyContent": "={{ '本月掃描出 ' + $json.count + ' 支活躍但未分類的個股，AI 已提供建議分類。請到 <a href=\\\"https://franky-stock-dashboard.vercel.app/review\\\">審核頁面</a> 查看並確認。' }}",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "AANpomatlEG71IKz",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Trigger": {
+      "main": [
+        [
+          {
+            "node": "抓stock-history",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "抓concept-sectors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "抓stock-history": {
+      "main": [
+        [
+          {
+            "node": "算未覆蓋活躍股",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "抓concept-sectors": {
+      "main": [
+        [
+          {
+            "node": "算未覆蓋活躍股",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "算未覆蓋活躍股": {
+      "main": [
+        [
+          {
+            "node": "有候選股？",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "有候選股？": {
+      "main": [
+        [
+          {
+            "node": "呼叫OpenAI建議分類",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "本月無新候選",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "呼叫OpenAI建議分類": {
+      "main": [
+        [
+          {
+            "node": "寫入pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "寫入pending": {
+      "main": [
+        [
+          {
+            "node": "寄送Email通知",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  }
+}

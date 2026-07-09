@@ -16,6 +16,58 @@ import { getFirestore } from 'firebase-admin/firestore'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
+// P2-4：盤後總結事實統計（不含 AI 文字，summary 由 n8n 讀 daily-brief-facts.json 呼叫 OpenAI 後寫回）
+function computeDailyBriefFacts(snapshot) {
+  const sectors = snapshot.sectors ?? []
+  const sectorHistory = snapshot.sectorHistory ?? []
+  const indexHistory = snapshot.indexHistory ?? []
+  const stockHistory = snapshot.stockHistory ?? []
+  const r2 = v => Math.round(v * 100) / 100
+
+  const quadrantOf = (x, y) => (x >= 0 && y >= 0) ? 'TR' : (x < 0 && y >= 0) ? 'TL' : (x < 0 && y < 0) ? 'BL' : 'BR'
+  const quadrantCounts = { TR: 0, TL: 0, BL: 0, BR: 0 }
+  for (const s of sectors) quadrantCounts[quadrantOf(s.x, s.y)]++
+
+  const [today, prev] = indexHistory
+  const marketChangePct = today && prev && prev.close > 0 ? r2(((today.close - prev.close) / prev.close) * 100) : null
+
+  // 逆勢買超板塊：大盤跌且板塊當日淨買超 > 0（與 QuadrantSummary.tsx 前端邏輯一致）
+  const todayRows = sectorHistory[0]?.rows ?? []
+  const contrarian = (marketChangePct != null && marketChangePct < 0)
+    ? todayRows.filter(r => r.net > 0).map(r => r.name)
+    : []
+
+  // 昨日 top3 買超板塊，今日平均漲跌%
+  const yesterdayRows = sectorHistory[1]?.rows ?? []
+  const stockByCode = Object.fromEntries((snapshot.stocks ?? []).map(s => [s.code, s]))
+  const top3Performance = [...yesterdayRows]
+    .sort((a, b) => b.net - a.net)
+    .slice(0, 3)
+    .map(r => {
+      const changes = (r.stocks ?? [])
+        .map(s => stockByCode[s.code]?.changePercent)
+        .filter(v => typeof v === 'number')
+      const avg = changes.length ? changes.reduce((a, b) => a + b, 0) / changes.length : null
+      return { sector: r.name, avgChangePct: avg != null ? r2(avg) : null }
+    })
+
+  // 個股異常：|淨買超| > 30 億（今日 T86 扁平清單，來源與 P2-5 stockHistory 共用）
+  const anomalies = (stockHistory[0]?.stocks ?? [])
+    .filter(s => Math.abs(s.net) > 30)
+    .sort((a, b) => Math.abs(b.net) - Math.abs(a.net))
+    .slice(0, 10)
+    .map(s => ({ code: s.code, name: s.name, net: s.net }))
+
+  return {
+    date: snapshot.stocksDate ?? indexHistory[0]?.date ?? null,
+    quadrantCounts,
+    marketChangePct,
+    contrarian,
+    top3Performance,
+    anomalies,
+  }
+}
+
 // ── 初始化 Firebase Admin（只用 Firestore，不用 Storage）──
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON ?? '{}')
 initializeApp({ credential: cert(serviceAccount) })
@@ -119,6 +171,26 @@ async function main() {
   } catch (e) {
     console.warn('[write] global-indices.json 讀取失敗，globalIndices 留空：', e.message)
   }
+
+  // P2-4：facts 每次 pipeline run 都重算；summary 由 n8n 讀 daily-brief-facts.json 呼叫 OpenAI 後寫回，
+  // 這裡讀舊值只為了「同一天內」保留 n8n 已經產生的 summary，不被之後的 pipeline run 覆蓋成 null
+  const dailyBriefFacts = computeDailyBriefFacts(snapshot)
+  let existingSummary = null
+  try {
+    const res = await fetch(`${process.env.SUPABASE_URL}/storage/v1/object/public/snapshots/daily-brief-facts.json`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    })
+    if (res.ok) {
+      const existing = await res.json()
+      if (existing.date === dailyBriefFacts.date) existingSummary = existing.summary ?? null
+    }
+  } catch (e) {
+    console.warn('[write] daily-brief-facts.json 讀取失敗（summary 沿用 null）：', e.message)
+  }
+  const dailyBrief = { ...dailyBriefFacts, summary: existingSummary }
+  await uploadToSupabase('daily-brief-facts.json', JSON.stringify(dailyBrief))
+  console.log('[write] daily-brief-facts.json 上傳完成')
+
   const market = {
     updatedAt:     snapshot.updatedAt,
     stocksDate:    snapshot.stocksDate ?? null,
@@ -134,6 +206,7 @@ async function main() {
     concepts:       snapshot.concepts ?? [],
     conceptHistory: conceptHistoryLite,
     globalIndices,
+    dailyBrief,
   }
   await uploadToSupabase('market.json', JSON.stringify(market))
   console.log('[write] market.json 上傳完成')

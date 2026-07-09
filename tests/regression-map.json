@@ -34,6 +34,15 @@
   "lib/watchlist.ts": ["觀察清單 localStorage 讀寫 + useWatchlist hook；StockTable/StockDetailSheet/page.tsx 三處共用，用 CustomEvent 同步同分頁內狀態"],
   "lib/fetchStockHistory.ts": ["P2-5 lazy fetch stock-history.json，module-level cache；跟 fetchStockOHLC.ts 同一套模式"],
   "app/aftermarket/page.tsx::sectorSource-watchlist": ["自選股模式：QuadrantSummary 故意跳過（逆勢買超概念不適用個股）；stockHistory 只在切進此模式才 fetch；watchlistCodes 空清單顯示引導文字而非空泡泡圖"],
+  "scripts/write-firebase.mjs::computeDailyBriefFacts": ["P2-4 盤後總結事實統計；必須用未剝離的 snapshot.sectorHistory（非 sectorHistoryLite）計算 top3Performance，否則 yesterdayRows 抓不到 stocks 明細；summary 欄位靠讀舊 daily-brief-facts.json 保留，同日期才沿用，換日重置為 null"],
+  "components/aftermarket/DailyBriefCard.tsx": ["P2-4 盤後總結卡片；summary 為 null 時仍顯示事實統計（AC(b) 前端對應版本），不整塊隱藏"],
+  "n8n_workflow_daily_brief.json": ["P2-4 盤後總結 n8n workflow 備份（ID PdUpW4fqEqBjRBVc）；目前 inactive，Franky 手動測試 activate 後這裡的狀態要回頭更新；LINE 已換成 Email（Outlook credential AANpomatlEG71IKz）；改動走 API PUT 後同樣要 deactivate→activate 清快取"],
+  "lib/reviewAuth.ts": ["P2-6 /review 頁面密碼機制，存在 Supabase 私有 bucket 'review'（非 public，SUPABASE_SERVICE_KEY 才讀得到）；密碼明文存（比照 gym-tracker），不是雜湊"],
+  "app/api/review/confirm/route.ts": ["寫入 confirm-queue.json 供 n8n 輪詢，不是即時 webhook（n8n 沒有對外網域，跟 LINE Bot 事件同一個限制）；items 的 concepts 是完整取代該股全部概念，不是疊加"],
+  "app/review/PendingTab.tsx": ["P2-6 待審核批次 UI；送出的 items 用畫面當下的值（Franky 改過的），不是 AI 原始建議"],
+  "app/review/EditTab.tsx": ["既有分類編輯 UI；儲存時送完整概念陣列（取代該股全部概念）"],
+  "n8n_workflow_concept_review_poller.json": ["P2-6 確認處理 workflow（ID 8gjZEAvqTcGA4OKf），每10分鐘輪詢 confirm-queue.json；『處理並Commit』節點有 git status 安全檢查，concept-sectors.json 若有未 commit 異動會整輪跳過（避免蓋掉其他 session 的工作），這段邏輯改動要非常小心"],
+  "n8n_workflow_concept_monthly_scan.json": ["P2-6 月度掃描 workflow（ID GpXlJvBK97ER09Fd），每月1號09:00；候選股上限30支/月，避免 Email/審核頁面一次太長"],
   "lib/calcWatchlistBubbles.ts::getGhostPeers": ["Ghost 陪跑名單：只取 focusedCode 的第一個概念、依當日活動量排序前 cap 支；conceptStockMap 沒有該股（不在概念分類名單）時回傳 []"],
   "components/bubble/BubbleChart.tsx::onFocusChange/ghostBubbles": ["Ghost overlay 疊在主角回放軌跡下方；ghostBubbles 的 trail 長度假設與主角來自同一個 stockHistory（否則 replayStep 對不齊）；onFocusChange 用 useEffect 監聽 focused state 變化，只依賴 [focused]，故意不含 focusedBubble 避免無窮迴圈"]
 }

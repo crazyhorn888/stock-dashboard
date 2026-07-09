@@ -148,6 +148,18 @@ export interface SnapshotData {
   concepts?: SectorBubble[]
   // P2-3：全球指數燈號 + Modal（獨立輕量腳本抓取，market.json 沒有時為 undefined）
   globalIndices?: Record<string, GlobalIndexData>
+  // P2-4：AI 盤後總結（summary 由 n8n 呼叫 OpenAI 寫回，pipeline 剛跑完時可能還是 null）
+  dailyBrief?: DailyBriefFacts
+}
+
+export interface DailyBriefFacts {
+  date: string | null
+  quadrantCounts: { TR: number; TL: number; BL: number; BR: number }
+  marketChangePct: number | null
+  contrarian: string[]  // 逆勢買超板塊名稱
+  top3Performance: { sector: string; avgChangePct: number | null }[]
+  anomalies: { code: string; name: string; net: number }[]  // |淨買超| > 30 億
+  summary: string | null  // n8n 呼叫 OpenAI 產生，失敗或尚未產生時為 null
 }
 
 export interface StockRow extends StockData {

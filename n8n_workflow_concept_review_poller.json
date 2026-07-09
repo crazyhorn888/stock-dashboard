@@ -1,0 +1,247 @@
+{
+  "name": "8. [Stock] Dashboard 概念審核確認處理",
+  "nodes": [
+    {
+      "id": "p26p-trigger",
+      "name": "Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/10 * * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "p26p-fetch-queue",
+      "name": "抓Queue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const SUPABASE_KEY = $env.SUPABASE_SERVICE_KEY;\nconst https = require('https');\nconst result = await new Promise((resolve) => {\n  https.get({\n    hostname: 'bliybylxjwemgzjvazyc.supabase.co',\n    path: '/storage/v1/object/review/confirm-queue.json',\n    headers: { Authorization: `Bearer ${SUPABASE_KEY}` },\n  }, (res) => {\n    let data = '';\n    res.on('data', d => data += d);\n    res.on('end', () => resolve({ status: res.statusCode, body: data }));\n  }).on('error', () => resolve({ status: 0, body: '' }));\n});\nlet queue = { jobs: [] };\nif (result.status === 200) {\n  try { queue = JSON.parse(result.body); } catch (e) { /* keep empty */ }\n}\nreturn [{ json: queue }];\n"
+      }
+    },
+    {
+      "id": "p26p-if-jobs",
+      "name": "Queue 有工作？",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-jobs-len",
+              "leftValue": "={{ $json.jobs.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "p26p-noop",
+      "name": "靜默跳過",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        660,
+        160
+      ]
+    },
+    {
+      "id": "p26p-process",
+      "name": "處理並Commit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "const queue = $json;\nconst fs = require('fs');\nconst { execSync } = require('child_process');\nconst repoDir = '/Users/agent/Desktop/Mine/9. Coding/Claude Code/100_Todo/projects/stock-dashboard';\nconst filePath = `${repoDir}/data/concept-sectors.json`;\n\n// 安全檢查：這個檔案若已經有未 commit 的異動（可能是別的 session 正在改），本輪跳過，避免蓋掉別人的工作\nconst status = execSync('git status --porcelain data/concept-sectors.json', { cwd: repoDir }).toString().trim();\nif (status) {\n  return [{ json: { skipped: true, reason: 'concept-sectors.json 有未 commit 的異動，本輪跳過', gitStatus: status } }];\n}\n\nconst data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));\n\nfor (const job of (queue.jobs || [])) {\n  for (const item of job.items) {\n    if (!item.concepts || item.concepts.length === 0) {\n      delete data.stocks[item.code];\n    } else {\n      data.stocks[item.code] = item.concepts;\n      for (const c of item.concepts) {\n        if (!data.concepts[c]) data.concepts[c] = { desc: '' };\n      }\n    }\n  }\n}\n\nconst dateStr = new Date().toISOString().slice(0, 10);\nconst seq = (data.version || '').startsWith(dateStr) ? parseInt(data.version.split('.')[1] || '0', 10) + 1 : 1;\ndata.version = `${dateStr}.${seq}`;\ndata.updatedAt = dateStr;\n\nfs.writeFileSync(filePath, JSON.stringify(data, null, 2));\n\nconst jobIds = (queue.jobs || []).map(j => j.id).join(',');\ntry {\n  execSync(`git add data/concept-sectors.json && git commit -m \"chore: review 頁面確認概念分類更新 (jobs: ${jobIds})\" && git push`, { cwd: repoDir });\n} catch (e) {\n  return [{ json: { error: true, message: 'git commit/push 失敗：' + e.message } }];\n}\n\nreturn [{ json: { processed: (queue.jobs || []).length, version: data.version } }];\n"
+      }
+    },
+    {
+      "id": "p26p-if-ok",
+      "name": "處理成功？",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -40
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-no-error",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty"
+              }
+            },
+            {
+              "id": "check-no-skip",
+              "leftValue": "={{ $json.skipped }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "p26p-clear-queue",
+      "name": "清空Queue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -120
+      ],
+      "parameters": {
+        "jsCode": "const SUPABASE_KEY = $env.SUPABASE_SERVICE_KEY;\nconst https = require('https');\nconst body = JSON.stringify({ jobs: [] });\nawait new Promise((resolve) => {\n  const req = https.request({\n    hostname: 'bliybylxjwemgzjvazyc.supabase.co',\n    path: '/storage/v1/object/review/confirm-queue.json',\n    method: 'POST',\n    headers: {\n      Authorization: `Bearer ${SUPABASE_KEY}`,\n      'Content-Type': 'application/json',\n      'Content-Length': Buffer.byteLength(body),\n      'x-upsert': 'true',\n    },\n  }, (res) => { res.on('data', () => {}); res.on('end', resolve); });\n  req.on('error', resolve);\n  req.write(body);\n  req.end();\n});\nreturn [{ json: { cleared: true } }];\n"
+      }
+    },
+    {
+      "id": "p26p-notify-fail",
+      "name": "寄送異常通知",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        40
+      ],
+      "parameters": {
+        "toRecipients": "crazyhorn888@hotmail.com",
+        "subject": "⚠️ 概念分類 review 確認處理失敗",
+        "bodyContent": "={{ '處理 confirm-queue 時發生問題：' + ($json.reason || $json.message || '未知錯誤') + '<br>請手動檢查 data/concept-sectors.json 與 git 狀態。' }}",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "AANpomatlEG71IKz",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Trigger": {
+      "main": [
+        [
+          {
+            "node": "抓Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "抓Queue": {
+      "main": [
+        [
+          {
+            "node": "Queue 有工作？",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue 有工作？": {
+      "main": [
+        [
+          {
+            "node": "處理並Commit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "靜默跳過",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "處理並Commit": {
+      "main": [
+        [
+          {
+            "node": "處理成功？",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "處理成功？": {
+      "main": [
+        [
+          {
+            "node": "清空Queue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "寄送異常通知",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  }
+}

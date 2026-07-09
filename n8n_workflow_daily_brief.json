@@ -1,0 +1,346 @@
+{
+  "name": "7. [Stock] Dashboard 盤後總結 AI",
+  "nodes": [
+    {
+      "id": "p24-trigger",
+      "name": "Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 50 23 * * 1-5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "p24-fetch-facts",
+      "name": "抓 facts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        200
+      ],
+      "parameters": {
+        "jsCode": "const SUPABASE_URL = 'https://bliybylxjwemgzjvazyc.supabase.co';\nconst https = require('https');\nconst result = await new Promise((resolve) => {\n  https.get(`${SUPABASE_URL}/storage/v1/object/public/snapshots/daily-brief-facts.json`, (res) => {\n    let data = '';\n    res.on('data', d => data += d);\n    res.on('end', () => {\n      try { resolve(JSON.parse(data)); } catch (e) { resolve(null); }\n    });\n  }).on('error', () => resolve(null));\n});\nif (!result) return [{ json: { error: 'facts_fetch_failed' } }];\nreturn [{ json: result }];\n"
+      }
+    },
+    {
+      "id": "p24-if-facts",
+      "name": "facts 存在？",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        440,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-facts-error",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "p24-noop",
+      "name": "靜默跳過",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        660,
+        360
+      ]
+    },
+    {
+      "id": "p24-call-openai",
+      "name": "呼叫 OpenAI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        120
+      ],
+      "parameters": {
+        "jsCode": "const facts = $input.first().json;\nconst apiKey = $env.OPENAI_API_KEY;\n\nconst prompt = `你是台股盤後分析助理。根據以下事實統計，寫一段繁體中文盤後總結，150字以內，語氣專業精簡，不要加任何前綴或標題：\n\n大盤漲跌：${facts.marketChangePct ?? '—'}%\n四象限分布：漲潮${facts.quadrantCounts?.TR ?? 0} 觀望${facts.quadrantCounts?.TL ?? 0} 退潮${facts.quadrantCounts?.BL ?? 0} 輪動${facts.quadrantCounts?.BR ?? 0}\n逆勢買超板塊：${(facts.contrarian || []).join('、') || '無'}\n昨日買超前三板塊今日表現：${(facts.top3Performance || []).map(t => `${t.sector} ${t.avgChangePct ?? '—'}%`).join('、') || '無'}\n異常個股：${(facts.anomalies || []).slice(0, 5).map(a => `${a.name} ${a.net >= 0 ? '+' : ''}${a.net.toFixed(1)}億`).join('、') || '無'}`;\n\nconst body = JSON.stringify({\n  model: 'gpt-5.4-mini',\n  messages: [{ role: 'user', content: prompt }],\n  max_tokens: 300,\n});\n\nconst result = await new Promise((resolve) => {\n  const https = require('https');\n  const options = {\n    hostname: 'api.openai.com',\n    path: '/v1/chat/completions',\n    method: 'POST',\n    headers: {\n      'Authorization': `Bearer ${apiKey}`,\n      'Content-Type': 'application/json',\n      'Content-Length': Buffer.byteLength(body),\n    },\n  };\n  const req = https.request(options, (res) => {\n    let data = '';\n    res.on('data', d => data += d);\n    res.on('end', () => {\n      try {\n        const json = JSON.parse(data);\n        const summary = json.choices?.[0]?.message?.content?.trim();\n        resolve(summary ? { ok: true, summary } : { ok: false, error: JSON.stringify(json).slice(0, 300) });\n      } catch (e) { resolve({ ok: false, error: e.message }); }\n    });\n  });\n  req.on('error', (e) => resolve({ ok: false, error: e.message }));\n  req.write(body);\n  req.end();\n});\n\nreturn [{ json: { facts, ...result } }];\n"
+      }
+    },
+    {
+      "id": "p24-if-openai",
+      "name": "OpenAI 成功？",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-openai-ok",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "p24-msg-ai",
+      "name": "組訊息-AI版",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const { facts, summary } = $json;\nconst parts = [summary];\nif (facts.contrarian?.length) parts.push(`⚓ 逆勢買超：${facts.contrarian.join('、')}`);\nif (facts.anomalies?.length) {\n  const list = facts.anomalies.slice(0, 5).map(a => `${a.name}(${a.net >= 0 ? '+' : ''}${a.net.toFixed(1)}億)`).join('、');\n  parts.push(`異常個股：${list}`);\n}\nconst text = parts.filter(Boolean).join('<br>');\nreturn [{ json: {\n  subject: `📋 ${facts.date ?? ''} 盤後總結`,\n  bodyContent: text,\n  supabasePayload: { ...facts, summary },\n}}];\n"
+      }
+    },
+    {
+      "id": "p24-msg-fallback",
+      "name": "組訊息-事實版",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        240
+      ],
+      "parameters": {
+        "jsCode": "const { facts } = $json;\nconst parts = [];\nif (facts.contrarian?.length) parts.push(`⚓ 逆勢買超：${facts.contrarian.join('、')}`);\nif (facts.anomalies?.length) {\n  const list = facts.anomalies.slice(0, 5).map(a => `${a.name}(${a.net >= 0 ? '+' : ''}${a.net.toFixed(1)}億)`).join('、');\n  parts.push(`異常個股：${list}`);\n}\nconst text = parts.join('<br>') || '（無特別事項）';\nreturn [{ json: {\n  subject: `📋 ${facts.date ?? ''} 盤後總結（AI 總結暫時無法產生，事實版）`,\n  bodyContent: text,\n  supabasePayload: { ...facts, summary: null },\n}}];\n"
+      }
+    },
+    {
+      "id": "p24-email-ai",
+      "name": "呼叫Sub群組發送(AI)",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        0
+      ],
+      "parameters": {
+        "toRecipients": "crazyhorn888@hotmail.com",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.bodyContent }}",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "AANpomatlEG71IKz",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "id": "p24-email-fallback",
+      "name": "呼叫Sub群組發送(事實)",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        240
+      ],
+      "parameters": {
+        "toRecipients": "crazyhorn888@hotmail.com",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.bodyContent }}",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "AANpomatlEG71IKz",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "id": "p24-write-supabase-ai",
+      "name": "寫回Supabase(AI)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const { supabasePayload } = $json;\nconst SUPABASE_KEY = $env.SUPABASE_SERVICE_KEY;\nconst https = require('https');\nconst body = JSON.stringify(supabasePayload);\nconst result = await new Promise((resolve) => {\n  const options = {\n    hostname: 'bliybylxjwemgzjvazyc.supabase.co',\n    path: '/storage/v1/object/snapshots/daily-brief-facts.json',\n    method: 'POST',\n    headers: {\n      'Authorization': `Bearer ${SUPABASE_KEY}`,\n      'Content-Type': 'application/json',\n      'Content-Length': Buffer.byteLength(body),\n      'x-upsert': 'true',\n    },\n  };\n  const req = https.request(options, (res) => {\n    let data = '';\n    res.on('data', d => data += d);\n    res.on('end', () => resolve({ status: res.statusCode }));\n  });\n  req.on('error', (e) => resolve({ status: 0, error: e.message }));\n  req.write(body);\n  req.end();\n});\nreturn [{ json: { ...result } }];\n"
+      }
+    },
+    {
+      "id": "p24-write-supabase-fallback",
+      "name": "寫回Supabase(事實)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        240
+      ],
+      "parameters": {
+        "jsCode": "const { supabasePayload } = $json;\nconst SUPABASE_KEY = $env.SUPABASE_SERVICE_KEY;\nconst https = require('https');\nconst body = JSON.stringify(supabasePayload);\nconst result = await new Promise((resolve) => {\n  const options = {\n    hostname: 'bliybylxjwemgzjvazyc.supabase.co',\n    path: '/storage/v1/object/snapshots/daily-brief-facts.json',\n    method: 'POST',\n    headers: {\n      'Authorization': `Bearer ${SUPABASE_KEY}`,\n      'Content-Type': 'application/json',\n      'Content-Length': Buffer.byteLength(body),\n      'x-upsert': 'true',\n    },\n  };\n  const req = https.request(options, (res) => {\n    let data = '';\n    res.on('data', d => data += d);\n    res.on('end', () => resolve({ status: res.statusCode }));\n  });\n  req.on('error', (e) => resolve({ status: 0, error: e.message }));\n  req.write(body);\n  req.end();\n});\nreturn [{ json: { ...result } }];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Trigger": {
+      "main": [
+        [
+          {
+            "node": "抓 facts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "抓 facts": {
+      "main": [
+        [
+          {
+            "node": "facts 存在？",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "facts 存在？": {
+      "main": [
+        [
+          {
+            "node": "呼叫 OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "靜默跳過",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "呼叫 OpenAI": {
+      "main": [
+        [
+          {
+            "node": "OpenAI 成功？",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI 成功？": {
+      "main": [
+        [
+          {
+            "node": "組訊息-AI版",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "組訊息-事實版",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "組訊息-AI版": {
+      "main": [
+        [
+          {
+            "node": "呼叫Sub群組發送(AI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "組訊息-事實版": {
+      "main": [
+        [
+          {
+            "node": "呼叫Sub群組發送(事實)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "呼叫Sub群組發送(AI)": {
+      "main": [
+        [
+          {
+            "node": "寫回Supabase(AI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "呼叫Sub群組發送(事實)": {
+      "main": [
+        [
+          {
+            "node": "寫回Supabase(事實)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  }
+}

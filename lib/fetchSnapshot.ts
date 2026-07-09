@@ -66,6 +66,7 @@ async function fetchLayered(latestUrl: string): Promise<SnapshotData> {
     conceptHistory: market.conceptHistory ?? [],
     concepts:       market.concepts ?? [],
     globalIndices:  market.globalIndices ?? undefined,
+    dailyBrief:     market.dailyBrief ?? undefined,
     marketSignals:  market.marketSignals ?? null,
   }
 }
