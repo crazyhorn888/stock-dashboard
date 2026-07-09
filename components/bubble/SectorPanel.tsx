@@ -1,6 +1,7 @@
 'use client'
 import { useState, useMemo } from 'react'
 import type { SectorBubble, StockData } from '@/lib/types'
+import ConceptTags from '@/components/shared/ConceptTags'
 
 const QUADRANT_LABEL: Record<string, { label: string; color: string }> = {
   TR: { label: '漲潮', color: 'text-red-500'   },
@@ -22,6 +23,7 @@ interface Props {
   allStocks: StockData[]
   n: number
   onStockClick?: (stock: StockData) => void
+  onConceptClick?: (concept: string) => void
 }
 
 type SortKey = 'code' | 'changePercent' | 'highDrop' | 'lowRise' | 'netBuy' | 'foreignNet' | 'trustNet' | 'dealerNet'
@@ -37,6 +39,7 @@ type RowData = {
   foreignNet: number
   trustNet: number
   dealerNet: number
+  concepts: string[] | undefined
   stockData: StockData | undefined
 }
 
@@ -50,6 +53,7 @@ const COLS: { key: SortKey | null; label: string; right?: boolean }[] = [
   { key: 'foreignNet',    label: '外資(億)', right: true },
   { key: 'trustNet',      label: '投信(億)', right: true },
   { key: 'dealerNet',     label: '自營(億)', right: true },
+  { key: null,            label: '概念'  },
 ]
 
 function sign(v: number) { return v > 0 ? '+' : '' }
@@ -58,7 +62,7 @@ function numColor(v: number) {
   return v > 0 ? 'text-red-500' : v < 0 ? 'text-green-600' : 'text-slate-400'
 }
 
-export default function SectorPanel({ sector, onClose, allStocks, n, onStockClick }: Props) {
+export default function SectorPanel({ sector, onClose, allStocks, n, onStockClick, onConceptClick }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('netBuy')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
@@ -86,6 +90,7 @@ export default function SectorPanel({ sector, onClose, allStocks, n, onStockClic
         foreignNet:    s.foreignNet,
         trustNet:      s.trustNet,
         dealerNet:     s.dealerNet,
+        concepts:      sd?.concepts,
         stockData:     sd,
       }
     })
@@ -216,6 +221,10 @@ export default function SectorPanel({ sector, onClose, allStocks, n, onStockClic
                     {/* 自營 */}
                     <td className={`px-2.5 py-2 text-right whitespace-nowrap ${numColor(r.dealerNet)}`}>
                       {sign(r.dealerNet)}{r.dealerNet.toFixed(2)}
+                    </td>
+                    {/* 概念 */}
+                    <td className="px-2.5 py-2 whitespace-nowrap">
+                      <ConceptTags concepts={r.concepts} onTagClick={onConceptClick} />
                     </td>
                   </tr>
                 )

@@ -3,12 +3,17 @@
  * 不再逐支股票抓歷史（改由 seed-history.mjs 一次性建立），每日只需幾個 TWSE 請求
  * 執行：node scripts/fetch-daily.mjs
  */
-import { writeFileSync, mkdirSync } from 'fs'
+import { writeFileSync, mkdirSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
-import { calcSectors } from './calc-sectors.mjs'
+import { calcSectors, calcConcepts } from './calc-sectors.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+
+// P2-1：code -> 概念名稱陣列（一股多概念），靜態資料隨 repo 走
+const conceptStockMap = JSON.parse(
+  readFileSync(join(__dirname, '..', 'data', 'concept-sectors.json'), 'utf-8')
+).stocks
 
 // ── 工具 ────────────────────────────────────────────
 async function fetchJSON(url) {
@@ -142,13 +147,16 @@ function parseNum(v) {
  * 金額才能跨板塊比較（張數會高估低價股權重）；收盤價從個股歷史陣列按日期查，
  * 查不到才退回最新 close（近似值，僅發生在極少數缺歷史的個股）。
  */
-async function fetchT86Sectors(dateYYYYMMDD, dateISO, stockMap) {
+// P2-1：conceptMap 為 code -> 概念名稱陣列（一股多概念），與官方 sector 分組共用同一份 T86 response，
+// 不需額外呼叫 TWSE。回傳 { sectorRows, conceptRows }，conceptMap 未傳入時 conceptRows 為 []
+async function fetchT86Sectors(dateYYYYMMDD, dateISO, stockMap, conceptMap = {}) {
   const url = `https://www.twse.com.tw/rwd/zh/fund/T86?response=json&date=${dateYYYYMMDD}&selectType=ALL`
   try {
     const d = await fetchJSON(url)
     if (d?.stat !== 'OK' || !Array.isArray(d.data)) return null
 
-    const groups = {}  // sectorName → { net, buySell, stocks[] }
+    const groups = {}        // sectorName → { net, buySell, stocks[] }
+    const conceptGroups = {} // conceptName → { net, buySell, stocks[] }
     const r2 = v => Math.round(v * 100) / 100
 
     for (const row of d.data) {
@@ -156,7 +164,7 @@ async function fetchT86Sectors(dateYYYYMMDD, dateISO, stockMap) {
       if (!/^\d{4}$/.test(code)) continue   // 跳過 ETF、認購權證等
 
       const stock = stockMap[code]
-      if (!stock?.sector) continue           // 無法對應板塊則跳過
+      if (!stock) continue
 
       // 該日收盤價：從個股歷史找同日期；找不到用最新 close 近似
       const di = stock.dates?.indexOf(dateISO) ?? -1
@@ -173,22 +181,35 @@ async function fetchT86Sectors(dateYYYYMMDD, dateISO, stockMap) {
       const sellVol = parseNum(row[3])+parseNum(row[6])+parseNum(row[9])+parseNum(row[13])+parseNum(row[16])
       const buySell = toYi(buyVol + sellVol)   // 買賣合計 億元（for bubble size）
 
-      const sectorName = stock.sector
-      if (!groups[sectorName]) groups[sectorName] = { net: 0, buySell: 0, stocks: [] }
-      groups[sectorName].net     += netBuy
-      groups[sectorName].buySell += buySell
-      groups[sectorName].stocks.push({ code, name: stock.name, net: netBuy, foreignNet, trustNet, dealerNet })
+      const stockEntry = { code, name: stock.name, net: netBuy, foreignNet, trustNet, dealerNet }
+
+      if (stock.sector) {
+        const sectorName = stock.sector
+        if (!groups[sectorName]) groups[sectorName] = { net: 0, buySell: 0, stocks: [] }
+        groups[sectorName].net     += netBuy
+        groups[sectorName].buySell += buySell
+        groups[sectorName].stocks.push(stockEntry)
+      }
+
+      for (const conceptName of (conceptMap[code] ?? [])) {
+        if (!conceptGroups[conceptName]) conceptGroups[conceptName] = { net: 0, buySell: 0, stocks: [] }
+        conceptGroups[conceptName].net     += netBuy
+        conceptGroups[conceptName].buySell += buySell
+        conceptGroups[conceptName].stocks.push(stockEntry)
+      }
     }
 
-    const rows = Object.entries(groups).map(([name, v]) => ({
+    const toRows = groupMap => Object.entries(groupMap).map(([name, v]) => ({
       name,
       net: r2(v.net),
       buySell: r2(v.buySell),
       stocks: v.stocks.sort((a, b) => b.net - a.net),
     }))
 
-    console.log(`[daily] T86 分組：${rows.length} 個板塊，${rows.reduce((s, r) => s + r.stocks.length, 0)} 支個股`)
-    return rows.length > 0 ? rows : null
+    const sectorRows = toRows(groups)
+    const conceptRows = toRows(conceptGroups)
+    console.log(`[daily] T86 分組：${sectorRows.length} 個板塊、${conceptRows.length} 個概念，${sectorRows.reduce((s, r) => s + r.stocks.length, 0)} 支個股`)
+    return sectorRows.length > 0 ? { sectorRows, conceptRows } : null
   } catch (e) {
     console.warn('[daily] T86 抓取失敗:', e.message)
     return null
@@ -656,6 +677,8 @@ async function main() {
   }
 
   const stocks = Object.values(stockMap)
+  // P2-2：每股附上概念 tags（一股多概念），供個股列表/詳情頁顯示與點擊開啟概念面板
+  for (const s of stocks) s.concepts = conceptStockMap[s.code] ?? []
   console.log(`[daily] TPEX 更新 ${tpexPrices.length} 支，新增 ${tpexNewCount} 支，全市場合計 ${stocks.length} 支`)
 
   // Step 4：更新 indexHistory（含籌碼資料）
@@ -690,19 +713,22 @@ async function main() {
     }
   }
 
-  // Step 5：T86（依 stockMap sector 分組）→ sectorHistory → 泡泡圖
+  // Step 5：T86（依 stockMap sector 分組 + concept-sectors.json 概念分組）→ sectorHistory/conceptHistory → 泡泡圖
   // P1-3：只保留億元格式（unit='yi'）的歷史；舊「張」格式無法換算（缺當日價格上下文），
   // 直接丟棄，缺的天數由下方 5b 回補機制自動用新單位重抓
-  let sectorHistory = (snapshot.sectorHistory ?? []).filter(d => d.unit === 'yi')
+  let sectorHistory  = (snapshot.sectorHistory  ?? []).filter(d => d.unit === 'yi')
+  let conceptHistory = (snapshot.conceptHistory ?? []).filter(d => d.unit === 'yi')
 
-  // 5a. 今日 T86
-  const t86Rows = await fetchT86Sectors(todayYYYYMMDD, today, stockMap)
-  if (t86Rows && t86Rows.length > 0) {
-    const filtered = sectorHistory.filter(d => d.date !== today)
-    sectorHistory = [{ date: today, unit: 'yi', rows: t86Rows }, ...filtered].slice(0, 25)
-    console.log(`[daily] sectorHistory 更新今日 ${today}，${t86Rows.length} 類股`)
+  // 5a. 今日 T86（同一份 response 同時產出官方分組與概念分組，不額外呼叫 TWSE）
+  const t86Today = await fetchT86Sectors(todayYYYYMMDD, today, stockMap, conceptStockMap)
+  if (t86Today) {
+    const filtered  = sectorHistory.filter(d => d.date !== today)
+    sectorHistory  = [{ date: today, unit: 'yi', rows: t86Today.sectorRows }, ...filtered].slice(0, 25)
+    const filteredC = conceptHistory.filter(d => d.date !== today)
+    conceptHistory = [{ date: today, unit: 'yi', rows: t86Today.conceptRows }, ...filteredC].slice(0, 25)
+    console.log(`[daily] sectorHistory/conceptHistory 更新今日 ${today}`)
   } else {
-    console.warn('[daily] T86 無資料，sectorHistory 保留舊值')
+    console.warn('[daily] T86 無資料，sectorHistory/conceptHistory 保留舊值')
   }
 
   // 5b. 補齊歷史（若 < 20 天）：從 indexHistory 取得過去交易日，逐日補抓 T86
@@ -717,20 +743,24 @@ async function main() {
       console.log(`[daily] sectorHistory 僅 ${sectorHistory.length} 天，補抓 ${missingDates.length} 個歷史交易日...`)
       for (const date of missingDates) {
         await new Promise(r => setTimeout(r, 1500))  // TWSE rate limit 緩衝
-        const rows = await fetchT86Sectors(date.replace(/-/g, ''), date, stockMap)
-        if (rows && rows.length > 0) {
-          sectorHistory.push({ date, unit: 'yi', rows })
-          console.log(`[daily]   → ${date}：${rows.length} 類股`)
+        const t86h = await fetchT86Sectors(date.replace(/-/g, ''), date, stockMap, conceptStockMap)
+        if (t86h) {
+          sectorHistory.push({ date, unit: 'yi', rows: t86h.sectorRows })
+          conceptHistory.push({ date, unit: 'yi', rows: t86h.conceptRows })
+          console.log(`[daily]   → ${date}：${t86h.sectorRows.length} 板塊、${t86h.conceptRows.length} 概念`)
         }
       }
       sectorHistory.sort((a, b) => b.date.localeCompare(a.date))
       sectorHistory = sectorHistory.slice(0, 25)
+      conceptHistory.sort((a, b) => b.date.localeCompare(a.date))
+      conceptHistory = conceptHistory.slice(0, 25)
       console.log(`[daily] sectorHistory 補齊完成，共 ${sectorHistory.length} 天`)
     }
   }
 
-  const sectors = calcSectors(sectorHistory, stockMap)
-  console.log(`[daily] 計算泡泡圖：${sectors.length} 個類股`)
+  const sectors  = calcSectors(sectorHistory, stockMap)
+  const concepts = calcConcepts(conceptHistory, stockMap, conceptStockMap)
+  console.log(`[daily] 計算泡泡圖：${sectors.length} 個類股、${concepts.length} 個概念`)
 
   const newSnapshot = {
     updatedAt: new Date().toISOString(),
@@ -741,6 +771,8 @@ async function main() {
     indexHistory,
     sectorHistory,
     sectors,
+    conceptHistory,
+    concepts,
     marketSignals: snapshot.marketSignals ?? null,
   }
 

@@ -104,6 +104,21 @@ async function main() {
   const sectorHistoryLite = (snapshot.sectorHistory ?? []).map((d, i) =>
     i === 0 ? d : { ...d, rows: d.rows.map(({ stocks: _s, ...rest }) => rest) }
   )
+  // P2-1：conceptHistory 同樣只在 day 0 保留個股明細（泡泡圖回放只用 net/buySell）
+  const conceptHistoryLite = (snapshot.conceptHistory ?? []).map((d, i) =>
+    i === 0 ? d : { ...d, rows: d.rows.map(({ stocks: _s, ...rest }) => rest) }
+  )
+  // P2-3：全球指數由獨立的 fetch-global.mjs（06:07 輕量班次）寫入，這裡只讀最新結果併進 market.json，
+  // 不在本 pipeline 內呼叫 Yahoo（避免每個 cron 班次都重複打）
+  let globalIndices = {}
+  try {
+    const res = await fetch(`${process.env.SUPABASE_URL}/storage/v1/object/public/snapshots/global-indices.json`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    })
+    if (res.ok) globalIndices = (await res.json()).indices ?? {}
+  } catch (e) {
+    console.warn('[write] global-indices.json 讀取失敗，globalIndices 留空：', e.message)
+  }
   const market = {
     updatedAt:     snapshot.updatedAt,
     stocksDate:    snapshot.stocksDate ?? null,
@@ -116,6 +131,9 @@ async function main() {
     marketSignals: snapshot.marketSignals,
     sectors:       snapshot.sectors ?? [],
     sectorHistory: sectorHistoryLite,
+    concepts:       snapshot.concepts ?? [],
+    conceptHistory: conceptHistoryLite,
+    globalIndices,
   }
   await uploadToSupabase('market.json', JSON.stringify(market))
   console.log('[write] market.json 上傳完成')

@@ -11,10 +11,12 @@
  *
  * @param {import('../lib/types').SectorDayData[]} sectorHistory  newest first
  * @param {Record<string, {code:string, name:string, industry:string, sector?:string}>} stockMap
+ * @param {(stock: object, name: string) => boolean} [matchFn]  分組判斷，預設用官方 sector/industry
  * @returns {import('../lib/types').SectorBubble[]}
  */
-export function calcSectors(sectorHistory, stockMap) {
+export function calcSectors(sectorHistory, stockMap, matchFn) {
   if (!sectorHistory || sectorHistory.length === 0) return []
+  matchFn ??= (s, name) => s.sector === name || s.industry === name
 
   const days5  = sectorHistory.slice(0, Math.min(5,  sectorHistory.length))
   const days20 = sectorHistory.slice(0, Math.min(20, sectorHistory.length))
@@ -46,7 +48,7 @@ export function calcSectors(sectorHistory, stockMap) {
 
     // 全部屬於此板塊的股票（從 stockMap 取，sector 欄位對應 T86 板塊名）
     const allSectorStocks = Object.values(stockMap).filter(s =>
-      /^\d{4}$/.test(s.code) && (s.sector === name || s.industry === name)
+      /^\d{4}$/.test(s.code) && matchFn(s, name)
     )
 
     const stocks = allSectorStocks
@@ -97,4 +99,19 @@ export function calcSectors(sectorHistory, stockMap) {
   }
 
   return bubbles
+}
+
+/**
+ * P2-1：概念泡泡圖，X/Y/size/trail 邏輯與官方分類板塊完全共用，
+ * 差別只在「股票屬於哪個分組」的判斷改成 conceptMap 的一股多概念查表
+ * @param {import('../lib/types').SectorDayData[]} conceptHistory
+ * @param {Record<string, object>} stockMap
+ * @param {Record<string, string[]>} conceptMap  code -> concept 名稱陣列
+ */
+export function calcConcepts(conceptHistory, stockMap, conceptMap) {
+  return calcSectors(
+    conceptHistory,
+    stockMap,
+    (s, name) => (conceptMap[s.code] ?? []).includes(name),
+  )
 }

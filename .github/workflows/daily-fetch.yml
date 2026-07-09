@@ -19,6 +19,9 @@ on:
     - cron: '7 14 * * 1-5'
     # 台北 23:37 → 補捉 STOCK_DAY_ALL 深夜更新（過午夜 Guard 2 就封死了）
     - cron: '37 15 * * 1-5'
+    # P2-3：台北 06:07 → 全球指數輕量班次（獨立 job，不跑主 pipeline）。
+    # 台北 06:07 = UTC 前一天 22:07，故 UTC 星期用 0-4（週日~週四）才對應台北週一~週五早上
+    - cron: '7 22 * * 0-4'
   workflow_dispatch: # n8n Phase1/Phase2 完成後觸發，或手動補跑
 
 # 固定 group 名稱讓所有 run 排同一隊：後到的排隊等前面跑完（不取消），
@@ -29,6 +32,8 @@ concurrency:
 
 jobs:
   fetch-and-upload:
+    # 06:07 全球指數班次不跑這個 job（交給下面的 fetch-global-indices）
+    if: github.event_name != 'schedule' || github.event.schedule != '7 22 * * 0-4'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -90,3 +95,25 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: node scripts/write-firebase.mjs
+
+  # P2-3：全球指數，只在台北 06:07 這班跑。不裝依賴（腳本零依賴、只用內建 fetch），
+  # 不動 latest.json/主 pipeline，AC(d) 要求 <1 分鐘結束
+  fetch-global-indices:
+    if: github.event_name == 'schedule' && github.event.schedule == '7 22 * * 0-4'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 抓取全球指數（Yahoo Finance chart API）
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node scripts/fetch-global.mjs

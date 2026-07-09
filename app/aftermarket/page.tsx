@@ -3,6 +3,8 @@ import { useState, useMemo, useEffect } from 'react'
 import MarketSignalCards from '@/components/aftermarket/MarketSignalCards'
 import KlineChart from '@/components/aftermarket/KlineChart'
 import StockTable from '@/components/aftermarket/StockTable'
+import GlobalIndexLights from '@/components/aftermarket/GlobalIndexLights'
+import GlobalIndexModal from '@/components/aftermarket/GlobalIndexModal'
 import BubbleChart from '@/components/bubble/BubbleChart'
 import QuadrantSummary from '@/components/bubble/QuadrantSummary'
 import SectorRanking from '@/components/bubble/SectorRanking'
@@ -28,6 +30,8 @@ export default function AftermarketPage() {
   const [activeSector, setActiveSector] = useState<SectorBubble | null>(null)
   const [activeStock, setActiveStock] = useState<StockData | null>(null)
   const [sectorView, setSectorView] = useState<'bubble' | 'ranking'>('bubble')
+  const [sectorSource, setSectorSource] = useState<'official' | 'concept'>('official')
+  const [globalModalKey, setGlobalModalKey] = useState<string | null>(null)
 
   useEffect(() => {
     fetchSnapshot()
@@ -37,6 +41,7 @@ export default function AftermarketPage() {
           // production 快照可能尚未有這兩個欄位，fallback 到 mock
           indexHistory: d.indexHistory?.length ? d.indexHistory : MOCK_DATA.indexHistory,
           sectors:      d.sectors?.length      ? d.sectors      : MOCK_DATA.sectors,
+          concepts:     d.concepts?.length      ? d.concepts     : MOCK_DATA.concepts,
         })
         setLoading(false)
       })
@@ -52,10 +57,22 @@ export default function AftermarketPage() {
     [data.stocks, n]
   )
 
+  // P2-2：點概念 tag → 關閉目前的個股詳情/板塊面板，開啟該概念的 SectorPanel
+  function handleConceptClick(name: string) {
+    const bubble = data.concepts?.find(c => c.sectorName === name)
+    if (!bubble) return
+    setActiveStock(null)
+    setActiveSector(bubble)
+  }
+
+  // P2-1：產業板塊分類來源切換（官方 sector / 概念股，一股多概念）
+  const activeSectors = sectorSource === 'official' ? (data.sectors ?? []) : (data.concepts ?? [])
+  const activeSectorHistory = sectorSource === 'official' ? data.sectorHistory : data.conceptHistory
+
   // 聚焦回放的日期標籤：trail 最多 5 點 + 今日 = 6 個日期（newest first）
   const frameDates = useMemo(
-    () => (data.sectorHistory ?? []).slice(0, 6).map(d => d.date),
-    [data.sectorHistory]
+    () => (activeSectorHistory ?? []).slice(0, 6).map(d => d.date),
+    [activeSectorHistory]
   )
 
   // 用前端 n 重新計算大盤訊號（後端 marketSignals.nDays 固定為 100，不隨使用者 N 更新）
@@ -222,29 +239,51 @@ export default function AftermarketPage() {
           <>
             {activeTab === '大盤關鍵資料' && (
               <>
+                <GlobalIndexLights indices={data.globalIndices} onSelect={setGlobalModalKey} />
                 <KlineChart data={data.indexHistory ?? []} n={n} />
                 <MarketSignalCards signals={computedSignals} />
               </>
             )}
 
             {activeTab === '個股清單' && (
-              <StockTable rows={rows} onStockClick={setActiveStock} />
+              <StockTable rows={rows} onStockClick={setActiveStock} onConceptClick={handleConceptClick} />
             )}
 
             {activeTab === '產業板塊' && (
               <div className="rounded-xl bg-white shadow-sm overflow-hidden">
                 {/* 四象限統計條（P1-5）：大盤漲跌% 由 indexHistory 前兩根 K 棒推算 */}
                 <QuadrantSummary
-                  sectors={data.sectors ?? []}
-                  todayRows={data.sectorHistory?.[0]?.rows}
+                  sectors={activeSectors}
+                  todayRows={activeSectorHistory?.[0]?.rows}
                   marketChangePct={(() => {
                     const [t, p] = data.indexHistory ?? []
                     return t && p && p.close > 0 ? ((t.close - p.close) / p.close) * 100 : null
                   })()}
                 />
 
+                {/* 官方分類 / 概念分類 資料來源切換（P2-1） */}
+                <div className="flex items-center gap-1.5 px-3 pt-2">
+                  {([['official', '官方分類'], ['concept', '概念分類']] as const).map(([v, label]) => (
+                    <button
+                      key={v}
+                      onClick={() => setSectorSource(v)}
+                      className={[
+                        'px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors',
+                        sectorSource === v
+                          ? 'bg-slate-800 text-white border-slate-800'
+                          : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400',
+                      ].join(' ')}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  {sectorSource === 'concept' && (
+                    <span className="text-[10px] text-slate-400 ml-1">一股可能屬於多個概念，資金會重複計算</span>
+                  )}
+                </div>
+
                 {/* 泡泡圖 / 排行榜 視圖切換 */}
-                <div className="flex gap-1.5 px-3 pb-2">
+                <div className="flex gap-1.5 px-3 py-2">
                   {([['bubble', '🫧 泡泡圖'], ['ranking', '📋 排行榜']] as const).map(([v, label]) => (
                     <button
                       key={v}
@@ -263,13 +302,13 @@ export default function AftermarketPage() {
 
                 {sectorView === 'bubble' ? (
                   <BubbleChart
-                    sectors={data.sectors ?? []}
+                    sectors={activeSectors}
                     onBubbleClick={s => setActiveSector(s)}
                     frameDates={frameDates}
                   />
                 ) : (
                   <SectorRanking
-                    sectors={data.sectors ?? []}
+                    sectors={activeSectors}
                     allStocks={data.stocks}
                     onSectorClick={s => setActiveSector(s)}
                   />
@@ -293,8 +332,13 @@ export default function AftermarketPage() {
         allStocks={data.stocks}
         n={n}
         onStockClick={stock => { setActiveSector(null); setActiveStock(stock) }}
+        onConceptClick={handleConceptClick}
       />
-      <StockDetailSheet stock={activeStock} n={n} onClose={() => setActiveStock(null)} />
+      <StockDetailSheet stock={activeStock} n={n} onClose={() => setActiveStock(null)} onConceptClick={handleConceptClick} />
+      <GlobalIndexModal
+        data={globalModalKey ? data.globalIndices?.[globalModalKey] ?? null : null}
+        onClose={() => setGlobalModalKey(null)}
+      />
     </div>
   )
 }

@@ -4,11 +4,13 @@ import type { StockData } from '@/lib/types'
 import { calcStockRow } from '@/lib/calcMetrics'
 import { fetchOHLCSnapshot, getStockBars, type OHLCBar } from '@/lib/fetchStockOHLC'
 import StockKChart, { type Period } from './StockKChart'
+import ConceptTags from '@/components/shared/ConceptTags'
 
 interface Props {
   stock: StockData | null
   n: number
   onClose: () => void
+  onConceptClick?: (concept: string) => void
 }
 
 const PERIODS: { key: Period; label: string }[] = [
@@ -17,7 +19,7 @@ const PERIODS: { key: Period; label: string }[] = [
   { key: 'M', label: '月' },
 ]
 
-export default function StockDetailSheet({ stock, n, onClose }: Props) {
+export default function StockDetailSheet({ stock, n, onClose, onConceptClick }: Props) {
   const sheetRef = useRef<HTMLDivElement>(null)
   // iOS 15+ Safari compact bottom toolbar (~49px) overlays position:fixed content.
   // visualViewport.height == window.innerHeight on iOS 15+ (toolbar overlays, doesn't shrink).
@@ -113,6 +115,13 @@ export default function StockDetailSheet({ stock, n, onClose }: Props) {
             </div>
           ))}
         </div>
+
+        {/* P2-2：概念 tags */}
+        {!!stock.concepts?.length && (
+          <div className="px-4 py-2 border-b border-slate-100">
+            <ConceptTags concepts={stock.concepts} onTagClick={onConceptClick} />
+          </div>
+        )}
 
         {/* Period switcher */}
         <div className="flex items-center gap-1.5 px-4 py-2 border-b border-slate-100">

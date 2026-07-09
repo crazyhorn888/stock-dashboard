@@ -1,11 +1,21 @@
 'use client'
 import { useState, useMemo } from 'react'
 import type { IndexOHLC, ChipsData, ChipsOptionParty } from '@/lib/types'
+import { calcMA, resampleWeekly } from '@/lib/calcMA'
 
 interface Props {
   data: IndexOHLC[]  // newest first
   n: number
+  title?: string  // P2-3：全球指數 Modal 複用同一顆元件時顯示指數名稱
 }
+
+// P2-3：MA 疊線設定；週線資料量不足以支撐 120 週回看，只在日線顯示 MA120
+const MA_LINES: { period: number; color: string; dailyOnly?: boolean }[] = [
+  { period: 10,  color: '#f59e0b' },
+  { period: 20,  color: '#a855f7' },
+  { period: 60,  color: '#3b82f6' },
+  { period: 120, color: '#64748b', dailyOnly: true },
+]
 
 // ── 籌碼面板 ──────────────────────────────────────────────────────────────
 const PNAME: Record<string, string> = { foreign: '外資', trust: '投信', dealer: '自營', retail: '散戶' }
@@ -176,11 +186,23 @@ const VH = 172
 const L_PAD = 4
 const R_PAD = 36  // space for Y-axis labels on right
 
-export default function KlineChart({ data, n }: Props) {
+export default function KlineChart({ data, n, title = '大盤 K 線走勢' }: Props) {
   const [selected, setSelected] = useState<IndexOHLC | null>(null)
+  const [period, setPeriod] = useState<'D' | 'W'>('D')
 
-  // Take n most-recent days and reverse so oldest=left, newest=right
-  const bars = useMemo(() => data.slice(0, n).reverse(), [data, n])
+  // P2-3：週線用 ISO 週重採樣；MA 計算來源（maSource）與顯示切片（bars）用同一顆粒度
+  const maSource = useMemo(() => period === 'D' ? data : resampleWeekly(data), [data, period])
+  const displayCount = Math.min(n, maSource.length)
+
+  // Take n most-recent days/weeks and reverse so oldest=left, newest=right
+  const bars = useMemo(() => maSource.slice(0, displayCount).reverse(), [maSource, displayCount])
+
+  // P2-3：MA10/20/60（週線再加 120 天資料不足，只在日線顯示 MA120），對齊 bars 順序
+  const maLines = useMemo(() => (
+    MA_LINES
+      .filter(l => period === 'D' || !l.dailyOnly)
+      .map(l => ({ ...l, values: calcMA(maSource, l.period).slice(0, displayCount).reverse() }))
+  ), [maSource, displayCount, period])
 
   const availW = VW - L_PAD - R_PAD
 
@@ -195,14 +217,15 @@ export default function KlineChart({ data, n }: Props) {
     return { peakIdx: pi, troughIdx: ti, peakPrice: bars[pi].close, troughPrice: bars[ti].close }
   }, [bars])
 
-  // Price axis range (with padding)
+  // Price axis range（含 MA 線數值，避免均線超出價格軸被裁切）
   const { pMin, pMax } = useMemo(() => {
     if (!bars.length) return { pMin: 0, pMax: 1 }
-    const allH = Math.max(...bars.map(d => d.high))
-    const allL = Math.min(...bars.map(d => d.low))
+    const maVals = maLines.flatMap(l => l.values).filter((v): v is number => v != null)
+    const allH = Math.max(...bars.map(d => d.high), ...maVals)
+    const allL = Math.min(...bars.map(d => d.low), ...maVals)
     const pad = (allH - allL) * 0.08
     return { pMin: allL - pad, pMax: allH + pad }
-  }, [bars])
+  }, [bars, maLines])
 
   const maxVol = useMemo(() => Math.max(...bars.map(d => d.volume), 1), [bars])
 
@@ -243,13 +266,35 @@ export default function KlineChart({ data, n }: Props) {
 
   return (
     <div className="mb-4">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-bold text-slate-700">大盤 K 線走勢</span>
-        <div className="flex items-center gap-3 text-[10px] text-slate-400">
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-y-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-bold text-slate-700">{title}</span>
+          {/* P2-3：日/週切換 */}
+          <div className="flex gap-1">
+            {(['D', 'W'] as const).map(p => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={[
+                  'px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-colors',
+                  period === p
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-slate-400 border-slate-200 hover:border-blue-300',
+                ].join(' ')}
+              >
+                {p === 'D' ? '日' : '週'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-[10px] text-slate-400 flex-wrap">
           <span><span className="inline-block w-2 h-2 rounded-sm bg-red-500 mr-0.5 align-middle" />漲</span>
           <span><span className="inline-block w-2 h-2 rounded-sm bg-green-500 mr-0.5 align-middle" />跌</span>
-          <span className="text-red-400">— N 日高</span>
-          <span className="text-green-500">— N 日低</span>
+          <span className="text-red-400">— N 高</span>
+          <span className="text-green-500">— N 低</span>
+          {maLines.map(l => (
+            <span key={l.period} style={{ color: l.color }}>— MA{l.period}</span>
+          ))}
         </div>
       </div>
 
@@ -325,6 +370,28 @@ export default function KlineChart({ data, n }: Props) {
                     r={Math.max(barW * 1.6, 3)}
                     fill="none" stroke="#2563eb" strokeWidth="1" strokeDasharray="2,1.5"/>
                 )}
+              </g>
+            )
+          })}
+
+          {/* P2-3：MA 疊線 — lookback 不足的點是 null，分段畫、遇 null 就斷開 */}
+          {maLines.map(l => {
+            const segments: string[] = []
+            let current: string[] = []
+            l.values.forEach((v, i) => {
+              if (v == null) {
+                if (current.length > 1) segments.push(current.join(' '))
+                current = []
+                return
+              }
+              current.push(`${xOf(i)},${yOf(v)}`)
+            })
+            if (current.length > 1) segments.push(current.join(' '))
+            return (
+              <g key={l.period}>
+                {segments.map((pts, si) => (
+                  <polyline key={si} points={pts} fill="none" stroke={l.color} strokeWidth="1" opacity="0.85"/>
+                ))}
               </g>
             )
           })}

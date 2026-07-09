@@ -8,6 +8,7 @@ export interface StockData {
   pe: number | null
   eps: number | null
   foreignNetBuy: number // 億元
+  concepts?: string[]  // P2-2：一股多概念 tags（來自 data/concept-sectors.json）
   closes: number[]     // 最近 250 個交易日收盤價，index 0 = 最新
   dates: string[]      // 對應日期 YYYY-MM-DD
   // OHLC + 成交量（cron 抓取後存入，stripped 後存 ohlc.json）
@@ -122,6 +123,13 @@ export interface IndexOHLC {
   chips?: ChipsData
 }
 
+// ── P2-3：全球指數（Yahoo Finance chart API，各市場自己的交易日曆）───────
+export interface GlobalIndexData {
+  name: string        // 顯示名稱，e.g. S&P500
+  bars: IndexOHLC[]   // newest first，近 250 個交易日（chips 不適用，恆為 undefined）
+  updatedAt: string
+}
+
 export interface SnapshotData {
   updatedAt: string
   stocksDate?: string | null  // 股價資料截至日期（YYYY-MM-DD）；若 < today 表示 STOCK_DAY_ALL 當日尚未就緒
@@ -135,6 +143,11 @@ export interface SnapshotData {
   indexHistory: IndexOHLC[]      // 近 250 交易日，index 0 = 最新
   sectorHistory: SectorDayData[] // 近 25 交易日 T86 資料，newest first
   sectors: SectorBubble[]        // 由 calc-sectors 計算的泡泡圖資料
+  // P2-1：概念股分類（一股多概念），結構與 sectorHistory/sectors 完全對應
+  conceptHistory?: SectorDayData[]
+  concepts?: SectorBubble[]
+  // P2-3：全球指數燈號 + Modal（獨立輕量腳本抓取，market.json 沒有時為 undefined）
+  globalIndices?: Record<string, GlobalIndexData>
 }
 
 export interface StockRow extends StockData {

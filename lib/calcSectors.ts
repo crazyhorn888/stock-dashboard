@@ -3,8 +3,10 @@ import type { SectorBubble, SectorDayData, SectorStock, StockData } from './type
 export function calcSectors(
   sectorHistory: SectorDayData[],
   stocks: StockData[],
+  matchFn?: (stock: StockData, name: string) => boolean,
 ): SectorBubble[] {
   if (!sectorHistory || sectorHistory.length === 0) return []
+  matchFn ??= (s, name) => s.sector === name || s.industry === name
 
   const days5  = sectorHistory.slice(0, Math.min(5,  sectorHistory.length))
   const days20 = sectorHistory.slice(0, Math.min(20, sectorHistory.length))
@@ -34,7 +36,7 @@ export function calcSectors(
     const t86Map    = Object.fromEntries((todayRow?.stocks ?? []).map(s => [s.code, s]))
 
     const allSectorStocks = stocks.filter(
-      s => /^\d{4}$/.test(s.code) && (s.sector === name || s.industry === name),
+      s => /^\d{4}$/.test(s.code) && matchFn!(s, name),
     )
 
     const stockList: SectorStock[] = allSectorStocks
@@ -86,4 +88,18 @@ export function calcSectors(
   }
 
   return bubbles
+}
+
+// P2-1：概念泡泡圖，X/Y/size/trail 邏輯與官方分類板塊完全共用，
+// 差別只在「股票屬於哪個分組」的判斷改成 conceptMap 的一股多概念查表
+export function calcConcepts(
+  conceptHistory: SectorDayData[],
+  stocks: StockData[],
+  conceptMap: Record<string, string[]>,
+): SectorBubble[] {
+  return calcSectors(
+    conceptHistory,
+    stocks,
+    (s, name) => (conceptMap[s.code] ?? []).includes(name),
+  )
 }

@@ -187,6 +187,8 @@ export const MOCK_DATA: SnapshotData = {
   indexHistory: fakeIndexHistory(),
   sectorHistory: [],
   sectors: MOCK_SECTORS,
+  conceptHistory: [],
+  concepts: MOCK_SECTORS,
   marketSignals: {
     updatedAt: today.toISOString(),
     nDays: 100,
