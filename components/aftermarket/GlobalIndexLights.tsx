@@ -10,6 +10,9 @@ interface Props {
 // 顯示順序：美股三大指數 → 費半 → 亞股
 const ORDER = ['spx', 'dji', 'ndq', 'sox', 'nkx', 'kospi'] as const
 const MA_PERIODS = [10, 20, 60, 120] as const
+// 貼線緩衝：價格離均線在 0.5% 以內視為「貼線」，不算跌破/站上，
+// 避免整理期一天上一天下、燈號天天跳動
+const BUFFER = 0.005
 
 export default function GlobalIndexLights({ indices, onSelect }: Props) {
   if (!indices || Object.keys(indices).length === 0) return null
@@ -19,11 +22,11 @@ export default function GlobalIndexLights({ indices, onSelect }: Props) {
     const idx = indices[key]
     if (!idx?.bars?.length) continue
     const close = idx.bars[0].close
-    // 找出「價格低於」的最短天期均線（最即時的訊號）；全部在均線之上則為 null
+    // 找出「價格低於」的最長天期均線（最嚴重的關鍵點位跌破）；全部在均線之上則為 null
     let belowPeriod: number | null = null
-    for (const p of MA_PERIODS) {
+    for (const p of [...MA_PERIODS].reverse()) {
       const ma = calcMA(idx.bars, p)[0]
-      if (ma != null && close < ma) { belowPeriod = p; break }
+      if (ma != null && close < ma * (1 - BUFFER)) { belowPeriod = p; break }
     }
     rows.push({ key, name: idx.name, date: idx.bars[0].date, belowPeriod })
   }

@@ -163,5 +163,13 @@
   ],
   "app/aftermarket/page.tsx::sectorDataIsStale": [
     "板塊/概念泡泡圖(BubbleChart)/象限統計(QuadrantSummary)/排行榜(SectorRanking) 共用同一組 activeSectorHistory，T86 若當天沒有新資料 fetch-daily.mjs 只會 log 警告、不會阻擋畫面，會靜默沿用前一天資料。新增 sectorDataIsStale（sectorHistory[0].date !== 台北今日）在官方/概念分類 toggle 旁顯示琥珀色提示，自選股模式不適用（無此驗證邏輯）"
+  ],
+  "scripts/backfill-margin.mjs": [
+    "一次性腳本，讀 Supabase latest.json 補 indexHistory 缺的 chips.margin_amount（TWSE MI_MARGN 逐日查詢），完成後上傳回 latest.json——注意這只更新 latest.json，market.json 要等下一次 fetch-daily.mjs 成功執行（SHOULD_RUN=true）才會重新派生出新值，不會立即反映在前端",
+    "⚠️ TWSE MI_MARGN 端點只保留約 100 個交易日的歷史查詢（2026-07-10 實測：2026-02-02 之前一律回傳無資料），不像 FMTQIK 指數有完整月報，無法回補到 250 天對齊 K 線；N≤100 的預設使用情境已完全覆蓋，若之後 N 開更大會再度出現缺口需要注意"
+  ],
+  "components/aftermarket/GlobalIndexLights.tsx::belowPeriod": [
+    "找「價格跌破的均線」原本從短天期往長天期找、抓到第一個就停，若股價已跌破多條均線只會顯示最短天期（最不嚴重）——已改成從長天期往短天期找，顯示跌破的最長天期均線（最嚴重的關鍵點位）",
+    "加了 BUFFER=0.5% 緩衝：close 要低於 ma*(1-0.005) 才算跌破，避免整理期貼著均線一天上一天下時燈號天天跳動；这是無狀態的簡單緩衝，不是多日確認的 hysteresis，盤整期若真實波動超過 0.5% 仍會反覆翻動"
   ]
 }
