@@ -309,9 +309,9 @@ export default function AftermarketPage() {
             {activeTab === '大盤關鍵資料' && (
               <>
                 <DailyBriefCard brief={data.dailyBrief} />
-                <GlobalIndexLights indices={data.globalIndices} onSelect={setGlobalModalKey} />
                 <KlineChart data={data.indexHistory ?? []} n={n} />
                 <MarketSignalCards signals={computedSignals} />
+                <GlobalIndexLights indices={data.globalIndices} onSelect={setGlobalModalKey} />
               </>
             )}
 

@@ -547,15 +547,20 @@ async function main() {
   }
   console.log(`[daily] TWSE 今日資料：${prices.length} 支，產業對照：${Object.keys(sectorMap).length} 支`)
 
-  // Step 3 前：確認 STOCK_DAY_ALL 是否已含今日資料
-  // STOCK_DAY_ALL 在部分交易日深夜才更新；若仍是舊日期，保留快照股價並繼續更新其他資料
-  const sdaIsToday = (_twseAllCache ?? []).some(r => String(r.Date) === dateTW)
+  // Step 3 前：確認 STOCK_DAY_ALL 的資料日期
+  // 2026-07-09 踩坑：原本要求「STOCK_DAY_ALL 剛好等於今天」才更新股價，但 STOCK_DAY_ALL 通常本來就慢一天
+  // （白天多半還在顯示昨天的收盤），只要某一天排程沒抓到「剛好等於今天」的那個時間窗，stocksDate 就會
+  // 永遠卡住不動（因為隔天檢查的還是「今天」，跟已經卡住的舊日期一樣對不上）。
+  // 改成：只要 STOCK_DAY_ALL 回報的日期比目前快照新，就接受並用「它實際代表的日期」入帳，不強求等於今天，
+  // 這樣就算連續好幾天沒抓到，只要 STOCK_DAY_ALL 本身有前進，快照也能跟著往前追
+  const sdaDateRaw = _twseAllCache?.[0]?.Date ?? null
+  const sdaDateISO = sdaDateRaw ? rocToISO(sdaDateRaw) : null
+  const sdaIsToday = !!sdaDateISO && sdaDateISO > (snapshot.stocksDate ?? '')
   if (!sdaIsToday) {
-    const sdaDate = _twseAllCache?.[0]?.Date ?? '未知'
-    console.log(`[daily] ⚠️  STOCK_DAY_ALL 仍為 ${sdaDate}（個股股價沿用前日快照），K 線與籌碼繼續更新`)
+    console.log(`[daily] ⚠️  STOCK_DAY_ALL 仍為 ${sdaDateRaw ?? '未知'}（個股股價沿用前日快照），K 線與籌碼繼續更新`)
   }
 
-  // Step 3：更新每支股票（STOCK_DAY_ALL 今日資料就緒才執行，避免插入錯誤日期的收盤價）
+  // Step 3：更新每支股票（STOCK_DAY_ALL 有比快照新的資料才執行，避免插入錯誤日期的收盤價）
   let newCount = 0
   if (sdaIsToday) { for (const p of prices) {
     const existing = stockMap[p.code]
@@ -569,7 +574,7 @@ async function main() {
       const highs   = [...(existing.highs   ?? [])]
       const lows    = [...(existing.lows    ?? [])]
       const volumes = [...(existing.volumes ?? [])]
-      if (dates[0] === today) {
+      if (dates[0] === sdaDateISO) {
         closes[0]  = p.close
         opens[0]   = p.open
         highs[0]   = p.high
@@ -577,7 +582,7 @@ async function main() {
         volumes[0] = p.volume
       } else {
         closes.unshift(p.close)
-        dates.unshift(today)
+        dates.unshift(sdaDateISO)
         opens.unshift(p.open)
         highs.unshift(p.high)
         lows.unshift(p.low)
@@ -610,7 +615,7 @@ async function main() {
         foreignNetBuy: foreignMap[p.code] !== undefined
           ? Math.round(foreignMap[p.code] * p.close / 1e6) / 100
           : 0,
-        closes: [p.close], dates: [today],
+        closes: [p.close], dates: [sdaDateISO],
         opens: [p.open], highs: [p.high], lows: [p.low],
         volumes: [p.volume],
       }
@@ -789,9 +794,10 @@ async function main() {
 
   const newSnapshot = {
     updatedAt: new Date().toISOString(),
-    // stocksDate：紀錄股價資料截至日期。STOCK_DAY_ALL 當日就緒則 = today，
+    // stocksDate：紀錄股價資料截至日期。STOCK_DAY_ALL 有更新的資料則採用它實際代表的日期（sdaDateISO，
+    // 可能是「今天」也可能是「比快照新的前一天」，見上方 2026-07-09 踩坑說明），
     // 否則保留快照舊值讓前端顯示「待更新」提示，並允許後續 cron 補跑股價。
-    stocksDate: sdaIsToday ? today : (snapshot.stocksDate ?? null),
+    stocksDate: sdaIsToday ? sdaDateISO : (snapshot.stocksDate ?? null),
     stocks,
     indexHistory,
     sectorHistory,

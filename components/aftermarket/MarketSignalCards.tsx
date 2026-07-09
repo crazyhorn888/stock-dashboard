@@ -75,46 +75,42 @@ export default function MarketSignalCards({ signals: s }: Props) {
         </div>
       </div>
 
-      {/* 訊號條 */}
-      <div className="flex flex-col gap-2 mb-4">
+      {/* 訊號條：左右並排 */}
+      <div className="grid grid-cols-2 gap-2 mb-4">
         {/* 減幅指標 */}
         <button
           onClick={() => setModal('pos')}
-          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-colors ${
+          className={`flex flex-col items-start px-3 py-2.5 rounded-xl border text-left transition-colors ${
             posTriggered
               ? 'border-red-300 bg-red-50 hover:bg-red-100'
               : 'border-slate-200 bg-white hover:bg-slate-50'
           }`}
         >
-          <span className="text-xs text-slate-500 font-medium">減幅指標</span>
-          <span className={`text-xs font-bold ${posTriggered ? 'text-red-600' : 'text-slate-400'}`}>
-            {!hasMargin
-              ? '融資資料累積中 —'
-              : posTriggered
-                ? '● 融資減幅 > 大盤減幅 5% ✓ 觸發'
-                : '融資減幅 > 大盤減幅 5% — 未觸發'}
+          <div className="flex items-center justify-between w-full mb-1">
+            <span className="text-xs text-slate-500 font-medium">減幅指標</span>
+            <span className="text-[10px] text-slate-300">›</span>
+          </div>
+          <span className={`text-[11px] font-bold leading-snug ${posTriggered ? 'text-red-600' : 'text-slate-400'}`}>
+            {!hasMargin ? '融資累積中' : '融資減幅>大盤減幅5%'}
           </span>
-          <span className="text-[10px] text-slate-300 ml-2">›</span>
         </button>
 
         {/* 增幅指標 */}
         <button
           onClick={() => setModal('neg')}
-          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-colors ${
+          className={`flex flex-col items-start px-3 py-2.5 rounded-xl border text-left transition-colors ${
             negTriggered
               ? 'border-green-300 bg-green-50 hover:bg-green-100'
               : 'border-slate-200 bg-white hover:bg-slate-50'
           }`}
         >
-          <span className="text-xs text-slate-500 font-medium">增幅指標</span>
-          <span className={`text-xs font-bold ${negTriggered ? 'text-green-700' : 'text-slate-400'}`}>
-            {!hasMargin
-              ? '融資資料累積中 —'
-              : negTriggered
-                ? '● 融資增幅 > 大盤增幅 7% ✓ 觸發'
-                : '融資增幅 > 大盤增幅 7% — 未觸發'}
+          <div className="flex items-center justify-between w-full mb-1">
+            <span className="text-xs text-slate-500 font-medium">增幅指標</span>
+            <span className="text-[10px] text-slate-300">›</span>
+          </div>
+          <span className={`text-[11px] font-bold leading-snug ${negTriggered ? 'text-green-700' : 'text-slate-400'}`}>
+            {!hasMargin ? '融資累積中' : '融資增幅>大盤增幅7%'}
           </span>
-          <span className="text-[10px] text-slate-300 ml-2">›</span>
         </button>
       </div>
 

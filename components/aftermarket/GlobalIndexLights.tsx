@@ -39,15 +39,15 @@ export default function GlobalIndexLights({ indices, onSelect }: Props) {
           <span className="text-[11px] font-semibold text-red-500">🔴 全數位在 120 日線之上</span>
         )}
       </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-1">
+      <div className="grid grid-cols-2 gap-x-2 gap-y-1">
         {rows.map(r => (
           <button
             key={r.key}
             onClick={() => onSelect(r.key)}
-            className="flex items-center gap-1 text-[11px] text-slate-600 hover:text-blue-600"
+            className="flex items-center gap-1 text-[11px] text-slate-600 hover:text-blue-600 text-left"
           >
-            <span className={`inline-block w-1.5 h-1.5 rounded-full ${r.belowPeriod != null ? 'bg-green-500' : 'bg-red-500'}`} />
-            {r.name} {r.belowPeriod != null ? `位在 ${r.belowPeriod} 日線以下` : '偏多'}
+            <span className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${r.belowPeriod != null ? 'bg-green-500' : 'bg-red-500'}`} />
+            <span className="truncate">{r.name} {r.belowPeriod != null ? `位在 ${r.belowPeriod} 日線以下` : '偏多'}</span>
           </button>
         ))}
       </div>
