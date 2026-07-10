@@ -9,7 +9,10 @@
     "籌碼面板全部欄位；phase1=null 時的 partial entry 路徑（融資先就緒情境）"
   ],
   "scripts/fetch-daily.mjs::sdaIsToday": [
-    "2026-07-09 修過的坑：STOCK_DAY_ALL 判斷改成『比快照 stocksDate 新』而非『剛好等於今天』，否則錯過一次抓取窗口 stocksDate 會永久卡住不動（Franky 回報個股清單卡在07-06才發現）。stocksDate/dates[0] 都要用 sdaDateISO（STOCK_DAY_ALL 實際代表的日期），不能用 today 硬編碼——TPEX 那段（第二個 dates[0]===today）不受影響，維持原樣，TPEX 資料來源沒有這個延遲問題"
+    "2026-07-09 修過的坑：STOCK_DAY_ALL 判斷改成『比快照 stocksDate 新』而非『剛好等於今天』，否則錯過一次抓取窗口 stocksDate 會永久卡住不動（Franky 回報個股清單卡在07-06才發現）。stocksDate/dates[0] 都要用 sdaDateISO（STOCK_DAY_ALL 實際代表的日期），不能用 today 硬編碼。⚠️ 2026-07-10 更正：原註記『TPEX 資料來源沒有這個延遲問題』已被證偽，見 fetchTPEXPrices 條目（R14）"
+  ],
+  "scripts/fetch-daily.mjs::fetchTPEXPrices": [
+    "R14（2026-07-10）：TPEX bar 日期一律用回應內 Date 欄位（ROC 格式，rocToISO 轉換），絕不可用執行日 today——端點會延遲（實證：07-10 晚間 22:00 仍回 07-09 資料），舊寫法把 07-09 收盤造成假的 07-10 K 棒（production 873 支上櫃股中招，已修復並重派生）。回傳形狀是 { dateISO, prices } 不是陣列；dateISO=null 時整段 TPEX 更新跳過；快照 dates[0] 比資料日新時不覆蓋（防禦）；TPEX 有新 bar / 新股票要設 changed=true（R5 短路旗標原本漏了 TPEX）"
   ],
   "scripts/fetch-daily.mjs::fetchT86Sectors": [
     "泡泡圖資料源；億元換算（股數×該日收盤價/1e8）；sectorHistory unit='yi' 格式；P2-1 起同一份 T86 response 同時回傳 sectorRows/conceptRows，一股可計入多個概念"

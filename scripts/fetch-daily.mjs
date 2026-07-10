@@ -444,10 +444,15 @@ async function fetchFundamentals(token) {
 }
 
 // ── TPEX 上櫃 ─────────────────────────────────────────
+// R14：回傳 { dateISO, prices }——TPEX openapi 的資料日期以回應內的 Date 欄位（ROC 格式）為準，
+// 不可假設等於執行日。2026-07-10 實證：當晚 22:00 端點仍回 07-09 資料，舊寫法（bar 一律標 today）
+// 把 07-09 收盤蓋成假的 07-10 K 棒、且真正的 07-09 bar 從缺（production 873 支中招，已修復）
 async function fetchTPEXPrices() {
   try {
     const data = await fetchJSON('https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes')
-    return data
+    const rawDate = data.find(r => r.Date)?.Date ?? null
+    const dateISO = rawDate ? rocToISO(rawDate) : null
+    const prices = data
       .filter(r => /^\d{4}$/.test(r.SecuritiesCompanyCode) && parseFloat(r.Close) > 0)
       .map(r => {
         const close  = parseFloat(r.Close)  || 0
@@ -465,9 +470,10 @@ async function fetchTPEXPrices() {
           open, high, low, volume,
         }
       })
+    return { dateISO, prices }
   } catch (e) {
     console.warn('[daily] TPEX 價格抓取失敗:', e.message)
-    return []
+    return { dateISO: null, prices: [] }
   }
 }
 
@@ -656,15 +662,20 @@ async function main() {
   else console.log('[daily] TWSE 股價跳過（STOCK_DAY_ALL 舊日期），保留快照值')
 
   // Step 3b：TPEX 上櫃股票
-  const [tpexPrices, tpexForeignMap, tpexIndustryMap] = await Promise.all([
+  // R14：bar 日期一律用回應內的資料日（tpexDateISO），不用執行日 today——
+  // 端點延遲時舊寫法會造出「假今日 K 棒」（見 fetchTPEXPrices 註解與計劃書 R14）
+  const [{ dateISO: tpexDateISO, prices: tpexPrices }, tpexForeignMap, tpexIndustryMap] = await Promise.all([
     fetchTPEXPrices(),
     fetchTPEXForeignMap(),
     fetchTPEXIndustryMap(),
   ])
-  console.log(`[daily] TPEX 今日資料：${tpexPrices.length} 支`)
+  console.log(`[daily] TPEX 資料：${tpexPrices.length} 支（資料日 ${tpexDateISO ?? '未知'}）`)
 
   let tpexNewCount = 0
-  for (const p of tpexPrices) {
+  let tpexNewBarCount = 0
+  if (tpexPrices.length > 0 && !tpexDateISO) {
+    console.warn('[daily] TPEX 回應缺 Date 欄位，無法確定資料日期，本次跳過 TPEX 更新')
+  } else for (const p of tpexPrices) {
     const existing      = stockMap[p.code]
     const industry      = tpexIndustryMap[p.code] ?? existing?.industry ?? '其他'
     const foreignShares = tpexForeignMap[p.code] ?? 0
@@ -672,13 +683,17 @@ async function main() {
     const foreignNetBuy = Math.round(foreignShares * p.close / 1e6) / 100
 
     if (existing) {
+      const dates0 = existing.dates?.[0] ?? null
+      // 快照已有比 TPEX 資料日更新的 bar → 不可用舊資料覆蓋（防禦，正常不會發生）
+      if (dates0 && dates0 > tpexDateISO) continue
+
       const closes  = [...existing.closes]
       const dates   = [...existing.dates]
       const opens   = [...(existing.opens   ?? [])]
       const highs   = [...(existing.highs   ?? [])]
       const lows    = [...(existing.lows    ?? [])]
       const volumes = [...(existing.volumes ?? [])]
-      if (dates[0] === today) {
+      if (dates0 === tpexDateISO) {
         closes[0]  = p.close
         opens[0]   = p.open
         highs[0]   = p.high
@@ -686,11 +701,12 @@ async function main() {
         volumes[0] = p.volume
       } else {
         closes.unshift(p.close)
-        dates.unshift(today)
+        dates.unshift(tpexDateISO)
         opens.unshift(p.open)
         highs.unshift(p.high)
         lows.unshift(p.low)
         volumes.unshift(p.volume)
+        tpexNewBarCount++
       }
       stockMap[p.code] = {
         ...existing,
@@ -717,7 +733,7 @@ async function main() {
         eps:           null,
         foreignNetBuy,
         closes:  [p.close],
-        dates:   [today],
+        dates:   [tpexDateISO],
         opens:   [p.open],
         highs:   [p.high],
         lows:    [p.low],
@@ -726,11 +742,13 @@ async function main() {
       tpexNewCount++
     }
   }
+  // R5 補遺：TPEX 有新 bar 也算實質變更（原本漏了，只有 TPEX 前進的 run 會被短路跳過不上傳）
+  if (tpexNewBarCount > 0 || tpexNewCount > 0) changed = true
 
   const stocks = Object.values(stockMap)
   // P2-2：每股附上概念 tags（一股多概念），供個股列表/詳情頁顯示與點擊開啟概念面板
   for (const s of stocks) s.concepts = conceptStockMap[s.code] ?? []
-  console.log(`[daily] TPEX 更新 ${tpexPrices.length} 支，新增 ${tpexNewCount} 支，全市場合計 ${stocks.length} 支`)
+  console.log(`[daily] TPEX 更新 ${tpexPrices.length} 支（新 bar ${tpexNewBarCount}），新增 ${tpexNewCount} 支，全市場合計 ${stocks.length} 支`)
 
   // Step 4：更新 indexHistory（含籌碼資料）
   // 合併策略：補入當月 FMTQIK 中所有快照缺漏的日期（正常每日只有 1 筆，補跑時可能多筆）
