@@ -81,6 +81,13 @@ async function main() {
   const done = await isAlreadyDone(today)
   if (done === true) return emit(false, `今日 ${today} 資料已完整上傳`)
 
+  // 不受開盤限制的補課班次（凌晨/清晨，見 daily-fetch.yml）：略過 FMTQIK 檢查，
+  // 讓 fetch-daily.mjs 有機會抓到深夜才發布的 STOCK_DAY_ALL／融資資料，
+  // 不用等到隔天正常交易時段才追上
+  if (process.env.FORCE_SKIP_GUARD2 === 'true') {
+    return emit(true, '不受開盤限制的補課班次，略過 FMTQIK 檢查')
+  }
+
   const bar = await hasTodayBar(today)
   if (bar === false) return emit(false, `FMTQIK 尚無今日（${today}）K 棒：非交易日或 15:30 前`)
 

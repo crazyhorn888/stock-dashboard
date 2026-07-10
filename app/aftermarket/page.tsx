@@ -16,9 +16,10 @@ import { calcStockRow } from '@/lib/calcMetrics'
 import { MOCK_DATA } from '@/lib/mockData'
 import { fetchSnapshot } from '@/lib/fetchSnapshot'
 import { fetchStockHistory } from '@/lib/fetchStockHistory'
+import { fetchHolidayStatus } from '@/lib/fetchHolidayStatus'
 import { calcWatchlistBubbles, getGhostPeers } from '@/lib/calcWatchlistBubbles'
 import { useWatchlist } from '@/lib/watchlist'
-import type { SnapshotData, SectorBubble, StockData, MarketSignals, StockHistoryDay } from '@/lib/types'
+import type { SnapshotData, SectorBubble, StockData, MarketSignals, StockHistoryDay, HolidayStatus } from '@/lib/types'
 
 const TABS = ['大盤關鍵資料', '產業板塊', '個股清單', '基本面'] as const
 type Tab = typeof TABS[number]
@@ -44,6 +45,12 @@ export default function AftermarketPage() {
   // Ghost：同概念陪跑泡泡。conceptStockMap 是 code -> 概念[] 的靜態資料，動態 import 才不會讓一般使用者也下載到
   const [conceptStockMap, setConceptStockMap] = useState<Record<string, string[]> | null>(null)
   const [focusedWatchlistBubble, setFocusedWatchlistBubble] = useState<SectorBubble | null>(null)
+  // 台股是否休市（TWSE 官方行事曆）：用來把「待更新中」類文字換成「今日休市」說明，避免上午誤讀
+  const [holidayStatus, setHolidayStatus] = useState<HolidayStatus | null>(null)
+
+  useEffect(() => {
+    fetchHolidayStatus().then(setHolidayStatus)
+  }, [])
 
   useEffect(() => {
     fetchSnapshot()
@@ -134,6 +141,8 @@ export default function AftermarketPage() {
   const sectorDataDate = (sectorSource === 'official' ? data.sectorHistory : data.conceptHistory)?.[0]?.date ?? null
   const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' })
   const sectorDataIsStale = !!sectorDataDate && sectorDataDate !== todayStr
+  // 休市日不算「尚未更新」，是本來就不會有新資料——文字改成中性說明，不要暗示異常
+  const isHolidayToday = holidayStatus?.date === todayStr && holidayStatus.isHoliday
 
   // 聚焦回放的日期標籤：trail 最多 5 點 + 今日 = 6 個日期（newest first）
   const frameDates = useMemo(
@@ -229,7 +238,9 @@ export default function AftermarketPage() {
                   })}
                 </span>
                 <span className="text-[10px] text-slate-400">
-                  股價 {data.stocksDate?.slice(5).replace('-', '/')} 待更新中
+                  {isHolidayToday
+                    ? `今日休市${holidayStatus?.name ? `（${holidayStatus.name}）` : ''}，顯示最近交易日資料`
+                    : `股價 ${data.stocksDate?.slice(5).replace('-', '/')} 待更新中`}
                 </span>
               </div>
             ) : (
@@ -302,7 +313,7 @@ export default function AftermarketPage() {
             </div>
           </div>
         )}
-        {!loading && !error && <FreshnessBar data={data} />}
+        {!loading && !error && <FreshnessBar data={data} holiday={holidayStatus} />}
 
         {loading ? (
           <div className="space-y-3 animate-pulse">
@@ -360,7 +371,9 @@ export default function AftermarketPage() {
                   )}
                   {sectorSource !== 'watchlist' && sectorDataIsStale && sectorDataDate && (
                     <span className="text-[10px] text-amber-500 ml-1">
-                      板塊資料（{sectorDataDate.slice(5).replace('-', '/')}）尚未更新至今日
+                      {isHolidayToday
+                        ? `今日休市${holidayStatus?.name ? `（${holidayStatus.name}）` : ''}，顯示 ${sectorDataDate.slice(5).replace('-', '/')} 資料`
+                        : `板塊資料（${sectorDataDate.slice(5).replace('-', '/')}）尚未更新至今日`}
                     </span>
                   )}
                 </div>

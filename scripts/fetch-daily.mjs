@@ -501,7 +501,9 @@ async function main() {
   }
 
   // Guard 2：FMTQIK 尚無今日 K 棒（非交易日 or 15:30 前）
-  if (!(await isTradingDay(today))) {
+  // 不受開盤限制的補課班次（見 guard-check.mjs／daily-fetch.yml）略過這關，
+  // 讓深夜／清晨才發布的 STOCK_DAY_ALL、融資資料有機會被追到
+  if (process.env.FORCE_SKIP_GUARD2 !== 'true' && !(await isTradingDay(today))) {
     console.log('[daily] FMTQIK 無今日資料，跳過，exit 0')
     process.exit(0)
   }
@@ -733,6 +735,34 @@ async function main() {
       console.log(`[daily] indexHistory 補入 ${newEntries.length} 筆（${newEntries.map(r => r.date).join(', ')}），共 ${indexHistory.length} 筆`)
     } else {
       console.warn('[daily] 今日 FMTQIK 無新資料，indexHistory 保留舊值')
+    }
+
+    // 融資/籌碼補值重試：獨立於上面「有無新 FMTQIK 資料」判斷。
+    // 原本融資/籌碼只在今日 K 棒剛新增的那次 run 嘗試抓一次，若當時 MI_MARGN／
+    // n8n chips 還沒發布，之後每次 run 因為今日日期已存在（newEntries 不含今天）
+    // 就永遠不會再重試——這是融資餘額常常卡在前幾天舊值的根因。改成每次都檢查
+    // 今日紀錄缺哪個欄位，缺就重抓，抓到才覆蓋，抓不到保留原樣。
+    const todayIdx = indexHistory.findIndex(r => r.date === today)
+    if (todayIdx !== -1) {
+      const existingChips = indexHistory[todayIdx].chips ?? null
+      const needMargin = existingChips?.margin_amount == null
+      const needPhase1 = existingChips?.inst_total == null
+      if (needMargin || needPhase1) {
+        const prevMarginAmount = indexHistory[todayIdx + 1]?.chips?.margin_amount ?? null
+        const [chipsJson, marginAmount] = await Promise.all([
+          needPhase1 ? fetchChipsFromSupabase(todayYYYYMMDD) : Promise.resolve(null),
+          needMargin ? fetchMarginAmount(todayYYYYMMDD) : Promise.resolve(existingChips?.margin_amount ?? null),
+        ])
+        const fresh = buildChipsEntry(chipsJson, marginAmount, prevMarginAmount)
+        if (fresh) {
+          const merged = { ...(existingChips ?? {}) }
+          for (const k of Object.keys(fresh)) { if (fresh[k] != null) merged[k] = fresh[k] }
+          indexHistory[todayIdx] = { ...indexHistory[todayIdx], chips: merged }
+          console.log(`[daily] 今日籌碼補值：margin_amount=${merged.margin_amount ?? '—'} inst_total=${merged.inst_total ?? '—'}`)
+        } else {
+          console.log('[daily] 今日融資/籌碼仍未就緒，保留現狀待下次補值')
+        }
+      }
     }
   }
 

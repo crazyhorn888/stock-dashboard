@@ -22,6 +22,13 @@ on:
     # P2-3：台北 06:07 → 全球指數輕量班次（獨立 job，不跑主 pipeline）。
     # 台北 06:07 = UTC 前一天 22:07，故 UTC 星期用 0-4（週日~週四）才對應台北週一~週五早上
     - cron: '7 22 * * 0-4'
+    # 不受開盤限制的補課班次：STOCK_DAY_ALL／融資常常深夜才發布，原本最晚 23:37
+    # 那班之後到隔天 15:37 之間完全沒有機會追。這兩班天天跑（含假日，成本可忽略——
+    # public repo 無 Actions 分鐘限制），略過 FMTQIK Guard，只為了盡快撿到遲到的資料。
+    # 台北 02:07 = UTC 前一天 18:07
+    - cron: '7 18 * * *'
+    # 台北 08:07 = UTC 00:07
+    - cron: '7 0 * * *'
   workflow_dispatch: # n8n Phase1/Phase2 完成後觸發，或手動補跑
 
 # 固定 group 名稱讓所有 run 排同一隊：後到的排隊等前面跑完（不取消），
@@ -36,6 +43,9 @@ jobs:
     if: github.event_name != 'schedule' || github.event.schedule != '7 22 * * 0-4'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      # 02:07／08:07 這兩班不受開盤限制，略過 FMTQIK Guard（見 guard-check.mjs）
+      FORCE_SKIP_GUARD2: ${{ (github.event.schedule == '7 18 * * *' || github.event.schedule == '7 0 * * *') && 'true' || '' }}
 
     steps:
       - name: Checkout
@@ -47,6 +57,14 @@ jobs:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: package-lock.json
+
+      # 假日判斷（TWSE 官方休市日曆，不受任何 Guard 限制，永遠執行）：
+      # 供前端判斷「今天沒資料是因為休市」還是「還沒到更新時間」
+      - name: 檢查台股是否為休市日
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node scripts/check-holiday.mjs
 
       # 輕量 Guard 前置（零依賴、讀 ~1KB meta.json）：
       # 被攔截的 run 在這裡結束（~30 秒），不裝依賴、不下載 10MB 快照

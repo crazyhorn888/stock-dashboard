@@ -11,6 +11,7 @@ interface Props {
 
 // P2-3：MA 疊線設定；週線資料量不足以支撐 120 週回看，只在日線顯示 MA120
 const MA_LINES: { period: number; color: string; dailyOnly?: boolean }[] = [
+  { period: 5,   color: '#14b8a6' },
   { period: 10,  color: '#f59e0b' },
   { period: 20,  color: '#a855f7' },
   { period: 60,  color: '#3b82f6' },

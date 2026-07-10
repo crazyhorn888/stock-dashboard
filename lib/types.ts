@@ -163,6 +163,14 @@ export interface DailyBriefFacts {
   summary: string | null  // n8n 呼叫 OpenAI 產生，失敗或尚未產生時為 null
 }
 
+// 台股是否休市（TWSE 官方休市日曆，check-holiday.mjs 產出，永遠執行不受 Guard 限制）
+export interface HolidayStatus {
+  date: string        // 判斷當下的台北日期 YYYY-MM-DD
+  isHoliday: boolean
+  name: string | null // 假日名稱（例如「中秋節」），週末固定為「週末」
+  checkedAt: string
+}
+
 export interface StockRow extends StockData {
   highDropPct: number  // 距 N 日高 ▼%（負值）
   lowRisePct: number   // 距 N 日低 ▲%（正值）

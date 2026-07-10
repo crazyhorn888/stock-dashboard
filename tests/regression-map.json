@@ -177,5 +177,29 @@
   ],
   "components/bubble/BubbleChart.tsx::axisLabels": [
     "⚠️ 修復：Y 軸說明文字原本用 SVG transform=rotate(-90 cx cy) 但 pivot(cx,cy) 跟 text 本身的 x,y 座標不一致，導致文字被同時旋轉+位移到錯誤位置（畫面上看到「→放緩」歪斜跑位）。改成比照 X 軸做法，不用 rotate，直接放兩行水平文字在左上/左下角（↑ Y：加速指標(%) / ↓ 放緩），若之後想改回垂直文字，rotate 的 pivot 必須跟該 text 元素自己的 x/y 完全一致，否則會連帶位移"
+  ],
+  "scripts/fetch-daily.mjs::marginRetryFix": [
+    "⚠️ 重大修復：Step4 原本融資/籌碼補值只包在 newEntries.length>0 判斷內，一旦今日 K 棒已存在（不管有沒有 margin_amount）之後每次 run 都不會再重試——這是融資餘額常卡在前幾天舊值的根因，不是 MI_MARGN 發布時間問題",
+    "修法：新增獨立區塊，每次都檢查 indexHistory 裡今日那筆的 chips.margin_amount/inst_total 是否為 null，缺就重抓，用 mergeChips（優先新值，新值為 null 則保留舊值）合併，不會被這次沒查到的欄位蓋成 null"
+  ],
+  "scripts/guard-check.mjs::FORCE_SKIP_GUARD2": [
+    "新增環境變數 FORCE_SKIP_GUARD2，設 true 時略過 FMTQIK 檢查（Guard2），只給 daily-fetch.yml 的 02:07/08:07 不受開盤限制補課班次使用；fetch-daily.mjs 內部自己的 isTradingDay 檢查也要同步略過（同一個 env var），兩邊都要改否則外層放行、內層還是會 exit 0"
+  ],
+  ".github/workflows/daily-fetch.yml::catchUpBands": [
+    "新增 2 個 cron（Taipei 02:07/08:07，UTC 18:07 前一天／00:07，天天跑含假日），job 層級 env FORCE_SKIP_GUARD2 用 github.event.schedule 字串比對這兩個 cron 才設 true，其餘既有班次不受影響",
+    "新增「檢查台股是否為休市日」步驟，放在 Guard 前置檢查之前、不受任何條件限制，永遠執行（呼叫 scripts/check-holiday.mjs）"
+  ],
+  "scripts/check-holiday.mjs": [
+    "資料源是 TWSE 官方 OpenAPI（openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule），不是政府行政機關辦公日曆——實測過兩者不一致（2026-07-10 政府行事曆說不是假日，需要跟證交所官方確認），只信任證交所自己的休市日曆",
+    "輸出 holiday-status.json（{date,isHoliday,name,checkedAt}）給前端 lib/fetchHolidayStatus.ts 讀取；週末直接判定不查 API（省一次請求）"
+  ],
+  "components/shared/FreshnessBar.tsx::holidayProp": [
+    "新增 optional holiday prop（HolidayStatus）：holiday.date===today 時直接採用 holiday.isHoliday 判斷是否休市（可以在上午就準確判斷），沒有這個 prop 或日期對不上時退回原本「平日18:00後仍無K棒」的被動推斷（只能在晚上才成立）"
+  ],
+  "components/aftermarket/GlobalIndexLights.tsx::trendLabel": [
+    "2026-07-10 新增多頭/偏多語意：優先權「跌破均線(N日線以下) > 多頭(站上5/10/20/60/120全部) > 偏多(MA5>MA60且MA5>MA120，價格不一定全站上) > 站上120日線(兜底)」；MA5 只用在多頭/偏多判斷，不放進跌破階梯（BREACH_PERIODS 維持[10,20,60,120]，5日線太貼近價格會太容易雜訊翻動）"
+  ],
+  "components/aftermarket/KlineChart.tsx::MA5": [
+    "MA_LINES 新增 period:5（非 dailyOnly，週線也顯示，5週回看資料量足夠），maLines/legend 都是從 MA_LINES map 出來，新增這筆不用改其他邏輯"
   ]
 }
