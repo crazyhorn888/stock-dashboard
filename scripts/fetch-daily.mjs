@@ -789,23 +789,31 @@ async function main() {
   }
 
   // 5b. 補齊歷史（若 < 20 天）：從 indexHistory 取得過去交易日，逐日補抓 T86
-  if (sectorHistory.length < 20 && indexHistory && indexHistory.length > 1) {
-    const existingDates = new Set(sectorHistory.map(d => d.date))
+  // ⚠️ 修復：原本只看 sectorHistory.length<20 決定要不要補，但 stockHistory 是 P2-5 後來獨立
+  // 加的檔案，sectorHistory 早就有 20+ 天（從 P1-3 延續下來）所以這個條件從來不會為 stockHistory
+  // 觸發——導致 stockHistory 實際上永遠停在「只有今天」（2026-07-10 發現，見計劃書執行紀錄）。
+  // 改成三者分開判斷各自的缺口，逐日補抓時也各自獨立檢查是否已存在，避免互相干擾造成重複
+  const needSectorBackfill = sectorHistory.length  < 20
+  const needStockBackfill  = stockHistory.length   < 20
+  if ((needSectorBackfill || needStockBackfill) && indexHistory && indexHistory.length > 1) {
+    const existingSectorDates = new Set(sectorHistory.map(d => d.date))
+    const existingStockDates  = new Set(stockHistory.map(d => d.date))
+    const shortestLen = Math.min(sectorHistory.length, stockHistory.length)
     const missingDates = indexHistory
       .map(r => r.date)
-      .filter(d => !existingDates.has(d))
-      .slice(0, 25 - sectorHistory.length)
+      .filter(d => !existingSectorDates.has(d) || !existingStockDates.has(d))
+      .slice(0, 25 - shortestLen)
 
     if (missingDates.length > 0) {
-      console.log(`[daily] sectorHistory 僅 ${sectorHistory.length} 天，補抓 ${missingDates.length} 個歷史交易日...`)
+      console.log(`[daily] sectorHistory ${sectorHistory.length} 天／stockHistory ${stockHistory.length} 天，補抓 ${missingDates.length} 個歷史交易日...`)
       for (const date of missingDates) {
         await new Promise(r => setTimeout(r, 1500))  // TWSE rate limit 緩衝
         const t86h = await fetchT86Sectors(date.replace(/-/g, ''), date, stockMap, conceptStockMap)
         if (t86h) {
-          sectorHistory.push({ date, unit: 'yi', rows: t86h.sectorRows })
-          conceptHistory.push({ date, unit: 'yi', rows: t86h.conceptRows })
-          stockHistory.push({ date, unit: 'yi', stocks: t86h.stockRows })
-          console.log(`[daily]   → ${date}：${t86h.sectorRows.length} 板塊、${t86h.conceptRows.length} 概念`)
+          if (!existingSectorDates.has(date)) sectorHistory.push({ date, unit: 'yi', rows: t86h.sectorRows })
+          if (!existingSectorDates.has(date)) conceptHistory.push({ date, unit: 'yi', rows: t86h.conceptRows })
+          if (!existingStockDates.has(date))  stockHistory.push({ date, unit: 'yi', stocks: t86h.stockRows })
+          console.log(`[daily]   → ${date}：${t86h.sectorRows.length} 板塊、${t86h.conceptRows.length} 概念、${t86h.stockRows.length} 個股`)
         }
       }
       sectorHistory.sort((a, b) => b.date.localeCompare(a.date))
@@ -814,7 +822,7 @@ async function main() {
       conceptHistory = conceptHistory.slice(0, 25)
       stockHistory.sort((a, b) => b.date.localeCompare(a.date))
       stockHistory = stockHistory.slice(0, 25)
-      console.log(`[daily] sectorHistory 補齊完成，共 ${sectorHistory.length} 天`)
+      console.log(`[daily] 補齊完成，sectorHistory ${sectorHistory.length} 天／stockHistory ${stockHistory.length} 天`)
     }
   }
 

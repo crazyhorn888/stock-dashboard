@@ -30,6 +30,11 @@ on:
     # 台北 08:07 = UTC 00:07
     - cron: '7 0 * * *'
   workflow_dispatch: # n8n Phase1/Phase2 完成後觸發，或手動補跑
+    inputs:
+      force_run:
+        description: '略過 FMTQIK Guard，強制跑完整 pipeline（本機不要再直接跑 fetch-daily.mjs/write-firebase.mjs 寫 production——iCloud 會干擾 data/latest.json，2026-07-10 已經證實會悄悄還原成舊內容，一律用這個 workflow_dispatch 補跑）'
+        type: boolean
+        default: false
 
 # 固定 group 名稱讓所有 run 排同一隊：後到的排隊等前面跑完（不取消），
 # 避免兩個 run 同時「下載快照→改→上傳」互相覆蓋（lost update）
@@ -44,8 +49,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      # 02:07／08:07 這兩班不受開盤限制，略過 FMTQIK Guard（見 guard-check.mjs）
-      FORCE_SKIP_GUARD2: ${{ (github.event.schedule == '7 18 * * *' || github.event.schedule == '7 0 * * *') && 'true' || '' }}
+      # 02:07／08:07 這兩班、或手動 workflow_dispatch 勾選 force_run，不受開盤限制略過 FMTQIK Guard
+      FORCE_SKIP_GUARD2: ${{ (github.event.schedule == '7 18 * * *' || github.event.schedule == '7 0 * * *' || github.event.inputs.force_run == 'true') && 'true' || '' }}
 
     steps:
       - name: Checkout
