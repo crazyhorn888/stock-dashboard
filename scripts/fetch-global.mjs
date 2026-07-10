@@ -21,12 +21,14 @@ const SYMBOLS = {
 // 只留最近 250 筆（比照台股大盤 K 線慣例）；抓 2y 是為了讓 MA120 有足夠回看空間
 const KEEP_DAYS = 250
 
-// R6：重試——只對網路層錯誤與 5xx 重試，4xx 直接拋錯不重試
+// R6：重試——只對網路層錯誤與 5xx 重試，4xx 直接拋錯不重試。
+// res.json() 也要在重試範圍內（body 讀一半被斷線發生在 fetch() resolve 之後，見 fetch-daily.mjs 同款註解）
 async function fetchYahoo(symbol, attempt = 1) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=2y&interval=1d`
-  let res
+  let res, json
   try {
     res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+    if (res.ok) json = await res.json()
   } catch (e) {
     if (attempt < 3) {
       await new Promise(r => setTimeout(r, attempt * 2000))
@@ -41,7 +43,6 @@ async function fetchYahoo(symbol, attempt = 1) {
     }
     throw new Error(`HTTP ${res.status}`)
   }
-  const json = await res.json()
   const result = json?.chart?.result?.[0]
   if (!result) throw new Error(json?.chart?.error?.description ?? 'no result')
 

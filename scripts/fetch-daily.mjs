@@ -19,10 +19,14 @@ const conceptStockMap = JSON.parse(
 // R6：抓取側原本沒有重試，單次連線逾時/網路錯誤就讓整個 run 失敗
 // （實證：2026-07-10 openapi.twse.com.tw ConnectTimeout 直接中止 run）。
 // 只對網路層錯誤與 5xx 重試，4xx 視為對方明確拒絕，直接拋錯不重試。
+// ⚠️ res.json() 也必須在重試範圍內——body 讀到一半連線被斷（terminated /
+// fullyReadBody）發生在 fetch() resolve 之後，只包 fetch() 擋不到（2026-07-10 兩次
+// force_run 都死在這，第一版 R6 的缺口）。
 async function fetchJSON(url, attempt = 1) {
   let res
   try {
     res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+    if (res.ok) return await res.json()
   } catch (e) {
     if (attempt < 3) {
       await new Promise(r => setTimeout(r, attempt * 2000))
@@ -30,14 +34,11 @@ async function fetchJSON(url, attempt = 1) {
     }
     throw e
   }
-  if (!res.ok) {
-    if (res.status >= 500 && attempt < 3) {
-      await new Promise(r => setTimeout(r, attempt * 2000))
-      return fetchJSON(url, attempt + 1)
-    }
-    throw new Error(`HTTP ${res.status} ${url}`)
+  if (res.status >= 500 && attempt < 3) {
+    await new Promise(r => setTimeout(r, attempt * 2000))
+    return fetchJSON(url, attempt + 1)
   }
-  return res.json()
+  throw new Error(`HTTP ${res.status} ${url}`)
 }
 
 function todayTW() {
