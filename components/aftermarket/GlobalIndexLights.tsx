@@ -39,7 +39,7 @@ export default function GlobalIndexLights({ indices, onSelect }: Props) {
       <div className="flex items-center justify-between mb-1">
         <span className="text-[11px] font-bold text-slate-500">全球指數</span>
         {allAbove && (
-          <span className="text-[11px] font-semibold text-red-500">🔴 全數位在 120 日線之上</span>
+          <span className="text-[11px] font-semibold text-red-500">🔴 全數站上 120 日線</span>
         )}
       </div>
       <div className="grid grid-cols-2 gap-x-2 gap-y-1">
@@ -51,7 +51,7 @@ export default function GlobalIndexLights({ indices, onSelect }: Props) {
           >
             <span className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${r.belowPeriod != null ? 'bg-green-500' : 'bg-red-500'}`} />
             <span className="truncate">
-              {r.name} {r.belowPeriod != null ? `位在 ${r.belowPeriod} 日線以下` : '偏多'}
+              {r.name} {r.belowPeriod != null ? `${r.belowPeriod} 日線以下` : `站上 ${MA_PERIODS[MA_PERIODS.length - 1]} 日線`}
               <span className="text-slate-300"> ({r.date.slice(5).replace('-', '/')})</span>
             </span>
           </button>

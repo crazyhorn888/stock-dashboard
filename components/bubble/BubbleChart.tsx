@@ -486,13 +486,11 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
           stroke="#94a3b8" strokeWidth={0.8}
         />
 
-        {/* Axis labels：軸的意思＋單位，放在軸兩端對應位置 */}
+        {/* Axis labels：軸的意思＋單位，放在軸兩端對應位置（不用 rotate，避免 pivot 與文字座標不一致跑位） */}
         <text x={W - PAD.right - 2} y={H - 6}  fontSize={8} fill="#94a3b8" textAnchor="end">X：買超（億/日）→</text>
         <text x={PAD.left + 2}       y={H - 6}  fontSize={8} fill="#94a3b8" textAnchor="start">← 賣超</text>
-        <text x={PAD.left - 2}       y={PAD.top + 8} fontSize={8} fill="#94a3b8" textAnchor="middle"
-          transform={`rotate(-90 ${PAD.left - 12} ${PAD.top + (H - PAD.top - PAD.bottom) / 2})`}>Y：加速指標(%) ↑</text>
-        <text x={PAD.left - 2}       y={H - PAD.bottom - 4} fontSize={8} fill="#94a3b8" textAnchor="middle"
-          transform={`rotate(-90 ${PAD.left - 12} ${H - PAD.bottom - 40})`}>↓ 放緩</text>
+        <text x={PAD.left + 2}       y={PAD.top + 8}  fontSize={8} fill="#94a3b8" textAnchor="start">↑ Y：加速指標(%)</text>
+        <text x={PAD.left + 2}       y={H - PAD.bottom - 4} fontSize={8} fill="#94a3b8" textAnchor="start">↓ 放緩</text>
 
         {/* X 軸 symlog 刻度（億/日）：只渲染落在目前範圍內的刻度 */}
         {[-500, -200, -100, -50, -20, -5, 5, 20, 50, 100, 200, 500].map(v => {

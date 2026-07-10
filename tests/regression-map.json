@@ -171,5 +171,11 @@
   "components/aftermarket/GlobalIndexLights.tsx::belowPeriod": [
     "找「價格跌破的均線」原本從短天期往長天期找、抓到第一個就停，若股價已跌破多條均線只會顯示最短天期（最不嚴重）——已改成從長天期往短天期找，顯示跌破的最長天期均線（最嚴重的關鍵點位）",
     "加了 BUFFER=0.5% 緩衝：close 要低於 ma*(1-0.005) 才算跌破，避免整理期貼著均線一天上一天下時燈號天天跳動；这是無狀態的簡單緩衝，不是多日確認的 hysteresis，盤整期若真實波動超過 0.5% 仍會反覆翻動"
+  ],
+  "components/aftermarket/GlobalIndexLights.tsx::labelWording": [
+    "文字改版：跌破均線移除「位在」前綴（避免 grid-cols-2 窄欄位被日期戳截斷）；未跌破任何均線的情況從模糊的「偏多」改成明確的「站上120日線」（MA_PERIODS 最後一個值），與跌破側的「N 日線以下」對稱，直接說明具體站上哪條線，不用猜「偏多」是什麼意思"
+  ],
+  "components/bubble/BubbleChart.tsx::axisLabels": [
+    "⚠️ 修復：Y 軸說明文字原本用 SVG transform=rotate(-90 cx cy) 但 pivot(cx,cy) 跟 text 本身的 x,y 座標不一致，導致文字被同時旋轉+位移到錯誤位置（畫面上看到「→放緩」歪斜跑位）。改成比照 X 軸做法，不用 rotate，直接放兩行水平文字在左上/左下角（↑ Y：加速指標(%) / ↓ 放緩），若之後想改回垂直文字，rotate 的 pivot 必須跟該 text 元素自己的 x/y 完全一致，否則會連帶位移"
   ]
 }
