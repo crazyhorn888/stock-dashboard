@@ -78,6 +78,13 @@ function emit(shouldRun, reason) {
 async function main() {
   const today = todayTWDate()
 
+  // R4：/review 的「強制執行」按鈕與 workflow_dispatch force_run=true 專用——
+  // 使用情境就是「今日資料已經完整，但想立刻重新派生 market.json」，若還是先看
+  // isAlreadyDone 會被 Guard 1 攔下變成靜默無效，所以要在它之前就放行
+  if (process.env.FORCE_FULL_RUN === 'true') {
+    return emit(true, 'force_run=true，略過 Guard 1/2 強制執行')
+  }
+
   const done = await isAlreadyDone(today)
   if (done === true) return emit(false, `今日 ${today} 資料已完整上傳`)
 

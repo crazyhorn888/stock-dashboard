@@ -16,7 +16,7 @@ const ALL_PERIODS = [5, 10, 20, 60, 120] as const
 // 避免整理期一天上一天下、燈號天天跳動
 const BUFFER = 0.005
 
-type Row = { key: string; name: string; date: string; belowPeriod: number | null; trend: 'bull' | 'lean-bull' | null }
+type Row = { key: string; name: string; date: string; belowPeriod: number | null; trend: 'bull' | 'lean-bull' | null; nearBelowLongTerm: boolean }
 
 export default function GlobalIndexLights({ indices, onSelect }: Props) {
   if (!indices || Object.keys(indices).length === 0) return null
@@ -44,7 +44,12 @@ export default function GlobalIndexLights({ indices, onSelect }: Props) {
       trend = aboveAll ? 'bull' : ma5AboveLongTerm ? 'lean-bull' : null
     }
 
-    rows.push({ key, name: idx.name, date: idx.bars[0].date, belowPeriod, trend })
+    // R10：貼線緩衝製造的灰帶——close 在 ma120 下方 0.5% 以內時 belowPeriod/trend 都不成立，
+    // 掉進兜底文字「站上120日線」，但實際上價格是在均線下方，不是站上
+    const nearBelowLongTerm = belowPeriod === null && trend === null
+      && ma[120] != null && close < ma[120]!
+
+    rows.push({ key, name: idx.name, date: idx.bars[0].date, belowPeriod, trend, nearBelowLongTerm })
   }
 
   if (rows.length === 0) return null
@@ -54,6 +59,7 @@ export default function GlobalIndexLights({ indices, onSelect }: Props) {
     if (r.belowPeriod != null) return `${r.belowPeriod} 日線以下`
     if (r.trend === 'bull') return '多頭'
     if (r.trend === 'lean-bull') return '偏多'
+    if (r.nearBelowLongTerm) return `貼近 ${BREACH_PERIODS[BREACH_PERIODS.length - 1]} 日線`
     return `站上 ${BREACH_PERIODS[BREACH_PERIODS.length - 1]} 日線`
   }
 

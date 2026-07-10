@@ -31,20 +31,52 @@ export async function isPasswordSet(): Promise<boolean> {
   return !!config?.password
 }
 
+// R2：暴力猜測防護。密碼背後能觸發 force-run（燒 Actions 額度）與 confirm-queue
+// （間接 commit 到 public repo），4 碼下限太容易猜，加簡單的失敗計數窗口。
+const FAIL_WINDOW_MS = 60 * 60 * 1000  // 1 小時
+const FAIL_LIMIT = 20
+
 export async function checkPassword(password: string): Promise<boolean> {
+  const fails = (await readPrivate('auth-fails.json')) as { count: number; firstFailAt: number } | null
+  const now = Date.now()
+  const windowActive = fails && now - fails.firstFailAt < FAIL_WINDOW_MS
+  if (windowActive && fails!.count >= FAIL_LIMIT) return false
+
   if (!password) return false
   const config = await readPrivate('auth.json')
   if (!config?.password) return false
-  return password === config.password
+
+  if (password === config.password) {
+    if (fails) await writePrivate('auth-fails.json', { count: 0, firstFailAt: 0 })
+    return true
+  }
+
+  const next = windowActive
+    ? { count: fails!.count + 1, firstFailAt: fails!.firstFailAt }
+    : { count: 1, firstFailAt: now }
+  await writePrivate('auth-fails.json', next)
+  return false
 }
 
 export async function setPassword(
   newPassword: string,
   oldPassword?: string,
+  setupToken?: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const config = await readPrivate('auth.json')
-  if (config?.password && oldPassword !== config.password) {
-    return { ok: false, error: '舊密碼錯誤' }
+  if (config?.password) {
+    if (oldPassword !== config.password) return { ok: false, error: '舊密碼錯誤' }
+  } else {
+    // R2：首次設定密碼前沒有任何認證，公開網站上誰先到誰設——要求帶伺服器端設定的
+    // setupToken 才能首設，防止陌生人搶先設定。刻意 fail-closed：REVIEW_SETUP_TOKEN
+    // 沒設定時直接拒絕（不是靜默放行），逼自己記得去 Vercel 設定
+    const required = process.env.REVIEW_SETUP_TOKEN
+    if (!required) {
+      return { ok: false, error: '尚未設定 REVIEW_SETUP_TOKEN，請先到 Vercel 環境變數設定' }
+    }
+    if (setupToken !== required) {
+      return { ok: false, error: 'setup token 錯誤' }
+    }
   }
   await writePrivate('auth.json', { password: newPassword })
   return { ok: true }

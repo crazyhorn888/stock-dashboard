@@ -58,8 +58,11 @@ function computeDailyBriefFacts(snapshot) {
     .slice(0, 10)
     .map(s => ({ code: s.code, name: s.name, net: s.net }))
 
+  // R12：brief 的內容（四象限/逆勢買超/異常個股）都是算自 sectorHistory/stockHistory（T86 時序），
+  // 但 date 原本優先用 stocksDate（STOCK_DAY_ALL，常常較晚才前進）——兩者不同步時，卡片/Email
+  // 標的日期會跟內容對不上。改成優先反映內容真正的來源日期。
   return {
-    date: snapshot.stocksDate ?? indexHistory[0]?.date ?? null,
+    date: sectorHistory[0]?.date ?? snapshot.stocksDate ?? indexHistory[0]?.date ?? null,
     quadrantCounts,
     marketChangePct,
     contrarian,

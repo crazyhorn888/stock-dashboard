@@ -14,6 +14,7 @@ export default function ReviewPage() {
   const [pwInput, setPwInput] = useState('')
   const [error, setError] = useState('')
   const [tab, setTab] = useState<'pending' | 'edit'>('pending')
+  const [setupTokenInput, setSetupTokenInput] = useState('')
   const [brief, setBrief] = useState<DailyBriefFacts | undefined>()
   const [forceRunState, setForceRunState] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
   const [forceRunMsg, setForceRunMsg] = useState('')
@@ -54,7 +55,7 @@ export default function ReviewPage() {
     const res = await fetch('/api/review/set-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ newPassword: pwInput }),
+      body: JSON.stringify({ newPassword: pwInput, setupToken: setupTokenInput }),
     })
     const data = await res.json()
     if (data.ok) {
@@ -121,6 +122,16 @@ export default function ReviewPage() {
             placeholder="密碼"
             className="w-full border border-slate-300 rounded px-3 py-2 text-sm mb-2"
           />
+          {!passwordSet && (
+            <input
+              type="password"
+              value={setupTokenInput}
+              onChange={e => setSetupTokenInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSetInitial()}
+              placeholder="Setup token（Vercel 環境變數 REVIEW_SETUP_TOKEN）"
+              className="w-full border border-slate-300 rounded px-3 py-2 text-sm mb-2"
+            />
+          )}
           {error && <p className="text-[11px] text-red-500 mb-2">{error}</p>}
           <button
             onClick={passwordSet ? handleLogin : handleSetInitial}

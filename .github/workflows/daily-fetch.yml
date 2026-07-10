@@ -35,6 +35,10 @@ on:
         description: '略過 FMTQIK Guard，強制跑完整 pipeline（本機不要再直接跑 fetch-daily.mjs/write-firebase.mjs 寫 production——iCloud 會干擾 data/latest.json，2026-07-10 已經證實會悄悄還原成舊內容，一律用這個 workflow_dispatch 補跑）'
         type: boolean
         default: false
+      fetch_global:
+        description: 'R7：單獨補跑全球指數（原本只有台北 06:07 那班會跑，失敗要等 24 小時；建議挑各市場都收盤的時段觸發，見 R11）'
+        type: boolean
+        default: false
 
 # 固定 group 名稱讓所有 run 排同一隊：後到的排隊等前面跑完（不取消），
 # 避免兩個 run 同時「下載快照→改→上傳」互相覆蓋（lost update）
@@ -49,8 +53,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      # 02:07／08:07 這兩班、或手動 workflow_dispatch 勾選 force_run，不受開盤限制略過 FMTQIK Guard
-      FORCE_SKIP_GUARD2: ${{ (github.event.schedule == '7 18 * * *' || github.event.schedule == '7 0 * * *' || github.event.inputs.force_run == 'true') && 'true' || '' }}
+      # 02:07／08:07 這兩班不受開盤限制，略過 FMTQIK Guard（Guard 2）——今日資料已完整時
+      # 仍會被 Guard 1 攔下，R4 的 FORCE_FULL_RUN 才是穿透 Guard 1 的開關
+      FORCE_SKIP_GUARD2: ${{ (github.event.schedule == '7 18 * * *' || github.event.schedule == '7 0 * * *') && 'true' || '' }}
+      # R4：/review 的「強制執行」按鈕與手動 dispatch 勾選 force_run 專用，連 Guard 1（今日已完成）
+      # 都要跳過，否則資料已完整時按鈕會靜默無效
+      FORCE_FULL_RUN: ${{ github.event.inputs.force_run == 'true' && 'true' || '' }}
 
     steps:
       - name: Checkout
@@ -122,7 +130,7 @@ jobs:
   # P2-3：全球指數，只在台北 06:07 這班跑。不裝依賴（腳本零依賴、只用內建 fetch），
   # 不動 latest.json/主 pipeline，AC(d) 要求 <1 分鐘結束
   fetch-global-indices:
-    if: github.event_name == 'schedule' && github.event.schedule == '7 22 * * 0-4'
+    if: (github.event_name == 'schedule' && github.event.schedule == '7 22 * * 0-4') || github.event.inputs.fetch_global == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
 

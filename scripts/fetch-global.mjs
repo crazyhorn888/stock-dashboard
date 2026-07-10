@@ -21,10 +21,26 @@ const SYMBOLS = {
 // 只留最近 250 筆（比照台股大盤 K 線慣例）；抓 2y 是為了讓 MA120 有足夠回看空間
 const KEEP_DAYS = 250
 
-async function fetchYahoo(symbol) {
+// R6：重試——只對網路層錯誤與 5xx 重試，4xx 直接拋錯不重試
+async function fetchYahoo(symbol, attempt = 1) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=2y&interval=1d`
-  const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  let res
+  try {
+    res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+  } catch (e) {
+    if (attempt < 3) {
+      await new Promise(r => setTimeout(r, attempt * 2000))
+      return fetchYahoo(symbol, attempt + 1)
+    }
+    throw e
+  }
+  if (!res.ok) {
+    if (res.status >= 500 && attempt < 3) {
+      await new Promise(r => setTimeout(r, attempt * 2000))
+      return fetchYahoo(symbol, attempt + 1)
+    }
+    throw new Error(`HTTP ${res.status}`)
+  }
   const json = await res.json()
   const result = json?.chart?.result?.[0]
   if (!result) throw new Error(json?.chart?.error?.description ?? 'no result')
@@ -45,6 +61,17 @@ async function fetchYahoo(symbol) {
       volume: quote.volume[i] ?? 0,
     })
   }
+
+  // R11：06:07 台北時段六個市場都休市所以一直是安全的，但 R7 開放手動補跑後，若剛好在
+  // 該市場盤中觸發，最後一根 bar 會是未收盤的即時值，不能當日 K 存——盤中就剔除最新那根
+  // （bars 此時是舊到新排序，最新的在陣列尾端）
+  const period = result.meta?.currentTradingPeriod?.regular
+  const nowSec = Math.floor(Date.now() / 1000)
+  if (period && nowSec >= period.start && nowSec < period.end && bars.length > 0) {
+    console.warn(`[global] ${symbol} 市場盤中，剔除未收盤的最後一根`)
+    bars.pop()
+  }
+
   return bars.reverse().slice(0, KEEP_DAYS)  // newest first
 }
 
@@ -62,6 +89,9 @@ async function main() {
     if (res.ok) indices = (await res.json()).indices ?? {}
   } catch { /* 首次執行，無舊值 */ }
 
+  // R7：原本個別失敗只有 console.warn，run 仍是綠的，沒人會發現——
+  // 日經/KOSPI 曾經因此靜默落後一整天。收集失敗清單，最後讓 run 標紅。
+  const failed = []
   for (const [key, { yahoo, name }] of Object.entries(SYMBOLS)) {
     try {
       const bars = await fetchYahoo(yahoo)
@@ -69,6 +99,7 @@ async function main() {
       console.log(`[global] ${name}：${bars.length} 天，最新 ${bars[0]?.date}`)
     } catch (e) {
       console.warn(`[global] ${name} 抓取失敗，保留舊值：`, e.message)
+      failed.push(name)
     }
   }
 
@@ -85,7 +116,11 @@ async function main() {
     body,
   })
   if (!res.ok) throw new Error(`Supabase 上傳失敗：${res.status} ${await res.text()}`)
-  console.log('[global] global-indices.json 上傳完成')
+  console.log('[global] global-indices.json 上傳完成（成功的部分已保住）')
+
+  if (failed.length > 0) {
+    throw new Error(`以下指數抓取失敗，保留舊值：${failed.join('、')}`)
+  }
 }
 
 main().catch(e => { console.error(e); process.exit(1) })

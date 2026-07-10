@@ -218,5 +218,30 @@
   ],
   "app/aftermarket/page.tsx::gearGlow": [
     "齒輪連結在 pendingCount>0 時變琥珀色+animate-pulse+右上角小圓點，pendingCount 從 /api/review/pending-count 抓（不需密碼，頁面載入就抓，跟 holidayStatus 同一個 useEffect）"
+  ],
+  "n8n::8gjZEAvqTcGA4OKf::R1_R3_R9": [
+    "R1: 「處理成功？」IF 改用 boolean equals 判斷 $json.error===true（原本用 string empty 判斷會誤判 boolean/undefined 型別）；新增「被跳過？」IF 節點把 skipped 狀態獨立分流到「靜默跳過」NoOp，不再誤入異常通知信",
+    "R3: 「處理並Commit」寫檔後立刻 readFileSync 回讀比對，不一致（iCloud 干擾）就回傳 error 中止、不 commit",
+    "R9: 「清空Queue」改成重新 GET 一次 confirm-queue.json，只濾掉本輪 jobIds 已處理的項目再寫回，不再無條件清空整個 queue",
+    "⚠️ n8n API 現在 PUT payload 只能給 name（id/active 都是 read-only），跟更早 session 的 /save 慣例（給 id/name/active/createdAt/updatedAt/tags）不同，是這次才發現的行為變化"
+  ],
+  "scripts/guard-check.mjs::FORCE_FULL_RUN": [
+    "R4: 新增 FORCE_FULL_RUN，在 isAlreadyDone（Guard1）之前檢查，只給 workflow_dispatch 的 force_run=true 用；FORCE_SKIP_GUARD2 收斂回只給 02:07/08:07 兩個 cron 用（不再包含 force_run，避免混淆兩種語意）"
+  ],
+  "scripts/fetch-daily.mjs::changedFlag": [
+    "R5: main() 新增 changed 旗標，Step3(股價)/Step4(K線+籌碼)/Step5(T86板塊/概念/個股)任一有實質更新才設true；結尾 !changed && !forceFullRun 時提早 return 不寫 data/latest.json，yml 既有的 PIPELINE_RAN 檢查會自然判定跳過，避免02:07/08:07補課班天天全量下載+上傳浪費egress",
+    "R8: 5b 回補迴圈的 conceptHistory push 判斷原本誤用 existingSectorDates（copy-paste bug），改成 existingConceptDates 各自獨立判斷；shortestLen 也改成 sector/concept/stock 三者取最小值",
+    "R6: fetchJSON 加重試（網路層錯誤/5xx最多3次，2s/4s間隔），4xx直接拋不重試"
+  ],
+  "scripts/fetch-global.mjs::R6_R7_R11": [
+    "R6: fetchYahoo 加同款重試邏輯",
+    "R7: main() 收集失敗指數清單，成功部分先上傳，最後有失敗就 throw 讓 run 標紅（原本只 console.warn，run 是綠的沒人發現）；daily-fetch.yml 新增 fetch_global dispatch input 讓這個 job 也能手動單獨補跑",
+    "R11: fetchYahoo 用 result.meta.currentTradingPeriod.regular 判斷該市場是否盤中，是就 bars.pop() 剔除最後一根未收盤bar——只有在 R7 開放手動補跑後才有意義（06:07固定排程時六市場都休市，天然安全）"
+  ],
+  "components/aftermarket/GlobalIndexLights.tsx::nearBelowLongTerm": [
+    "R10: BUFFER緩衝(0.5%)在 close 剛好貼在 ma120 下方時，belowPeriod/trend都不成立，會掉進「站上120日線」的兜底文字但實際上是在下方。新增 nearBelowLongTerm（無buffer的原始比較 close<ma120）判斷，該情況顯示「貼近120日線」"
+  ],
+  "scripts/write-firebase.mjs::dailyBriefDate": [
+    "R12: computeDailyBriefFacts 的 date 欄改優先用 sectorHistory[0].date（brief內容真正的來源時序），不再優先用常常較晚前進的 stocksDate，避免卡片/Email標的日期跟內容對不上"
   ]
 }

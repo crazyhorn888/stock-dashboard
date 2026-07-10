@@ -86,7 +86,7 @@
         -40
       ],
       "parameters": {
-        "jsCode": "const queue = $json;\nconst fs = require('fs');\nconst { execSync } = require('child_process');\nconst repoDir = '/Users/agent/Desktop/Mine/9. Coding/Claude Code/100_Todo/projects/stock-dashboard';\nconst filePath = `${repoDir}/data/concept-sectors.json`;\n\n// 安全檢查：這個檔案若已經有未 commit 的異動（可能是別的 session 正在改），本輪跳過，避免蓋掉別人的工作\nconst status = execSync('git status --porcelain data/concept-sectors.json', { cwd: repoDir }).toString().trim();\nif (status) {\n  return [{ json: { skipped: true, reason: 'concept-sectors.json 有未 commit 的異動，本輪跳過', gitStatus: status } }];\n}\n\nconst data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));\n\nfor (const job of (queue.jobs || [])) {\n  for (const item of job.items) {\n    if (!item.concepts || item.concepts.length === 0) {\n      delete data.stocks[item.code];\n    } else {\n      data.stocks[item.code] = item.concepts;\n      for (const c of item.concepts) {\n        if (!data.concepts[c]) data.concepts[c] = { desc: '' };\n      }\n    }\n  }\n}\n\nconst dateStr = new Date().toISOString().slice(0, 10);\nconst seq = (data.version || '').startsWith(dateStr) ? parseInt(data.version.split('.')[1] || '0', 10) + 1 : 1;\ndata.version = `${dateStr}.${seq}`;\ndata.updatedAt = dateStr;\n\nfs.writeFileSync(filePath, JSON.stringify(data, null, 2));\n\nconst jobIds = (queue.jobs || []).map(j => j.id).join(',');\ntry {\n  execSync(`git add data/concept-sectors.json && git commit -m \"chore: review 頁面確認概念分類更新 (jobs: ${jobIds})\" && git push`, { cwd: repoDir });\n} catch (e) {\n  return [{ json: { error: true, message: 'git commit/push 失敗：' + e.message } }];\n}\n\nreturn [{ json: { processed: (queue.jobs || []).length, version: data.version } }];\n"
+        "jsCode": "const queue = $json;\nconst fs = require('fs');\nconst { execSync } = require('child_process');\nconst repoDir = '/Users/agent/Desktop/Mine/9. Coding/Claude Code/100_Todo/projects/stock-dashboard';\nconst filePath = `${repoDir}/data/concept-sectors.json`;\n\n// 安全檢查：這個檔案若已經有未 commit 的異動（可能是別的 session 正在改），本輪跳過，避免蓋掉別人的工作\nconst status = execSync('git status --porcelain data/concept-sectors.json', { cwd: repoDir }).toString().trim();\nif (status) {\n  return [{ json: { skipped: true, reason: 'concept-sectors.json 有未 commit 的異動，本輪跳過', gitStatus: status } }];\n}\n\nconst data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));\n\nfor (const job of (queue.jobs || [])) {\n  for (const item of job.items) {\n    if (!item.concepts || item.concepts.length === 0) {\n      delete data.stocks[item.code];\n    } else {\n      data.stocks[item.code] = item.concepts;\n      for (const c of item.concepts) {\n        if (!data.concepts[c]) data.concepts[c] = { desc: '' };\n      }\n    }\n  }\n}\n\nconst dateStr = new Date().toISOString().slice(0, 10);\nconst seq = (data.version || '').startsWith(dateStr) ? parseInt(data.version.split('.')[1] || '0', 10) + 1 : 1;\ndata.version = `${dateStr}.${seq}`;\ndata.updatedAt = dateStr;\n\nconst payload = JSON.stringify(data, null, 2);\nfs.writeFileSync(filePath, payload);\n\n// R3：本機 iCloud Drive 曾經在寫檔後的短暫時間窗把內容悄悄還原成舊版（2026-07-10 弄壞過一次\n// production），寫完立刻回讀比對，不一致就中止，不 commit 壞資料\nconst verify = fs.readFileSync(filePath, 'utf-8');\nif (verify !== payload) {\n  return [{ json: { error: true, message: 'iCloud 干擾：寫入後回讀不一致，本輪中止（未 commit）' } }];\n}\n\nconst jobIds = (queue.jobs || []).map(j => j.id);\ntry {\n  execSync(`git add data/concept-sectors.json && git commit -m \"chore: review 頁面確認概念分類更新 (jobs: ${jobIds.join(',')})\" && git push`, { cwd: repoDir });\n} catch (e) {\n  return [{ json: { error: true, message: 'git commit/push 失敗：' + e.message } }];\n}\n\nreturn [{ json: { processed: (queue.jobs || []).length, version: data.version, jobIds } }];\n"
       }
     },
     {
@@ -95,8 +95,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        880,
-        -40
+        1100,
+        -80
       ],
       "parameters": {
         "conditions": {
@@ -108,20 +108,11 @@
           "conditions": [
             {
               "id": "check-no-error",
-              "leftValue": "={{ $json.error }}",
-              "rightValue": "",
+              "leftValue": "={{ $json.error === true }}",
+              "rightValue": false,
               "operator": {
-                "type": "string",
-                "operation": "empty"
-              }
-            },
-            {
-              "id": "check-no-skip",
-              "leftValue": "={{ $json.skipped }}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "empty"
+                "type": "boolean",
+                "operation": "equals"
               }
             }
           ],
@@ -136,11 +127,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1100,
-        -120
+        1320,
+        -160
       ],
       "parameters": {
-        "jsCode": "const SUPABASE_KEY = $env.SUPABASE_SERVICE_KEY;\nconst https = require('https');\nconst body = JSON.stringify({ jobs: [] });\nawait new Promise((resolve) => {\n  const req = https.request({\n    hostname: 'bliybylxjwemgzjvazyc.supabase.co',\n    path: '/storage/v1/object/review/confirm-queue.json',\n    method: 'POST',\n    headers: {\n      Authorization: `Bearer ${SUPABASE_KEY}`,\n      'Content-Type': 'application/json',\n      'Content-Length': Buffer.byteLength(body),\n      'x-upsert': 'true',\n    },\n  }, (res) => { res.on('data', () => {}); res.on('end', resolve); });\n  req.on('error', resolve);\n  req.write(body);\n  req.end();\n});\nreturn [{ json: { cleared: true } }];\n"
+        "jsCode": "const SUPABASE_KEY = $env.SUPABASE_SERVICE_KEY;\nconst https = require('https');\nconst processedIds = new Set($json.jobIds || []);\n\nfunction getQueue() {\n  return new Promise((resolve) => {\n    https.get({\n      hostname: 'bliybylxjwemgzjvazyc.supabase.co',\n      path: '/storage/v1/object/review/confirm-queue.json',\n      headers: { Authorization: `Bearer ${SUPABASE_KEY}` },\n    }, (res) => {\n      let body = '';\n      res.on('data', d => body += d);\n      res.on('end', () => { try { resolve(JSON.parse(body)); } catch (e) { resolve({ jobs: [] }); } });\n    }).on('error', () => resolve({ jobs: [] }));\n  });\n}\n\nconst current = await getQueue();\nconst remaining = (current.jobs || []).filter(j => !processedIds.has(j.id));\n\nconst body = JSON.stringify({ jobs: remaining });\nawait new Promise((resolve) => {\n  const req = https.request({\n    hostname: 'bliybylxjwemgzjvazyc.supabase.co',\n    path: '/storage/v1/object/review/confirm-queue.json',\n    method: 'POST',\n    headers: {\n      Authorization: `Bearer ${SUPABASE_KEY}`,\n      'Content-Type': 'application/json',\n      'Content-Length': Buffer.byteLength(body),\n      'x-upsert': 'true',\n    },\n  }, (res) => { res.on('data', () => {}); res.on('end', resolve); });\n  req.on('error', resolve);\n  req.write(body);\n  req.end();\n});\nreturn [{ json: { cleared: true, remaining: remaining.length } }];\n"
       }
     },
     {
@@ -149,8 +140,8 @@
       "type": "n8n-nodes-base.microsoftOutlook",
       "typeVersion": 2,
       "position": [
-        1100,
-        40
+        1320,
+        0
       ],
       "parameters": {
         "toRecipients": "crazyhorn888@hotmail.com",
@@ -166,6 +157,38 @@
           "name": "Microsoft Outlook account"
         }
       }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-skipped",
+              "leftValue": "={{ $json.skipped === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "skipped-if-node-r1",
+      "name": "被跳過？",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -40
+      ]
     }
   ],
   "connections": {
@@ -213,7 +236,7 @@
       "main": [
         [
           {
-            "node": "處理成功？",
+            "node": "被跳過？",
             "type": "main",
             "index": 0
           }
@@ -237,11 +260,30 @@
           }
         ]
       ]
+    },
+    "被跳過？": {
+      "main": [
+        [
+          {
+            "node": "靜默跳過",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "處理成功？",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1",
     "callerPolicy": "workflowsFromSameOwner",
     "availableInMCP": false
-  }
+  },
+  "staticData": null
 }

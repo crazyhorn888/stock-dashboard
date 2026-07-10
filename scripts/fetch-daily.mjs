@@ -16,9 +16,27 @@ const conceptStockMap = JSON.parse(
 ).stocks
 
 // ── 工具 ────────────────────────────────────────────
-async function fetchJSON(url) {
-  const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
-  if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`)
+// R6：抓取側原本沒有重試，單次連線逾時/網路錯誤就讓整個 run 失敗
+// （實證：2026-07-10 openapi.twse.com.tw ConnectTimeout 直接中止 run）。
+// 只對網路層錯誤與 5xx 重試，4xx 視為對方明確拒絕，直接拋錯不重試。
+async function fetchJSON(url, attempt = 1) {
+  let res
+  try {
+    res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+  } catch (e) {
+    if (attempt < 3) {
+      await new Promise(r => setTimeout(r, attempt * 2000))
+      return fetchJSON(url, attempt + 1)
+    }
+    throw e
+  }
+  if (!res.ok) {
+    if (res.status >= 500 && attempt < 3) {
+      await new Promise(r => setTimeout(r, attempt * 2000))
+      return fetchJSON(url, attempt + 1)
+    }
+    throw new Error(`HTTP ${res.status} ${url}`)
+  }
   return res.json()
 }
 
@@ -494,16 +512,24 @@ async function main() {
 
   console.log(`[daily] 開始，日期：${dateTW}`)
 
-  // Guard 1：今天已上傳
-  if (await isAlreadyDoneToday()) {
+  const forceFullRun = process.env.FORCE_FULL_RUN === 'true'
+  // R5：02:07/08:07 補課班天天跑（含假日），若當天各資料源都沒有前進，
+  // 不應該還是全量下載+全量重新上傳一輪（egress 浪費）。這個旗標追蹤本次
+  // run 是否真的有任何實質更新，沒有就在 main() 結尾提早結束、不寫檔。
+  // force_run（forceFullRun）不受這個短路影響，永遠正常跑完並上傳。
+  let changed = false
+
+  // Guard 1：今天已上傳（R4：force_run 專用，強制執行時跳過——這正是「資料已完整，
+  // 但想立刻重新派生 market.json」的使用情境，不能被這關擋掉）
+  if (!forceFullRun && await isAlreadyDoneToday()) {
     console.log('[daily] 今日資料已在 Firebase，跳過，exit 0')
     process.exit(0)
   }
 
   // Guard 2：FMTQIK 尚無今日 K 棒（非交易日 or 15:30 前）
-  // 不受開盤限制的補課班次（見 guard-check.mjs／daily-fetch.yml）略過這關，
+  // 不受開盤限制的補課班次／強制執行（見 guard-check.mjs／daily-fetch.yml）略過這關，
   // 讓深夜／清晨才發布的 STOCK_DAY_ALL、融資資料有機會被追到
-  if (process.env.FORCE_SKIP_GUARD2 !== 'true' && !(await isTradingDay(today))) {
+  if (!forceFullRun && process.env.FORCE_SKIP_GUARD2 !== 'true' && !(await isTradingDay(today))) {
     console.log('[daily] FMTQIK 無今日資料，跳過，exit 0')
     process.exit(0)
   }
@@ -626,7 +652,7 @@ async function main() {
   }
 
   } // end if (sdaIsToday)
-  if (sdaIsToday) console.log(`[daily] TWSE 更新 ${prices.length} 支，新增 ${newCount} 支`)
+  if (sdaIsToday) { console.log(`[daily] TWSE 更新 ${prices.length} 支，新增 ${newCount} 支`); changed = true }
   else console.log('[daily] TWSE 股價跳過（STOCK_DAY_ALL 舊日期），保留快照值')
 
   // Step 3b：TPEX 上櫃股票
@@ -733,6 +759,7 @@ async function main() {
         .sort((a, b) => b.date.localeCompare(a.date))
         .slice(0, 250)
       console.log(`[daily] indexHistory 補入 ${newEntries.length} 筆（${newEntries.map(r => r.date).join(', ')}），共 ${indexHistory.length} 筆`)
+      changed = true
     } else {
       console.warn('[daily] 今日 FMTQIK 無新資料，indexHistory 保留舊值')
     }
@@ -759,6 +786,7 @@ async function main() {
           for (const k of Object.keys(fresh)) { if (fresh[k] != null) merged[k] = fresh[k] }
           indexHistory[todayIdx] = { ...indexHistory[todayIdx], chips: merged }
           console.log(`[daily] 今日籌碼補值：margin_amount=${merged.margin_amount ?? '—'} inst_total=${merged.inst_total ?? '—'}`)
+          changed = true
         } else {
           console.log('[daily] 今日融資/籌碼仍未就緒，保留現狀待下次補值')
         }
@@ -784,6 +812,7 @@ async function main() {
     const filteredS = stockHistory.filter(d => d.date !== today)
     stockHistory   = [{ date: today, unit: 'yi', stocks: t86Today.stockRows }, ...filteredS].slice(0, 25)
     console.log(`[daily] sectorHistory/conceptHistory/stockHistory 更新今日 ${today}`)
+    changed = true
   } else {
     console.warn('[daily] T86 無資料，sectorHistory/conceptHistory/stockHistory 保留舊值')
   }
@@ -793,27 +822,32 @@ async function main() {
   // 加的檔案，sectorHistory 早就有 20+ 天（從 P1-3 延續下來）所以這個條件從來不會為 stockHistory
   // 觸發——導致 stockHistory 實際上永遠停在「只有今天」（2026-07-10 發現，見計劃書執行紀錄）。
   // 改成三者分開判斷各自的缺口，逐日補抓時也各自獨立檢查是否已存在，避免互相干擾造成重複
-  const needSectorBackfill = sectorHistory.length  < 20
-  const needStockBackfill  = stockHistory.length   < 20
-  if ((needSectorBackfill || needStockBackfill) && indexHistory && indexHistory.length > 1) {
-    const existingSectorDates = new Set(sectorHistory.map(d => d.date))
-    const existingStockDates  = new Set(stockHistory.map(d => d.date))
-    const shortestLen = Math.min(sectorHistory.length, stockHistory.length)
+  // R8：conceptHistory 原本誤用 existingSectorDates 判斷是否要推入（copy-paste bug）——
+  // 若某日期存在於 sectorHistory 但缺於 conceptHistory，會永遠補不回來。改成各自用各自的集合。
+  const needSectorBackfill  = sectorHistory.length  < 20
+  const needConceptBackfill = conceptHistory.length < 20
+  const needStockBackfill   = stockHistory.length   < 20
+  if ((needSectorBackfill || needConceptBackfill || needStockBackfill) && indexHistory && indexHistory.length > 1) {
+    const existingSectorDates  = new Set(sectorHistory.map(d => d.date))
+    const existingConceptDates = new Set(conceptHistory.map(d => d.date))
+    const existingStockDates   = new Set(stockHistory.map(d => d.date))
+    const shortestLen = Math.min(sectorHistory.length, conceptHistory.length, stockHistory.length)
     const missingDates = indexHistory
       .map(r => r.date)
-      .filter(d => !existingSectorDates.has(d) || !existingStockDates.has(d))
+      .filter(d => !existingSectorDates.has(d) || !existingConceptDates.has(d) || !existingStockDates.has(d))
       .slice(0, 25 - shortestLen)
 
     if (missingDates.length > 0) {
-      console.log(`[daily] sectorHistory ${sectorHistory.length} 天／stockHistory ${stockHistory.length} 天，補抓 ${missingDates.length} 個歷史交易日...`)
+      console.log(`[daily] sectorHistory ${sectorHistory.length} 天／conceptHistory ${conceptHistory.length} 天／stockHistory ${stockHistory.length} 天，補抓 ${missingDates.length} 個歷史交易日...`)
       for (const date of missingDates) {
         await new Promise(r => setTimeout(r, 1500))  // TWSE rate limit 緩衝
         const t86h = await fetchT86Sectors(date.replace(/-/g, ''), date, stockMap, conceptStockMap)
         if (t86h) {
-          if (!existingSectorDates.has(date)) sectorHistory.push({ date, unit: 'yi', rows: t86h.sectorRows })
-          if (!existingSectorDates.has(date)) conceptHistory.push({ date, unit: 'yi', rows: t86h.conceptRows })
-          if (!existingStockDates.has(date))  stockHistory.push({ date, unit: 'yi', stocks: t86h.stockRows })
+          if (!existingSectorDates.has(date))  sectorHistory.push({ date, unit: 'yi', rows: t86h.sectorRows })
+          if (!existingConceptDates.has(date)) conceptHistory.push({ date, unit: 'yi', rows: t86h.conceptRows })
+          if (!existingStockDates.has(date))   stockHistory.push({ date, unit: 'yi', stocks: t86h.stockRows })
           console.log(`[daily]   → ${date}：${t86h.sectorRows.length} 板塊、${t86h.conceptRows.length} 概念、${t86h.stockRows.length} 個股`)
+          changed = true
         }
       }
       sectorHistory.sort((a, b) => b.date.localeCompare(a.date))
@@ -822,8 +856,15 @@ async function main() {
       conceptHistory = conceptHistory.slice(0, 25)
       stockHistory.sort((a, b) => b.date.localeCompare(a.date))
       stockHistory = stockHistory.slice(0, 25)
-      console.log(`[daily] 補齊完成，sectorHistory ${sectorHistory.length} 天／stockHistory ${stockHistory.length} 天`)
+      console.log(`[daily] 補齊完成，sectorHistory ${sectorHistory.length} 天／conceptHistory ${conceptHistory.length} 天／stockHistory ${stockHistory.length} 天`)
     }
+  }
+
+  // R5：補課班（02:07/08:07）天天跑，若這次 run 各資料源都沒有實質前進，
+  // 不要還是全量重新上傳一輪（egress 浪費）。force_run 永遠正常跑完不受影響。
+  if (!changed && !forceFullRun) {
+    console.log('[daily] 本次無實質變更（股價/K線/融資籌碼/板塊皆無新資料），跳過寫檔與上傳')
+    return
   }
 
   const sectors  = calcSectors(sectorHistory, stockMap)
