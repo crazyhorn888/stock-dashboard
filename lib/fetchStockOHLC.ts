@@ -65,7 +65,7 @@ export function getStockBars(
     high:        d.h?.[i] ?? closes[i],
     low:         d.l?.[i] ?? closes[i],
     close:       closes[i],
-    volume:      d.v?.[i],
+    volume:      d.v?.[i] ?? undefined,  // R15 對齊補位的 null 視同無資料
     hasRealOHLC: hasOHLC,
   }))
 }

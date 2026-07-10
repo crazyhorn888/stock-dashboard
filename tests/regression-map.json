@@ -246,5 +246,13 @@
   ],
   "scripts/write-firebase.mjs::dailyBriefDate": [
     "R12: computeDailyBriefFacts 的 date 欄改優先用 sectorHistory[0].date（brief內容真正的來源時序），不再優先用常常較晚前進的 stocksDate，避免卡片/Email標的日期跟內容對不上"
+  ],
+  "scripts/fetch-global.mjs::R16_meta_synth": [
+    "R16: Yahoo 對 ^N225/^KS11 的日K quote.close 在收盤後長時間維持 null（疑似下個交易日才定版），null 過濾會讓 06:07 班次亞股結構性落後兩天且不觸發任何 exception（R7 標紅完全不會動作）。fetchYahoo 在市場非盤中且 meta.regularMarketTime 日期比最新 bar 新時，用 meta 合成當日 bar（close=regularMarketPrice、high/low=DayHigh/DayLow、open=chartPreviousClose 近似、volume=regularMarketVolume）；quote 定版後同日期真值自然覆蓋"
+  ],
+  "scripts/fetch-daily.mjs::R15_ohlc_hydrate": [
+    "R15: latest.json 已被 write-firebase 剝離 o/h/l/v，必須回灌 ohlc.json 否則每次 run 整包覆蓋成 1 天。hydrateOHLC 智慧下載：只在 sdaIsToday（TWSE 前進）或 tpexAdvanced（TPEX 有新 bar/新股票）時才下載；用每股 d0 錨點對齊（dates.indexOf(d0)，錯位前補 null），無 d0 或找不到就捨棄該股；下載失敗 → ohlcHydrated=false 寫進 snapshot，write-firebase 據此跳過 ohlc.json 上傳保住舊檔",
+    "R15: o/h/l/v 保留上限 250→120 天（= StockKChart 日線顯示上限），closes/dates 維持 250；write-firebase 1a 每股加 d0 + 防禦性 slice(0,120)；backfill-ohlc.mjs 同步加 d0 與 120 上限（缺 d0 的資料會被回灌捨棄）",
+    "R15 陷阱: 未回灌時 TPEX 同日期覆蓋會把 opens[0] 寫進空陣列產生 1 天孤兒資料——這在記憶體內無害（latest.json 本來就剝離、ohlc 上傳被 flag 擋掉），但如果future改動讓 ohlc 上傳不看 ohlcHydrated flag，會重演整包覆蓋事故"
   ]
 }

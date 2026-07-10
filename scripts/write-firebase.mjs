@@ -127,6 +127,8 @@ async function main() {
   }
 
   // 1a. 從 stocks 分離 OHLC + volume → 產生 ohlc.json（前端 lazy fetch）
+  // R15：d0 = 該股 dates[0]，回灌時的對齊錨點（若中間有 run 跳過 ohlc 上傳導致 dates 前進，
+  // fetch-daily 用 d0 找回正確位置補 null 對齊）；120 天上限防禦性再切一次
   const ohclBars = {}
   const stocksStripped = snapshot.stocks.map(s => {
     const { opens, highs, lows, volumes, ...rest } = s
@@ -134,15 +136,22 @@ async function main() {
     const hasVol  = volumes?.length > 0
     if (hasOHLC || hasVol) {
       ohclBars[s.code] = {
-        ...(hasOHLC ? { o: opens, h: highs, l: lows } : {}),
-        ...(hasVol  ? { v: volumes } : {}),
+        d0: s.dates?.[0] ?? null,
+        ...(hasOHLC ? { o: opens.slice(0, 120), h: highs?.slice(0, 120), l: lows?.slice(0, 120) } : {}),
+        ...(hasVol  ? { v: volumes.slice(0, 120) } : {}),
       }
     }
     return rest
   })
-  const ohlcPayload = JSON.stringify({ updatedAt: snapshot.updatedAt, bars: ohclBars })
-  const ohlcUrl = await uploadToSupabase('ohlc.json', ohlcPayload)
-  console.log(`[write] ohlc.json 上傳完成（${Object.keys(ohclBars).length} 支）：${ohlcUrl}`)
+  // R15：fetch-daily 這次 run 沒有回灌 ohlc（未下載/下載失敗）→ 跳過上傳，保留 production 既有累積。
+  // 只認明確的 false（seed/backfill 腳本產的快照沒有這個欄位，維持原上傳行為）
+  if (snapshot.ohlcHydrated === false) {
+    console.log('[write] ohlc.json 上傳跳過（本次 run 未回灌，保留既有累積資料）')
+  } else {
+    const ohlcPayload = JSON.stringify({ updatedAt: snapshot.updatedAt, bars: ohclBars })
+    const ohlcUrl = await uploadToSupabase('ohlc.json', ohlcPayload)
+    console.log(`[write] ohlc.json 上傳完成（${Object.keys(ohclBars).length} 支）：${ohlcUrl}`)
+  }
 
   // 1b. 上傳不含 OHLC 的 latest.json（保持前端頁面 size 不變）
   const snapshotStripped = { ...snapshot, stocks: stocksStripped }

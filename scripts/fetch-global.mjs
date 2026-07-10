@@ -68,9 +68,31 @@ async function fetchYahoo(symbol, attempt = 1) {
   // （bars 此時是舊到新排序，最新的在陣列尾端）
   const period = result.meta?.currentTradingPeriod?.regular
   const nowSec = Math.floor(Date.now() / 1000)
-  if (period && nowSec >= period.start && nowSec < period.end && bars.length > 0) {
+  const inSession = period && nowSec >= period.start && nowSec < period.end
+  if (inSession && bars.length > 0) {
     console.warn(`[global] ${symbol} 市場盤中，剔除未收盤的最後一根`)
     bars.pop()
+  }
+
+  // R16：^N225/^KS11 的 quote.close 在收盤後長時間維持 null（疑似下個交易日才定版），
+  // null 過濾會讓 06:07 班次的亞股結構性落後兩天。市場非盤中且 meta 的收盤日期比最新 bar 新時，
+  // 用 meta 合成當日 bar（meta 無 open，用 chartPreviousClose 近似；跳空日 open 會失真但指數
+  // K 線主要看 close/MA，可接受）。等 Yahoo quote 定版後，下次抓取同日期的真值自然覆蓋
+  const meta = result.meta
+  if (!inSession && bars.length > 0 && meta?.regularMarketTime && meta?.regularMarketPrice != null) {
+    const metaDate = new Date(meta.regularMarketTime * 1000).toLocaleDateString('en-CA', { timeZone: tz })
+    const lastDate = bars[bars.length - 1].date
+    if (metaDate > lastDate) {
+      bars.push({
+        date:   metaDate,
+        open:   meta.chartPreviousClose      ?? meta.regularMarketPrice,
+        high:   meta.regularMarketDayHigh    ?? meta.regularMarketPrice,
+        low:    meta.regularMarketDayLow     ?? meta.regularMarketPrice,
+        close:  meta.regularMarketPrice,
+        volume: meta.regularMarketVolume     ?? 0,
+      })
+      console.log(`[global] ${symbol} quote 尚未定版，用 meta 合成 ${metaDate} bar`)
+    }
   }
 
   return bars.reverse().slice(0, KEEP_DAYS)  // newest first

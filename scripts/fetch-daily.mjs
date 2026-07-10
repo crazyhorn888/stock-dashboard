@@ -381,6 +381,19 @@ async function downloadStockHistory() {
   }
 }
 
+// R15：下載 ohlc.json 供回灌（latest.json 已被 write-firebase 剝離 o/h/l/v，不回灌的話
+// 每次 run 的 ohlc.json 都會被「當次有動到的股票、1 天」整包覆蓋，蠟燭圖永遠只有 1 根）。
+// 智慧下載：只在股價資料實際前進的 run 才呼叫（見 hydrateOHLC 呼叫處），不是每個班次都下載
+async function downloadOHLCBars() {
+  const supabaseUrl = process.env.SUPABASE_URL
+  try {
+    const data = await fetchJSON(`${supabaseUrl}/storage/v1/object/public/snapshots/ohlc.json`)
+    return data?.bars ?? null
+  } catch {
+    return null  // 404（首次）或重試耗盡——回 null，呼叫端會讓 write-firebase 跳過 ohlc.json 上傳保住舊檔
+  }
+}
+
 // ── TWSE 今日股價（全市場，用 OpenAPI，Guard 2 已確認今日資料存在）──────
 async function fetchTWSEPrices() {
   const data = await fetchTWSEAll()
@@ -595,6 +608,34 @@ async function main() {
     console.log(`[daily] ⚠️  STOCK_DAY_ALL 仍為 ${sdaDateRaw ?? '未知'}（個股股價沿用前日快照），K 線與籌碼繼續更新`)
   }
 
+  // R15：ohlc.json 回灌。d0 = 該股上傳當下的 dates[0]（對齊錨點）——若中間有 run 跳過
+  // ohlc 上傳導致 dates 已前進，用 d0 在現有 dates 找到正確位置、前面補 null 對齊
+  // （getStockBars 對 null 有 closes fallback，畫成無影線 bar，不會壞）。無 d0（舊格式）直接捨棄
+  let ohlcHydrated = false
+  const hydrateOHLC = async () => {
+    if (ohlcHydrated) return
+    const bars = await downloadOHLCBars()
+    if (!bars) {
+      console.warn('[daily] ⚠️  ohlc.json 下載失敗或不存在，本次不回灌（ohlc.json 上傳將跳過以保留舊檔）')
+      return
+    }
+    let n = 0
+    for (const [code, b] of Object.entries(bars)) {
+      const s = stockMap[code]
+      if (!s || !b.d0) continue
+      const idx = s.dates?.indexOf(b.d0) ?? -1
+      if (idx < 0) continue
+      const pad = arr => arr?.length ? [...Array(idx).fill(null), ...arr].slice(0, 120) : undefined
+      const o = pad(b.o), h = pad(b.h), l = pad(b.l), v = pad(b.v)
+      if (o) { s.opens = o; s.highs = h; s.lows = l }
+      if (v) { s.volumes = v }
+      if (o || v) n++
+    }
+    ohlcHydrated = true
+    console.log(`[daily] ohlc.json 回灌 ${n} 支`)
+  }
+  if (sdaIsToday) await hydrateOHLC()
+
   // Step 3：更新每支股票（STOCK_DAY_ALL 有比快照新的資料才執行，避免插入錯誤日期的收盤價）
   let newCount = 0
   if (sdaIsToday) { for (const p of prices) {
@@ -634,10 +675,11 @@ async function main() {
           : existing.foreignNetBuy,
         closes:  closes.slice(0, 250),
         dates:   dates.slice(0, 250),
-        opens:   opens.slice(0, 250),
-        highs:   highs.slice(0, 250),
-        lows:    lows.slice(0, 250),
-        volumes: volumes.slice(0, 250),
+        // R15：o/h/l/v 只保留 120 天（= StockKChart 日線顯示上限，egress 取捨見計劃書 R15）
+        opens:   opens.slice(0, 120),
+        highs:   highs.slice(0, 120),
+        lows:    lows.slice(0, 120),
+        volumes: volumes.slice(0, 120),
       }
     } else {
       // 快照中沒有的新股票
@@ -671,6 +713,15 @@ async function main() {
     fetchTPEXIndustryMap(),
   ])
   console.log(`[daily] TPEX 資料：${tpexPrices.length} 支（資料日 ${tpexDateISO ?? '未知'}）`)
+
+  // R15：TPEX 有任何一支會長出新 bar（或新股票）才需要回灌——同日期覆蓋不會改變陣列長度，
+  // 未回灌時的 [0] 覆蓋寫進空陣列會產生 1 天孤兒資料，但 write-firebase 會因 ohlcHydrated=false
+  // 跳過 ohlc.json 上傳，不會汙染 production
+  const tpexAdvanced = !!tpexDateISO && tpexPrices.some(p => {
+    const e = stockMap[p.code]
+    return !e || (e.dates?.[0] ?? '') < tpexDateISO
+  })
+  if (tpexAdvanced) await hydrateOHLC()
 
   let tpexNewCount = 0
   let tpexNewBarCount = 0
@@ -717,10 +768,11 @@ async function main() {
         foreignNetBuy,
         closes:  closes.slice(0, 250),
         dates:   dates.slice(0, 250),
-        opens:   opens.slice(0, 250),
-        highs:   highs.slice(0, 250),
-        lows:    lows.slice(0, 250),
-        volumes: volumes.slice(0, 250),
+        // R15：o/h/l/v 只保留 120 天（= StockKChart 日線顯示上限，egress 取捨見計劃書 R15）
+        opens:   opens.slice(0, 120),
+        highs:   highs.slice(0, 120),
+        lows:    lows.slice(0, 120),
+        volumes: volumes.slice(0, 120),
       }
     } else {
       stockMap[p.code] = {
@@ -896,6 +948,9 @@ async function main() {
     // 可能是「今天」也可能是「比快照新的前一天」，見上方 2026-07-09 踩坑說明），
     // 否則保留快照舊值讓前端顯示「待更新」提示，並允許後續 cron 補跑股價。
     stocksDate: sdaIsToday ? sdaDateISO : (snapshot.stocksDate ?? null),
+    // R15：告訴 write-firebase 這次 run 有沒有回灌 ohlc——false 時跳過 ohlc.json 上傳，
+    // 避免用「只有 1 天的孤兒陣列」或「空集合」蓋掉 production 的累積資料
+    ohlcHydrated,
     stocks,
     indexHistory,
     sectorHistory,

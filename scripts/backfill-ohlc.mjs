@@ -38,14 +38,17 @@ async function main() {
     if (!closes || closes.length < 2) { skipped++; continue }
 
     const o = [], h = [], l = []
-    for (let i = 0; i < closes.length; i++) {
+    // R15：只推算 120 天（= StockKChart 日線顯示上限，與 pipeline 保留天數一致）
+    const len = Math.min(closes.length, 120)
+    for (let i = 0; i < len; i++) {
       const close = closes[i]
       const open  = closes[i + 1] ?? close  // 前日收盤；最舊一筆 open = close
       o.push(open)
       h.push(Math.max(open, close))
       l.push(Math.min(open, close))
     }
-    bars[s.code] = { o, h, l }
+    // R15：d0 = 對齊錨點（該股 dates[0]），fetch-daily 回灌時靠它定位；缺 d0 的條目會被回灌捨棄
+    bars[s.code] = { d0: s.dates?.[0] ?? null, o, h, l }
   }
 
   console.log(`[backfill] 推算完成：${Object.keys(bars).length} 支，跳過 ${skipped} 支（資料不足）`)

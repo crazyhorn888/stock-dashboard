@@ -22,10 +22,11 @@ export interface StockData {
 export interface OHLCSnapshot {
   updatedAt: string
   bars: Record<string, {
-    o?: number[]  // opens，newest first（TPEX 可能缺）
-    h?: number[]
-    l?: number[]
-    v?: number[]  // 成交量（張），newest first
+    d0?: string | null    // R15：對齊錨點 = 上傳當下該股 dates[0]，pipeline 回灌時定位用
+    o?: (number | null)[] // opens，newest first，最多 120 筆（TPEX 可能缺；R15 對齊補位可能為 null）
+    h?: (number | null)[]
+    l?: (number | null)[]
+    v?: (number | null)[] // 成交量（張），newest first
   }>
 }
 
