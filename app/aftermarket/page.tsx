@@ -47,9 +47,12 @@ export default function AftermarketPage() {
   const [focusedWatchlistBubble, setFocusedWatchlistBubble] = useState<SectorBubble | null>(null)
   // 台股是否休市（TWSE 官方行事曆）：用來把「待更新中」類文字換成「今日休市」說明，避免上午誤讀
   const [holidayStatus, setHolidayStatus] = useState<HolidayStatus | null>(null)
+  // /review 待審核數量：>0 時齒輪圖示發亮提醒
+  const [pendingCount, setPendingCount] = useState(0)
 
   useEffect(() => {
     fetchHolidayStatus().then(setHolidayStatus)
+    fetch('/api/review/pending-count').then(r => r.json()).then(d => setPendingCount(d.count ?? 0)).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -223,7 +226,16 @@ export default function AftermarketPage() {
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <span className="font-extrabold text-blue-600 text-base tracking-tight">StockView</span>
-            <a href="/review" className="text-slate-300 hover:text-slate-500 text-sm" title="審核與維護">⚙️</a>
+            <a
+              href="/review"
+              className={`relative text-sm ${pendingCount > 0 ? 'text-amber-500 animate-pulse' : 'text-slate-300 hover:text-slate-500'}`}
+              title={pendingCount > 0 ? `審核與維護（${pendingCount} 項待處理）` : '審核與維護'}
+            >
+              ⚙️
+              {pendingCount > 0 && (
+                <span className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-amber-500" />
+              )}
+            </a>
           </div>
           {!loading && data.updatedAt && (() => {
             const klineDate = data.indexHistory?.[0]?.date ?? null

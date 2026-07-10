@@ -15,6 +15,8 @@ export default function ReviewPage() {
   const [error, setError] = useState('')
   const [tab, setTab] = useState<'pending' | 'edit'>('pending')
   const [brief, setBrief] = useState<DailyBriefFacts | undefined>()
+  const [forceRunState, setForceRunState] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
+  const [forceRunMsg, setForceRunMsg] = useState('')
 
   const password = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) ?? '' : ''
 
@@ -61,6 +63,28 @@ export default function ReviewPage() {
       setAuthed(true)
     } else {
       setError(data.error ?? '設定失敗')
+    }
+  }
+
+  async function handleForceRun() {
+    setForceRunState('loading')
+    setForceRunMsg('')
+    try {
+      const res = await fetch('/api/review/force-run', {
+        method: 'POST',
+        headers: { 'x-review-password': password },
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setForceRunState('ok')
+        setForceRunMsg('已觸發，約 1-2 分鐘後可到 GitHub Actions 查看結果')
+      } else {
+        setForceRunState('error')
+        setForceRunMsg(data.error ?? '觸發失敗')
+      }
+    } catch (e) {
+      setForceRunState('error')
+      setForceRunMsg(e instanceof Error ? e.message : '觸發失敗')
     }
   }
 
@@ -112,7 +136,22 @@ export default function ReviewPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <main className="max-w-screen-md mx-auto px-3 py-4">
-        <h1 className="text-lg font-bold text-slate-800 mb-3">📋 審核與維護</h1>
+        <div className="flex items-center justify-between mb-3">
+          <h1 className="text-lg font-bold text-slate-800">📋 審核與維護</h1>
+          <button
+            onClick={handleForceRun}
+            disabled={forceRunState === 'loading'}
+            className="text-[11px] font-semibold px-2.5 py-1.5 rounded-md border border-slate-300 text-slate-500 hover:border-slate-400 disabled:opacity-50"
+            title="略過開盤限制，立刻觸發一次完整 pipeline（GitHub Actions，不會有本機 iCloud 干擾的風險）"
+          >
+            {forceRunState === 'loading' ? '觸發中…' : '⚡ 強制執行 Pipeline'}
+          </button>
+        </div>
+        {forceRunMsg && (
+          <p className={`text-[11px] mb-3 ${forceRunState === 'ok' ? 'text-blue-600' : 'text-red-500'}`}>
+            {forceRunMsg}
+          </p>
+        )}
 
         <DailyBriefCard brief={brief} />
 

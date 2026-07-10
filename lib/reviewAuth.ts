@@ -53,3 +53,11 @@ export async function setPassword(
 export async function readPendingBatches(): Promise<any> {
   return (await readPrivate('pending.json')) ?? { batches: [] }
 }
+
+// 給首頁齒輪發亮用：只回傳數量，不回傳內容，不需要密碼也能查（低敏感度，只是「有沒有
+// 待辦事項」的提示，不算洩漏隱私）
+export async function countPendingItems(): Promise<number> {
+  const data = await readPendingBatches()
+  const batches = data?.batches ?? []
+  return batches.reduce((sum: number, b: any) => sum + (b.items?.length ?? 0), 0)
+}

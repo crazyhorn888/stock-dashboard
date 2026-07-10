@@ -209,5 +209,14 @@
   "⚠️ 本機 iCloud 干擾 production 資料（2026-07-10 實際發生，非僅理論風險）": [
     "本機直接跑 scripts/fetch-daily.mjs + scripts/write-firebase.mjs 寫 production 時，data/latest.json 在「copy覆蓋→隨後read」的短暫時間窗內被 iCloud 悄悄還原成舊版內容（推測是跟同目錄殘留的 .latest.json.icloud 占位檔案衝突後的自動解決行為），導致把一份「回退到07-06」的舊資料寫上 production，一度弄壞 stocksDate/sectorHistory/margin。已用 backfill-margin.mjs 重新補值 + 新增的 workflow_dispatch force_run（跑在 GitHub Actions，沒有 iCloud 問題）重新產生正確的 market.json 恢復",
     "**規則**：以後任何需要「立刻讓 production 反映修復」的情境，一律用 https://github.com/crazyhorn888/stock-dashboard/actions/runs/29065088399（.github/workflows/daily-fetch.yml 已有此 input），不要再本機直接跑 fetch-daily.mjs/write-firebase.mjs 寫 Supabase。backfill-margin.mjs/backfill-ohlc.mjs 等「只讀寫 Supabase、不碰本機 data/latest.json」的一次性腳本可以繼續本機執行，風險不同"
+  ],
+  "app/api/review/force-run/route.ts": [
+    "需要密碼（沿用 checkPassword），呼叫 GitHub API dispatches 端點觸發 daily-fetch.yml 的 force_run=true。需要 Vercel 環境變數 GITHUB_DISPATCH_TOKEN（fine-grained PAT，Actions: Read and write 權限，scope 到 stock-dashboard 這個 repo），沒設會回 500 並附上清楚的錯誤訊息（不是靜默失敗）"
+  ],
+  "app/api/review/pending-count/route.ts": [
+    "刻意不需要密碼——只回傳 pending.json 裡的項目總數（不含內容），給首頁齒輪圖示判斷要不要發亮用。低敏感度資訊，跟其他 review API 的密碼保護等級不同，是有意的設計取捨"
+  ],
+  "app/aftermarket/page.tsx::gearGlow": [
+    "齒輪連結在 pendingCount>0 時變琥珀色+animate-pulse+右上角小圓點，pendingCount 從 /api/review/pending-count 抓（不需密碼，頁面載入就抓，跟 holidayStatus 同一個 useEffect）"
   ]
 }
