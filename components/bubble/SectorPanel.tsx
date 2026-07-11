@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import type { SectorBubble, StockData } from '@/lib/types'
 import ConceptTags from '@/components/shared/ConceptTags'
 
@@ -66,6 +66,22 @@ export default function SectorPanel({ sector, onClose, allStocks, n, onStockClic
   const [sortKey, setSortKey] = useState<SortKey>('netBuy')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
+  // iOS 15+ Safari compact bottom toolbar (~49px) 蓋在 position:fixed 內容上，
+  // 最後一列被遮住且內容沒超過容器高度時「無法捲動」（2026-07-12 Franky 回報）。
+  // 與 StockDetailSheet 同一套解法：UA 偵測 iOS → 整個 sheet 上抬固定位移
+  const [iosOffset, setIosOffset] = useState(0)
+  useEffect(() => {
+    if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) setIosOffset(49)
+  }, [])
+
+  // 面板開啟時鎖背景捲動：iOS 觸控會把捲動事件讓給 body（scroll chaining），
+  // 造成「滑面板結果背景在動、面板不動」
+  useEffect(() => {
+    if (!sector) return
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [sector])
+
   const stockIndex = useMemo(
     () => Object.fromEntries(allStocks.map(s => [s.code, s])),
     [allStocks],
@@ -129,10 +145,13 @@ export default function SectorPanel({ sector, onClose, allStocks, n, onStockClic
       {/* Backdrop */}
       <div className="fixed inset-0 bg-black/20 z-30" onClick={onClose} />
 
-      {/* Bottom sheet */}
+      {/* Bottom sheet — bottom/maxHeight 由 iosOffset 推高，避開 Safari compact toolbar（同 StockDetailSheet） */}
       <div
-        className="fixed bottom-0 left-0 right-0 z-40 bg-white rounded-t-2xl shadow-xl flex flex-col"
-        style={{ maxHeight: '82dvh' }}
+        className="fixed left-0 right-0 z-40 bg-white rounded-t-2xl shadow-xl flex flex-col"
+        style={{
+          bottom: `calc(env(safe-area-inset-bottom, 0px) + ${iosOffset}px)`,
+          maxHeight: iosOffset ? `calc(82svh - ${iosOffset}px)` : '82svh',
+        }}
       >
         {/* Handle */}
         <div className="flex justify-center pt-3 pb-1">
@@ -156,8 +175,8 @@ export default function SectorPanel({ sector, onClose, allStocks, n, onStockClic
 
         <hr className="border-slate-100" />
 
-        {/* Table — 整體橫向捲動，欄位對齊 */}
-        <div className="overflow-x-auto overflow-y-auto flex-1" style={{ minHeight: 0 }}>
+        {/* Table — 整體橫向捲動，欄位對齊；overscroll-contain 阻止捲動事件外溢到背景頁面 */}
+        <div className="overflow-x-auto overflow-y-auto overscroll-contain flex-1" style={{ minHeight: 0 }}>
           <table className="border-collapse text-xs" style={{ minWidth: 520 }}>
             <thead>
               <tr className="bg-white border-b border-slate-200">
