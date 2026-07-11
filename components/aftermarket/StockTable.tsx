@@ -5,7 +5,7 @@ import StockRowsTable from '@/components/shared/StockRowsTable'
 
 /**
  * 個股清單 = 篩選列 + 共用表格（StockRowsTable，與泡泡面板同欄位/排序/格式，2026-07-12 統一）。
- * 產業「欄位」已移除（Franky 確認沒用到），但產業「篩選下拉」保留。
+ * 產業欄與篩選下拉都保留（07-12 曾因整欄「—」誤判沒用要移除，實為資料 bug，修復後 Franky 確認留下）。
  */
 interface Props {
   rows: StockRow[]
