@@ -269,5 +269,8 @@
   ],
   "data/concept-sectors.json::清理紀錄": [
     "2026-07-12: 移除「電感」概念（成員 3068/5255 為無效/已下市代號，泡泡永遠不會出現）；「銅箔」desc 加註上櫃限制（唯一成員 8358 金居為上櫃，T86 不涵蓋，不會形成泡泡但個股 tag 保留）。version 2026-07-12.1。掃描腳本邏輯：概念成員 ∩ 全市場清單 vs 泡泡 stocks 比對"
+  ],
+  "components/bubble/SectorPanel.tsx::iOS底部sheet": [
+    "2026-07-12: 任何 bottom sheet（fixed bottom-0）都必須帶三件套，否則 iOS Safari 最後一列被 compact toolbar 蓋住且無法捲動：(1) iosOffset 49px 上抬（UA 偵測，同 StockDetailSheet）；(2) 開啟時 document.body overflow hidden 鎖背景（防 scroll chaining 搶觸控）；(3) 捲動容器加 overscroll-contain。新增 bottom sheet 時照抄這組"
   ]
 }
