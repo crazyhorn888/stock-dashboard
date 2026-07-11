@@ -44,3 +44,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# iCloud workaround（.nosync 不進 iCloud 也不進 git）
+.git.nosync/
+node_modules.nosync/
