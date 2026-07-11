@@ -1,7 +1,7 @@
 'use client'
-import { useState, useMemo, useEffect } from 'react'
-import type { SectorBubble, StockData } from '@/lib/types'
-import ConceptTags from '@/components/shared/ConceptTags'
+import { useState, useEffect, useMemo } from 'react'
+import type { SectorBubble, StockData, StockRow } from '@/lib/types'
+import StockRowsTable from '@/components/shared/StockRowsTable'
 
 const QUADRANT_LABEL: Record<string, { label: string; color: string }> = {
   TR: { label: '漲潮', color: 'text-red-500'   },
@@ -17,55 +17,22 @@ function quadrantOf(x: number, y: number) {
   return 'BR'
 }
 
+/**
+ * 板塊/概念面板（bottom sheet）。個股列表 2026-07-12 起改用共用的 StockRowsTable——
+ * 與「個股清單」Tab 同欄位/同排序規則/同顯示格式，rows 由 page.tsx 統一產生
+ * （rowsByCode，法人欄位來自 day0 T86，見 lib/instNet），本元件只做成員篩選。
+ */
 interface Props {
   sector: SectorBubble | null
   onClose: () => void
-  allStocks: StockData[]
-  n: number
+  rowsByCode: Record<string, StockRow>
   onStockClick?: (stock: StockData) => void
   onConceptClick?: (concept: string) => void
 }
 
-type SortKey = 'code' | 'changePercent' | 'highDrop' | 'lowRise' | 'netBuy' | 'foreignNet' | 'trustNet' | 'dealerNet'
-
-type RowData = {
-  code: string
-  name: string
-  industry: string
-  changePercent: number
-  highDrop: number
-  lowRise: number
-  netBuy: number
-  foreignNet: number
-  trustNet: number
-  dealerNet: number
-  concepts: string[] | undefined
-  stockData: StockData | undefined
-}
-
-const COLS: { key: SortKey | null; label: string; right?: boolean }[] = [
-  { key: 'code',          label: '代號'  },
-  { key: null,            label: '名稱'  },
-  { key: 'changePercent', label: '漲跌%',   right: true },
-  { key: 'highDrop',      label: '距高',    right: true },
-  { key: 'lowRise',       label: '距低',    right: true },
-  { key: 'netBuy',        label: '合計(億)', right: true },
-  { key: 'foreignNet',    label: '外資(億)', right: true },
-  { key: 'trustNet',      label: '投信(億)', right: true },
-  { key: 'dealerNet',     label: '自營(億)', right: true },
-  { key: null,            label: '概念'  },
-]
-
 function sign(v: number) { return v > 0 ? '+' : '' }
 
-function numColor(v: number) {
-  return v > 0 ? 'text-red-500' : v < 0 ? 'text-green-600' : 'text-slate-400'
-}
-
-export default function SectorPanel({ sector, onClose, allStocks, n, onStockClick, onConceptClick }: Props) {
-  const [sortKey, setSortKey] = useState<SortKey>('netBuy')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
-
+export default function SectorPanel({ sector, onClose, rowsByCode, onStockClick, onConceptClick }: Props) {
   // iOS 15+ Safari compact bottom toolbar (~49px) 蓋在 position:fixed 內容上，
   // 最後一列被遮住且內容沒超過容器高度時「無法捲動」（2026-07-12 Franky 回報）。
   // 與 StockDetailSheet 同一套解法：UA 偵測 iOS → 整個 sheet 上抬固定位移
@@ -82,58 +49,10 @@ export default function SectorPanel({ sector, onClose, allStocks, n, onStockClic
     return () => { document.body.style.overflow = '' }
   }, [sector])
 
-  const stockIndex = useMemo(
-    () => Object.fromEntries(allStocks.map(s => [s.code, s])),
-    [allStocks],
+  const rows = useMemo(
+    () => (sector?.stocks ?? []).map(s => rowsByCode[s.code]).filter((r): r is StockRow => !!r),
+    [sector, rowsByCode],
   )
-
-  const rows: RowData[] = useMemo(() => {
-    if (!sector) return []
-    return sector.stocks.map(s => {
-      const sd = stockIndex[s.code]
-      const window = sd?.closes?.slice(0, n) ?? []
-      const hi  = window.length ? Math.max(...window) : 0
-      const lo  = window.length ? Math.min(...window) : 0
-      const cur = sd?.close ?? 0
-      return {
-        code:          s.code,
-        name:          s.name,
-        industry:      s.industry,
-        changePercent: sd?.changePercent ?? 0,
-        highDrop:      hi > 0 ? ((cur - hi) / hi) * 100 : 0,
-        lowRise:       lo > 0 ? ((cur - lo) / lo) * 100 : 0,
-        netBuy:        s.netBuy,
-        foreignNet:    s.foreignNet,
-        trustNet:      s.trustNet,
-        dealerNet:     s.dealerNet,
-        concepts:      sd?.concepts,
-        stockData:     sd,
-      }
-    })
-  }, [sector, stockIndex, n])
-
-  const sorted = useMemo(() => {
-    // 法人欄位用「絕對值」排序：賣超最大的（如國巨 -25.8 億）跟買超最大的一樣是大動作，
-    // 降冪時排前面而不是墊底（2026-07-12 Franky 確認）；正負仍由儲存格顏色/正負號表達
-    const ABS_KEYS: SortKey[] = ['netBuy', 'foreignNet', 'trustNet', 'dealerNet']
-    const val = (r: RowData) => {
-      if (sortKey === 'code') return parseInt(r.code)
-      const v = (r[sortKey] as number) ?? 0
-      return ABS_KEYS.includes(sortKey) ? Math.abs(v) : v
-    }
-    return [...rows].sort((a, b) => sortDir === 'asc' ? val(a) - val(b) : val(b) - val(a))
-  }, [rows, sortKey, sortDir])
-
-  function handleSort(key: SortKey) {
-    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-    else { setSortKey(key); setSortDir('desc') }
-  }
-
-  function thLabel(col: typeof COLS[number]) {
-    if (!col.key) return col.label
-    const active = sortKey === col.key
-    return col.label + ' ' + (active ? (sortDir === 'asc' ? '↑' : '↓') : '↕')
-  }
 
   if (!sector) return null
 
@@ -175,86 +94,16 @@ export default function SectorPanel({ sector, onClose, allStocks, n, onStockClic
 
         <hr className="border-slate-100" />
 
-        {/* Table — 整體橫向捲動，欄位對齊；overscroll-contain 阻止捲動事件外溢到背景頁面 */}
-        <div className="overflow-x-auto overflow-y-auto overscroll-contain flex-1" style={{ minHeight: 0 }}>
-          <table className="border-collapse text-xs" style={{ minWidth: 520 }}>
-            <thead>
-              <tr className="bg-white border-b border-slate-200">
-                {COLS.map(col => (
-                  <th
-                    key={col.label}
-                    onClick={() => col.key && handleSort(col.key)}
-                    className={[
-                      'px-2.5 py-2 font-semibold whitespace-nowrap',
-                      col.right ? 'text-right' : 'text-left',
-                      col.key
-                        ? 'cursor-pointer select-none hover:text-blue-500 ' +
-                          (sortKey === col.key ? 'text-blue-600' : 'text-slate-400')
-                        : 'text-slate-400 cursor-default',
-                    ].join(' ')}
-                  >
-                    {thLabel(col)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-
-            <tbody>
-              {sorted.length === 0 ? (
-                <tr>
-                  <td colSpan={COLS.length} className="py-8 text-center text-slate-400">無個股資料</td>
-                </tr>
-              ) : sorted.map(r => {
-                const chgUp = r.changePercent >= 0
-                const highCls = r.highDrop >= -5 ? 'text-slate-400' : r.highDrop <= -15 ? 'text-red-500' : 'text-slate-600'
-                return (
-                  <tr
-                    key={r.code}
-                    className="border-b border-slate-50 hover:bg-blue-50 cursor-pointer transition-colors"
-                    onClick={() => r.stockData && onStockClick?.(r.stockData)}
-                  >
-                    {/* 代號 */}
-                    <td className="px-2.5 py-2 text-blue-500 font-bold whitespace-nowrap">{r.code}</td>
-                    {/* 名稱 */}
-                    <td className="px-2.5 py-2 text-slate-700 whitespace-nowrap">{r.name}</td>
-                    {/* 漲跌% */}
-                    <td className={`px-2.5 py-2 text-right font-semibold whitespace-nowrap ${chgUp ? 'text-red-500' : 'text-green-600'}`}>
-                      {chgUp ? '▲' : '▼'}{Math.abs(r.changePercent).toFixed(2)}%
-                    </td>
-                    {/* 距高 */}
-                    <td className={`px-2.5 py-2 text-right whitespace-nowrap ${highCls}`}>
-                      {r.highDrop.toFixed(1)}%
-                    </td>
-                    {/* 距低 */}
-                    <td className="px-2.5 py-2 text-right text-red-400 whitespace-nowrap">
-                      +{r.lowRise.toFixed(1)}%
-                    </td>
-                    {/* 合計 */}
-                    <td className={`px-2.5 py-2 text-right whitespace-nowrap ${numColor(r.netBuy)}`}>
-                      {sign(r.netBuy)}{r.netBuy.toFixed(2)}
-                    </td>
-                    {/* 外資 */}
-                    <td className={`px-2.5 py-2 text-right whitespace-nowrap ${numColor(r.foreignNet)}`}>
-                      {sign(r.foreignNet)}{r.foreignNet.toFixed(2)}
-                    </td>
-                    {/* 投信 */}
-                    <td className={`px-2.5 py-2 text-right whitespace-nowrap ${numColor(r.trustNet)}`}>
-                      {sign(r.trustNet)}{r.trustNet.toFixed(2)}
-                    </td>
-                    {/* 自營 */}
-                    <td className={`px-2.5 py-2 text-right whitespace-nowrap ${numColor(r.dealerNet)}`}>
-                      {sign(r.dealerNet)}{r.dealerNet.toFixed(2)}
-                    </td>
-                    {/* 概念 */}
-                    <td className="px-2.5 py-2 whitespace-nowrap">
-                      <ConceptTags concepts={r.concepts} onTagClick={onConceptClick} />
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        {/* 共用表格：預設按合計(億)絕對值降冪（大動作在前）；overscroll-contain 阻止捲動外溢到背景 */}
+        <StockRowsTable
+          rows={rows}
+          onStockClick={onStockClick}
+          onConceptClick={onConceptClick}
+          defaultSortKey="instTotal"
+          defaultAsc={false}
+          wrapperClassName="overflow-x-auto overflow-y-auto overscroll-contain flex-1"
+          wrapperStyle={{ minHeight: 0 }}
+        />
 
         <div style={{ paddingBottom: 'env(safe-area-inset-bottom)' }} />
       </div>

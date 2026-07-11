@@ -272,5 +272,11 @@
   ],
   "components/bubble/SectorPanel.tsx::iOS底部sheet": [
     "2026-07-12: 任何 bottom sheet（fixed bottom-0）都必須帶三件套，否則 iOS Safari 最後一列被 compact toolbar 蓋住且無法捲動：(1) iosOffset 49px 上抬（UA 偵測，同 StockDetailSheet）；(2) 開啟時 document.body overflow hidden 鎖背景（防 scroll chaining 搶觸控）；(3) 捲動容器加 overscroll-contain。新增 bottom sheet 時照抄這組"
+  ],
+  "scripts/fetch-daily.mjs::fetchPERatios": [
+    "2026-07-12: P/E 資料源 = TWSE BWIBBU_ALL + TPEX peratio_analysis 官方免費端點（Step 3c 全市場更新，不受 sdaIsToday 限制、不設 changed 旗標）。FinMind 已整個移除——參數名寫錯（date→start_date）每次 400 從未成功過，修正後又發現 TaiwanStockPER 需付費等級。官方本益比口徑=收盤÷最近四季EPS合計；EPS 顯示值由 close/PE 反推；虧損公司官方無 P/E → null 顯示「—」。不要再引入 FinMind"
+  ],
+  "components/shared/StockRowsTable.tsx": [
+    "2026-07-12: 個股列表統一表格——StockTable 與 SectorPanel 共用（同欄位/同排序/同格式），rows 由 page.tsx 統一產生（rowsByCode）。法人四欄絕對值排序；上櫃股投信/自營/合計顯示「—」（T86 不涵蓋）；產業欄已移除（Franky 確認）。改欄位時兩個使用端會同時變，這是刻意設計"
   ]
 }

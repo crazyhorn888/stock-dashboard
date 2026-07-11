@@ -443,18 +443,28 @@ async function fetchStockForeign(date) {
 }
 
 // ── FinMind PE/EPS（一次全市場，選用）─────────────
-async function fetchFundamentals(token) {
-  if (!token) return {}
-  const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPER&date=${todayTWDate()}&token=${token}`
+// P/E 資料源（2026-07-12 起）：TWSE BWIBBU_ALL + TPEX peratio_analysis 官方免費端點。
+// 取代 FinMind——實測發現 FinMind 從未成功過：參數名寫錯（date，正確是 start_date）→ 每次 400，
+// 修正參數後又發現 TaiwanStockPER 已要求付費等級（"Your level is register"）。
+// 官方本益比口徑＝收盤價 ÷ 最近四季 EPS 合計；虧損公司官方不提供 P/E（維持 null 顯示「—」）。
+// 回傳 map: code → pe（number, >0）
+async function fetchPERatios() {
+  const map = {}
   try {
-    const d = await fetchJSON(url)
-    const map = {}
-    for (const r of d?.data ?? []) map[r.stock_id] = { pe: r.PER ?? null, eps: r.EPS ?? null }
-    return map
-  } catch {
-    console.warn('[daily] FinMind PER 失敗，保留舊值')
-    return {}
-  }
+    const d = await fetchJSON('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL')
+    for (const r of Array.isArray(d) ? d : []) {
+      const pe = parseFloat(r.PEratio)
+      if (/^\d{4}$/.test(r.Code) && pe > 0) map[r.Code] = pe
+    }
+  } catch { console.warn('[daily] TWSE BWIBBU_ALL 失敗，上市 P/E 保留舊值') }
+  try {
+    const d = await fetchJSON('https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis')
+    for (const r of Array.isArray(d) ? d : []) {
+      const pe = parseFloat(r.PriceEarningRatio)
+      if (/^\d{4}$/.test(r.SecuritiesCompanyCode) && pe > 0) map[r.SecuritiesCompanyCode] = pe
+    }
+  } catch { console.warn('[daily] TPEX peratio 失敗，上櫃 P/E 保留舊值') }
+  return map
 }
 
 // ── TPEX 上櫃 ─────────────────────────────────────────
@@ -528,7 +538,6 @@ async function fetchTPEXIndustryMap() {
 async function main() {
   const dateTW = todayTW()
   const today = todayTWDate()
-  const FINMIND_TOKEN = process.env.FINMIND_TOKEN ?? ''
 
   console.log(`[daily] 開始，日期：${dateTW}`)
 
@@ -565,10 +574,9 @@ async function main() {
   // Step 2：抓今日 TWSE 資料（並行）
   // T86 需要 stockMap 完成後才能執行，所以移到 Step 5 再呼叫
   const todayYYYYMMDD = today.replace(/-/g, '')
-  const [prices, foreignMap, fundamentals, todayOHLCMonth, industryList] = await Promise.all([
+  const [prices, foreignMap, todayOHLCMonth, industryList] = await Promise.all([
     fetchTWSEPrices(),
     fetchStockForeign(dateTW),
-    fetchFundamentals(FINMIND_TOKEN),
     fetchIndexOHLCForMonth(todayYYYYMMDD),
     // t187ap03_L: 上市公司基本資料，取得個股 → 產業類別（= T86 板塊名）
     fetchJSON('https://openapi.twse.com.tw/v1/opendata/t187ap03_L').catch(() => []),
@@ -640,8 +648,9 @@ async function main() {
   let newCount = 0
   if (sdaIsToday) { for (const p of prices) {
     const existing = stockMap[p.code]
-    const pe = fundamentals[p.code]?.pe ?? existing?.pe ?? null
-    const eps = fundamentals[p.code]?.eps ?? existing?.eps ?? null
+    // pe/eps 由 Step 3c（fetchPERatios）全市場統一更新，這裡只沿用既有值
+    const pe = existing?.pe ?? null
+    const eps = existing?.eps ?? null
 
     if (existing) {
       const closes  = [...existing.closes]
@@ -799,6 +808,23 @@ async function main() {
   }
   // R5 補遺：TPEX 有新 bar 也算實質變更（原本漏了，只有 TPEX 前進的 run 會被短路跳過不上傳）
   if (tpexNewBarCount > 0 || tpexNewCount > 0) changed = true
+
+  // Step 3c：P/E / EPS 全市場更新（官方端點，不受 sdaIsToday 限制——官方檔每日更新、涵蓋上市+上櫃）。
+  // EPS 由官方本益比反推：EPS = 收盤 ÷ P/E（官方口徑 P/E = 收盤 ÷ 最近四季 EPS 合計，故反推即近四季 EPS）。
+  // 註：本步驟刻意不設 changed 旗標——P/E 天天變會讓 R5 補課班短路失效；交易日總有其他變更帶動上傳
+  const peMap = await fetchPERatios()
+  if (Object.keys(peMap).length > 0) {
+    let peCount = 0
+    for (const s of Object.values(stockMap)) {
+      const pe = peMap[s.code]
+      if (pe && s.close > 0) {
+        s.pe  = pe
+        s.eps = Math.round(s.close / pe * 100) / 100
+        peCount++
+      }
+    }
+    console.log(`[daily] P/E 更新 ${peCount} 支（TWSE BWIBBU_ALL + TPEX peratio 官方端點）`)
+  }
 
   const stocks = Object.values(stockMap)
   // P2-2：每股附上概念 tags（一股多概念），供個股列表/詳情頁顯示與點擊開啟概念面板

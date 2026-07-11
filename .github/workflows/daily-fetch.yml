@@ -100,7 +100,6 @@ jobs:
         if: steps.guard.outputs.SHOULD_RUN == 'true'
         id: fetch
         env:
-          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         run: |
           node scripts/fetch-daily.mjs

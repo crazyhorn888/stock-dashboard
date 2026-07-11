@@ -175,6 +175,10 @@ export interface HolidayStatus {
 export interface StockRow extends StockData {
   highDropPct: number  // 距 N 日高 ▼%（負值）
   lowRisePct: number   // 距 N 日低 ▲%（正值）
+  // 當日三大法人（day0 T86 統一資料源，見 lib/instNet；上櫃股無 T86 → undefined 顯示「—」）
+  trustNet?: number    // 投信（億）
+  dealerNet?: number   // 自營（億）
+  instTotal?: number   // 合計（億）
 }
 
 // ── 產業板塊泡泡圖 ──────────────────────────────────

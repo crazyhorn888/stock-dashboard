@@ -81,12 +81,20 @@ export default function AftermarketPage() {
   const rows = useMemo(
     () => data.stocks.map(s => {
       const row = calcStockRow(s, n)
-      // 個股清單的外資欄改用 day0 T86（與泡泡面板同源）；
-      // 上櫃股 T86 不涵蓋 → 保留既有 TPEX 外資值（fallback）
+      // 法人欄位改用 day0 T86（與泡泡面板同源）；
+      // 上櫃股 T86 不涵蓋 → 外資保留既有 TPEX 值，投信/自營/合計為 undefined（表格顯示「—」）
       const t86 = instNetData.map[s.code]
-      return t86 ? { ...row, foreignNetBuy: t86.foreignNet } : row
+      return t86
+        ? { ...row, foreignNetBuy: t86.foreignNet, trustNet: t86.trustNet, dealerNet: t86.dealerNet, instTotal: t86.net }
+        : row
     }),
     [data.stocks, n, instNetData]
+  )
+
+  // 泡泡面板（SectorPanel）與個股清單共用同一份 rows——同資料、同欄位、同格式
+  const rowsByCode = useMemo(
+    () => Object.fromEntries(rows.map(r => [r.code, r])),
+    [rows],
   )
 
   // P2-2：點概念 tag → 關閉目前的個股詳情/板塊面板，開啟該概念的 SectorPanel
@@ -469,8 +477,7 @@ export default function AftermarketPage() {
       <SectorPanel
         sector={activeSector}
         onClose={() => setActiveSector(null)}
-        allStocks={data.stocks}
-        n={n}
+        rowsByCode={rowsByCode}
         onStockClick={stock => { setActiveSector(null); setActiveStock(stock) }}
         onConceptClick={handleConceptClick}
       />
