@@ -670,6 +670,8 @@ async function main() {
         changePercent: p.changePercent,
         pe, eps,
         sector: sectorMap[p.code] ?? existing.sector,
+        // 建檔當時 sectorMap 沒跟上的股票（如 2327 國巨 industry 卡在「—」），existing 路徑補回填
+        industry: (existing.industry && existing.industry !== '—') ? existing.industry : (sectorMap[p.code] ?? existing.industry),
         foreignNetBuy: foreignMap[p.code] !== undefined
           ? Math.round(foreignMap[p.code] * p.close / 1e6) / 100   // shares×price→億元，與 TPEX 一致
           : existing.foreignNetBuy,

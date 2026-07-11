@@ -20,8 +20,9 @@ on:
     # 台北 23:37 → 補捉 STOCK_DAY_ALL 深夜更新（過午夜 Guard 2 就封死了）
     - cron: '37 15 * * 1-5'
     # P2-3：台北 06:07 → 全球指數輕量班次（獨立 job，不跑主 pipeline）。
-    # 台北 06:07 = UTC 前一天 22:07，故 UTC 星期用 0-4（週日~週四）才對應台北週一~週五早上
-    - cron: '7 22 * * 0-4'
+    # 台北 06:07 = UTC 前一天 22:07。改成天天跑（含週末，2026-07-12 Franky 確認）：
+    # 美股週五收盤要台北週六早上才拿得到、台灣休市時國際市場照常交易
+    - cron: '7 22 * * *'
     # 不受開盤限制的補課班次：STOCK_DAY_ALL／融資常常深夜才發布，原本最晚 23:37
     # 那班之後到隔天 15:37 之間完全沒有機會追。這兩班天天跑（含假日，成本可忽略——
     # public repo 無 Actions 分鐘限制），略過 FMTQIK Guard，只為了盡快撿到遲到的資料。
@@ -49,7 +50,7 @@ concurrency:
 jobs:
   fetch-and-upload:
     # 06:07 全球指數班次不跑這個 job（交給下面的 fetch-global-indices）
-    if: github.event_name != 'schedule' || github.event.schedule != '7 22 * * 0-4'
+    if: github.event_name != 'schedule' || github.event.schedule != '7 22 * * *'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -130,7 +131,7 @@ jobs:
   # P2-3：全球指數，只在台北 06:07 這班跑。不裝依賴（腳本零依賴、只用內建 fetch），
   # 不動 latest.json/主 pipeline，AC(d) 要求 <1 分鐘結束
   fetch-global-indices:
-    if: (github.event_name == 'schedule' && github.event.schedule == '7 22 * * 0-4') || github.event.inputs.fetch_global == 'true'
+    if: (github.event_name == 'schedule' && github.event.schedule == '7 22 * * *') || github.event.inputs.fetch_global == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
 

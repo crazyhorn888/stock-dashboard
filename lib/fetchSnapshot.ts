@@ -31,10 +31,14 @@ async function fetchLayered(latestUrl: string): Promise<SnapshotData> {
     return res.json()
   }
 
-  const [market, lite, history] = await Promise.all([
+  const [market, lite, history, globalIdx] = await Promise.all([
     get('market.json'),
     get('stocks-lite.json'),
     get('history.json'),
+    // 國際指數直接讀 global-indices.json（06:07 班次天天更新，含台灣休市日）——
+    // market.json 內的副本只在台股 pipeline 有實質更新時才重派生，台灣休市時會卡住不動。
+    // 抓失敗（404/網路）→ null，下方 fallback market.json 副本，頁面不壞
+    get('global-indices.json').catch(() => null),
   ])
 
   // 用共用日曆還原每支股票自己的 closes / dates（null = 該日無交易，跳過）
@@ -65,7 +69,7 @@ async function fetchLayered(latestUrl: string): Promise<SnapshotData> {
     sectors:        market.sectors ?? [],
     conceptHistory: market.conceptHistory ?? [],
     concepts:       market.concepts ?? [],
-    globalIndices:  market.globalIndices ?? undefined,
+    globalIndices:  globalIdx?.indices ?? market.globalIndices ?? undefined,
     dailyBrief:     market.dailyBrief ?? undefined,
     marketSignals:  market.marketSignals ?? null,
   }

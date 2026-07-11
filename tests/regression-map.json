@@ -254,5 +254,20 @@
     "R15: latest.json 已被 write-firebase 剝離 o/h/l/v，必須回灌 ohlc.json 否則每次 run 整包覆蓋成 1 天。hydrateOHLC 智慧下載：只在 sdaIsToday（TWSE 前進）或 tpexAdvanced（TPEX 有新 bar/新股票）時才下載；用每股 d0 錨點對齊（dates.indexOf(d0)，錯位前補 null），無 d0 或找不到就捨棄該股；下載失敗 → ohlcHydrated=false 寫進 snapshot，write-firebase 據此跳過 ohlc.json 上傳保住舊檔",
     "R15: o/h/l/v 保留上限 250→120 天（= StockKChart 日線顯示上限），closes/dates 維持 250；write-firebase 1a 每股加 d0 + 防禦性 slice(0,120)；backfill-ohlc.mjs 同步加 d0 與 120 上限（缺 d0 的資料會被回灌捨棄）",
     "R15 陷阱: 未回灌時 TPEX 同日期覆蓋會把 opens[0] 寫進空陣列產生 1 天孤兒資料——這在記憶體內無害（latest.json 本來就剝離、ohlc 上傳被 flag 擋掉），但如果future改動讓 ohlc 上傳不看 ohlcHydrated flag，會重演整包覆蓋事故"
+  ],
+  "lib/fetchSnapshot.ts::globalIndices直讀": [
+    "2026-07-12: 國際指數改直接讀 global-indices.json（06:07 cron 已改天天跑），market.json 內副本降為 fallback——market.json 只在台股 pipeline 有實質更新時重派生，台灣休市時會卡住。global-indices.json 結構是 {updatedAt, indices:{...}}（多一層 .indices），market.json.globalIndices 是 indices map 本身，兩者形狀不同，合併時要注意"
+  ],
+  ".github/workflows/daily-fetch.yml::global_cron_daily": [
+    "2026-07-12: 06:07 全球指數 cron 從 '7 22 * * 0-4' 改 '7 22 * * *'（天天跑含週末）。cron 字串同時出現在 3 處（schedule 定義 + 兩個 job 的 if 條件），改任何一處必須三處同步，否則 job 分流會壞"
+  ],
+  "lib/instNet.ts": [
+    "2026-07-12: 當日三大法人統一資料源——泡泡面板/個股清單/詳情頁三處都 refer sectorHistory day0 的 T86 個股明細（buildInstNetMap，零額外下載）。T86 只涵蓋上市股：上櫃股查無 → 顯示「—」（詳情頁）或 fallback TPEX 外資值（個股清單），不可顯示誤導的 0"
+  ],
+  "components/bubble/SectorPanel.tsx::abs排序": [
+    "2026-07-12: 法人四欄（netBuy/foreignNet/trustNet/dealerNet）排序改絕對值——賣超最大的是大動作要排前面不是墊底（國巨 -25.8 億案例）。改回帶正負排序前先問 Franky"
+  ],
+  "data/concept-sectors.json::清理紀錄": [
+    "2026-07-12: 移除「電感」概念（成員 3068/5255 為無效/已下市代號，泡泡永遠不會出現）；「銅箔」desc 加註上櫃限制（唯一成員 8358 金居為上櫃，T86 不涵蓋，不會形成泡泡但個股 tag 保留）。version 2026-07-12.1。掃描腳本邏輯：概念成員 ∩ 全市場清單 vs 泡泡 stocks 比對"
   ]
 }

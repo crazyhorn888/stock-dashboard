@@ -200,8 +200,9 @@ export default function StockKChart({ closes, dates, n, period, ohlcBars }: Prop
           <span key={label} className="text-[10px] font-semibold" style={{ color }}>{label}</span>
         ))}
         <span className="text-[10px] text-slate-400 ml-auto">{periodLabel}</span>
+        {/* isDoji = 無真實 OHLC（不限上櫃——TWSE 股在 ohlc 累積初期也會如此），文字不能寫死「上櫃」 */}
         {isDoji && (
-          <span className="text-[9px] text-amber-500 w-full">上櫃・日K 資料建置中，顯示收盤走勢</span>
+          <span className="text-[9px] text-amber-500 w-full">日K 資料建置中，顯示收盤走勢</span>
         )}
       </div>
 

@@ -97,11 +97,15 @@ export default function SectorPanel({ sector, onClose, allStocks, n, onStockClic
   }, [sector, stockIndex, n])
 
   const sorted = useMemo(() => {
-    return [...rows].sort((a, b) => {
-      const va = sortKey === 'code' ? parseInt(a.code) : (a[sortKey] as number) ?? 0
-      const vb = sortKey === 'code' ? parseInt(b.code) : (b[sortKey] as number) ?? 0
-      return sortDir === 'asc' ? va - vb : vb - va
-    })
+    // 法人欄位用「絕對值」排序：賣超最大的（如國巨 -25.8 億）跟買超最大的一樣是大動作，
+    // 降冪時排前面而不是墊底（2026-07-12 Franky 確認）；正負仍由儲存格顏色/正負號表達
+    const ABS_KEYS: SortKey[] = ['netBuy', 'foreignNet', 'trustNet', 'dealerNet']
+    const val = (r: RowData) => {
+      if (sortKey === 'code') return parseInt(r.code)
+      const v = (r[sortKey] as number) ?? 0
+      return ABS_KEYS.includes(sortKey) ? Math.abs(v) : v
+    }
+    return [...rows].sort((a, b) => sortDir === 'asc' ? val(a) - val(b) : val(b) - val(a))
   }, [rows, sortKey, sortDir])
 
   function handleSort(key: SortKey) {

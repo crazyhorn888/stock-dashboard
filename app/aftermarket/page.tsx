@@ -18,6 +18,7 @@ import { fetchSnapshot } from '@/lib/fetchSnapshot'
 import { fetchStockHistory } from '@/lib/fetchStockHistory'
 import { fetchHolidayStatus } from '@/lib/fetchHolidayStatus'
 import { calcWatchlistBubbles, getGhostPeers } from '@/lib/calcWatchlistBubbles'
+import { buildInstNetMap } from '@/lib/instNet'
 import { useWatchlist } from '@/lib/watchlist'
 import type { SnapshotData, SectorBubble, StockData, MarketSignals, StockHistoryDay, HolidayStatus } from '@/lib/types'
 
@@ -74,9 +75,18 @@ export default function AftermarketPage() {
       })
   }, [])
 
+  // 當日三大法人統一資料源（day0 T86）：泡泡面板／個股清單／詳情頁三處 refer 同一份
+  const instNetData = useMemo(() => buildInstNetMap(data.sectorHistory), [data.sectorHistory])
+
   const rows = useMemo(
-    () => data.stocks.map(s => calcStockRow(s, n)),
-    [data.stocks, n]
+    () => data.stocks.map(s => {
+      const row = calcStockRow(s, n)
+      // 個股清單的外資欄改用 day0 T86（與泡泡面板同源）；
+      // 上櫃股 T86 不涵蓋 → 保留既有 TPEX 外資值（fallback）
+      const t86 = instNetData.map[s.code]
+      return t86 ? { ...row, foreignNetBuy: t86.foreignNet } : row
+    }),
+    [data.stocks, n, instNetData]
   )
 
   // P2-2：點概念 tag → 關閉目前的個股詳情/板塊面板，開啟該概念的 SectorPanel
@@ -464,7 +474,14 @@ export default function AftermarketPage() {
         onStockClick={stock => { setActiveSector(null); setActiveStock(stock) }}
         onConceptClick={handleConceptClick}
       />
-      <StockDetailSheet stock={activeStock} n={n} onClose={() => setActiveStock(null)} onConceptClick={handleConceptClick} />
+      <StockDetailSheet
+        stock={activeStock}
+        n={n}
+        onClose={() => setActiveStock(null)}
+        onConceptClick={handleConceptClick}
+        instNet={activeStock ? instNetData.map[activeStock.code] ?? null : null}
+        instNetDate={instNetData.date}
+      />
       <GlobalIndexModal
         data={globalModalKey ? data.globalIndices?.[globalModalKey] ?? null : null}
         onClose={() => setGlobalModalKey(null)}

@@ -5,6 +5,8 @@ import { calcStockRow } from '@/lib/calcMetrics'
 import { fetchOHLCSnapshot, getStockBars, type OHLCBar } from '@/lib/fetchStockOHLC'
 import StockKChart, { type Period } from './StockKChart'
 import ConceptTags from '@/components/shared/ConceptTags'
+import InstNetBlock from '@/components/shared/InstNetBlock'
+import type { InstNet } from '@/lib/instNet'
 import { useWatchlist } from '@/lib/watchlist'
 
 interface Props {
@@ -12,6 +14,9 @@ interface Props {
   n: number
   onClose: () => void
   onConceptClick?: (concept: string) => void
+  // 當日三大法人（來源 = 泡泡面板同一份 day0 T86 map，見 lib/instNet）；上櫃/無資料為 undefined
+  instNet?: InstNet | null
+  instNetDate?: string | null
 }
 
 const PERIODS: { key: Period; label: string }[] = [
@@ -20,7 +25,7 @@ const PERIODS: { key: Period; label: string }[] = [
   { key: 'M', label: '月' },
 ]
 
-export default function StockDetailSheet({ stock, n, onClose, onConceptClick }: Props) {
+export default function StockDetailSheet({ stock, n, onClose, onConceptClick, instNet, instNetDate }: Props) {
   const sheetRef = useRef<HTMLDivElement>(null)
   const { isWatched, toggle: toggleWatch } = useWatchlist()
   // iOS 15+ Safari compact bottom toolbar (~49px) overlays position:fixed content.
@@ -64,12 +69,13 @@ export default function StockDetailSheet({ stock, n, onClose, onConceptClick }: 
   const chgUp = row.changePercent >= 0
   const clr = chgUp ? 'text-red-500' : 'text-green-600'
 
+  // 外資改到下方三大法人區塊（InstNetBlock，與泡泡面板同資料源同格式）；
+  // (N=n) 只有距N高/距N低是真的 N 相關指標，其餘欄位不掛 N 避免誤導
   const stats = [
-    { label: `距N高`, value: `${row.highDropPct.toFixed(2)}%`,  color: row.highDropPct < -15 ? 'text-red-500' : 'text-slate-700' },
-    { label: `距N低`, value: `+${row.lowRisePct.toFixed(2)}%`,  color: row.lowRisePct > 15 ? 'text-red-500' : 'text-slate-700' },
+    { label: `距N高 (N=${n})`, value: `${row.highDropPct.toFixed(2)}%`,  color: row.highDropPct < -15 ? 'text-red-500' : 'text-slate-700' },
+    { label: `距N低 (N=${n})`, value: `+${row.lowRisePct.toFixed(2)}%`,  color: row.lowRisePct > 15 ? 'text-red-500' : 'text-slate-700' },
     { label: 'P/E',   value: row.pe?.toFixed(1) ?? '—',         color: 'text-slate-700' },
     { label: 'EPS',   value: row.eps?.toFixed(2) ?? '—',        color: 'text-slate-700' },
-    { label: '外資',  value: `${row.foreignNetBuy >= 0 ? '+' : ''}${row.foreignNetBuy.toLocaleString()} 億`, color: row.foreignNetBuy >= 0 ? 'text-red-500' : 'text-green-600' },
     { label: '產業',  value: row.industry,                       color: 'text-slate-500' },
   ]
 
@@ -119,11 +125,14 @@ export default function StockDetailSheet({ stock, n, onClose, onConceptClick }: 
         <div className="grid grid-cols-3 gap-0 border-b border-slate-100">
           {stats.map(s => (
             <div key={s.label} className="flex flex-col items-center py-2.5 border-r border-slate-100 last:border-0 even:last:border-0">
-              <span className="text-[10px] text-slate-400 mb-0.5">{s.label} (N={n})</span>
+              <span className="text-[10px] text-slate-400 mb-0.5">{s.label}</span>
               <span className={`text-xs font-semibold ${s.color}`}>{s.value}</span>
             </div>
           ))}
         </div>
+
+        {/* 當日三大法人（與泡泡面板個股列同一份資料源，見 lib/instNet） */}
+        <InstNetBlock inst={instNet} date={instNetDate} />
 
         {/* P2-2：概念 tags */}
         {!!stock.concepts?.length && (
