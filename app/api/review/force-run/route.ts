@@ -25,7 +25,10 @@ export async function POST(req: NextRequest) {
       Accept: 'application/vnd.github+json',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ ref: 'main', inputs: { force_run: 'true' } }),
+    // 2026-07-12：同時帶 fetch_global——按鈕語意是「全部資料源重整」，全球指數是獨立 job，
+    // 只認 06:07 排程或這個 input（07-10 Force Run 涵蓋範圍分析就註記過這個缺口）。
+    // 盤中觸發安全：R11 會剔除未收盤 bar、R16 只在收盤後才合成 meta bar
+    body: JSON.stringify({ ref: 'main', inputs: { force_run: 'true', fetch_global: 'true' } }),
   })
 
   if (!res.ok) {
