@@ -396,7 +396,17 @@ async function downloadOHLCBars() {
 
 // ── TWSE 今日股價（全市場，用 OpenAPI，Guard 2 已確認今日資料存在）──────
 async function fetchTWSEPrices() {
-  const data = await fetchTWSEAll()
+  // 2026-07-12：TWSE openapi 有上午維護窗（實測台北 ~11:30-12:00 回 HTML 維護頁而非 JSON，
+  // FMTQIK/外資/STOCK_DAY_ALL 整站同時掛）。這裡原本是 Promise.all 裡唯一沒有 graceful catch
+  // 的呼叫——SyntaxError 直接炸掉整個 run（連兩天 08:07 補課班被 GitHub 延遲到該窗口而標紅）。
+  // 比照外資的處理：失敗回空陣列，sdaIsToday 自然判 false，股價沿用快照、pipeline 其餘照常
+  let data
+  try {
+    data = await fetchTWSEAll()
+  } catch (e) {
+    console.warn(`[daily] TWSE 股價（STOCK_DAY_ALL）抓取失敗，本次跳過（沿用快照值）：${e.message}`)
+    return []
+  }
   return data
     .filter(r => /^\d{4}$/.test(r.Code) && r.ClosingPrice && parseFloat(r.ClosingPrice) > 0)
     .map(r => {
