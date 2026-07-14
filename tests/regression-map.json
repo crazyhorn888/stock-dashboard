@@ -281,5 +281,8 @@
   ],
   "scripts/fetch-daily.mjs::fetchTWSEPrices_graceful": [
     "2026-07-12: TWSE openapi 有上午維護窗（台北 ~11:30-12:00 整站回 HTML 而非 JSON）。fetchTWSEPrices 失敗回空陣列不拋錯（sdaIsToday 自然 false、股價沿用快照），比照外資/FMTQIK 的 graceful 處理。Promise.all 裡的每個資料源呼叫都必須有自己的 catch——新增資料源時比照辦理，否則單一來源維護窗會炸掉整個 run 寄失敗信"
+  ],
+  "scripts/calc-signals.mjs::快照資料源": [
+    "2026-07-14: calc-signals 改從快照 indexHistory 取資料（close + chips.margin_amount），不再重抓 TWSE（舊版每 run 100+ 請求且無失敗保護，07-14 17:07 班撞 TWSE 端點群異常直接炸 run）。日期對齊：calcSignals 只用大盤∩融資的日期交集，todayIndex/todayMargin 永遠同一天；資料不足時保留舊 marketSignals、exit 0 不標紅。平行驗證發現舊版隱藏缺陷：單日 MI_MARGN 查詢失敗被 allSettled 靜默吞掉→N日低點漏掉 3/31 錯算成 5/20，新版與前端距低點數字一致"
   ]
 }
