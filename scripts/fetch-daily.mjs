@@ -878,23 +878,29 @@ async function main() {
     // n8n chips 還沒發布，之後每次 run 因為今日日期已存在（newEntries 不含今天）
     // 就永遠不會再重試——這是融資餘額常常卡在前幾天舊值的根因。改成每次都檢查
     // 今日紀錄缺哪個欄位，缺就重抓，抓到才覆蓋，抓不到保留原樣。
-    const todayIdx = indexHistory.findIndex(r => r.date === today)
+    // 2026-07-14：補值目標從「date === 今天」改成「最新一根 K 棒」——
+    // MI_MARGN 若拖到 23:37 最後一班之後才發布，隔天凌晨補課班執行時已換日，
+    // 舊寫法找不到「今天」那筆就永遠不重試（該日融資永久 null、訊號跳過一天）。
+    // 改盯最新 bar：換日後 02:07/08:07 補課班照樣能補到昨天的融資（即時性要求）
+    const todayIdx = indexHistory.length > 0 ? 0 : -1
     if (todayIdx !== -1) {
+      const fillDate     = indexHistory[0].date
+      const fillYYYYMMDD = fillDate.replace(/-/g, '')
       const existingChips = indexHistory[todayIdx].chips ?? null
       const needMargin = existingChips?.margin_amount == null
       const needPhase1 = existingChips?.inst_total == null
       if (needMargin || needPhase1) {
         const prevMarginAmount = indexHistory[todayIdx + 1]?.chips?.margin_amount ?? null
         const [chipsJson, marginAmount] = await Promise.all([
-          needPhase1 ? fetchChipsFromSupabase(todayYYYYMMDD) : Promise.resolve(null),
-          needMargin ? fetchMarginAmount(todayYYYYMMDD) : Promise.resolve(existingChips?.margin_amount ?? null),
+          needPhase1 ? fetchChipsFromSupabase(fillYYYYMMDD) : Promise.resolve(null),
+          needMargin ? fetchMarginAmount(fillYYYYMMDD) : Promise.resolve(existingChips?.margin_amount ?? null),
         ])
         const fresh = buildChipsEntry(chipsJson, marginAmount, prevMarginAmount)
         if (fresh) {
           const merged = { ...(existingChips ?? {}) }
           for (const k of Object.keys(fresh)) { if (fresh[k] != null) merged[k] = fresh[k] }
           indexHistory[todayIdx] = { ...indexHistory[todayIdx], chips: merged }
-          console.log(`[daily] 今日籌碼補值：margin_amount=${merged.margin_amount ?? '—'} inst_total=${merged.inst_total ?? '—'}`)
+          console.log(`[daily] 籌碼補值（${indexHistory[todayIdx].date}）：margin_amount=${merged.margin_amount ?? '—'} inst_total=${merged.inst_total ?? '—'}`)
           changed = true
         } else {
           console.log('[daily] 今日融資/籌碼仍未就緒，保留現狀待下次補值')

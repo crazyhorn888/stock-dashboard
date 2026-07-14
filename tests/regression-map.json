@@ -284,5 +284,8 @@
   ],
   "scripts/calc-signals.mjs::快照資料源": [
     "2026-07-14: calc-signals 改從快照 indexHistory 取資料（close + chips.margin_amount），不再重抓 TWSE（舊版每 run 100+ 請求且無失敗保護，07-14 17:07 班撞 TWSE 端點群異常直接炸 run）。日期對齊：calcSignals 只用大盤∩融資的日期交集，todayIndex/todayMargin 永遠同一天；資料不足時保留舊 marketSignals、exit 0 不標紅。平行驗證發現舊版隱藏缺陷：單日 MI_MARGN 查詢失敗被 allSettled 靜默吞掉→N日低點漏掉 3/31 錯算成 5/20，新版與前端距低點數字一致"
+  ],
+  "scripts/fetch-daily.mjs::籌碼補值盯最新bar": [
+    "2026-07-14: 融資/籌碼補值目標從「date===今天」改成「indexHistory 最新一根 bar」——MI_MARGN 拖過 23:37 最後一班才發布時，隔天凌晨補課班已換日，舊寫法永遠找不到目標、該日融資永久 null。改盯最新 bar 後換日照補（fetchMarginAmount/fetchChipsFromSupabase 都用 bar 自己的日期查詢）。即時性保證：≤23:37 發布當天反映（班距最長1.5h），>23:37 發布由 02:07/08:07 補課班接手（發布後第一個班次）"
   ]
 }
