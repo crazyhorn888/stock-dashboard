@@ -290,5 +290,8 @@
   ],
   "components/aftermarket/KlineChart.tsx::期貨詳情": [
     "2026-07-15: 籌碼面板新增期貨詳情 section（選擇權上方，可收合，大台/小台/微台切換）。當日交易僅三大法人（TAIFEX 不公布散戶交易明細）；未平倉含散戶（全市場OI−法人推導）；Total=三大法人合計（散戶=市場−法人不可計入）。fut_tr 為 2026-07-15 起 Phase1 新欄位，歷史日期顯示提示文字。選擇權表加 OptFooter（Total 列＋散戶淨額行）"
+  ],
+  "scripts/backfill-chips.mjs": [
+    "2026-07-15: 籌碼歷史回補工具（HTTP-only，不碰本機 data/）。資料源：TWSE BFI82U（現貨三大法人）+ TAIFEX futContractsDateDown/callsAndPutsDateDown/pcRatioDown/futDataDown。合併原則：只填 null 永不覆蓋（Phase1 產的日子保持原樣）。踩坑：散戶 OI 推導的全市場 OI 要用「全部月份合計」不是當月+次月（結算週當月 OI 縮水會讓法人合計超過兩月總量→散戶被 max(0,..) 歸零）；BFI82U 逐日查詢偶發 null 需重跑補漏（腳本冪等可重複執行）。VIX 無官方歷史端點→回補日恆為 null"
   ]
 }
