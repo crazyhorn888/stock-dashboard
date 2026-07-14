@@ -69,6 +69,14 @@ export interface ChipsRetailNet {
   put_net: number
 }
 
+// 期貨單商品表：各身分 [多方, 空方, 淨額]（口）
+export interface ChipsFutTable {
+  foreign: number[]
+  trust:   number[]
+  dealer:  number[]
+  retail?: number[]   // 僅未平倉有（推導值）
+}
+
 export interface ChipsData {
   // 三大法人現貨（億元）
   foreign_spot:  number
@@ -97,6 +105,12 @@ export interface ChipsData {
   // PCR / VIX
   pcr: number | string | null
   vix: number | string | null
+
+  // 期貨 [多方, 空方, 淨額]（口，2026-07-15）——大台/小台/微台。
+  // 未平倉含散戶（全市場OI−法人推導）；當日交易僅三大法人（TAIFEX 不公布散戶交易明細）。
+  // 舊資料（2026-07-15 前的 chips）無這兩個欄位 → undefined，前端顯示「—」
+  fut_oi?: Record<'tx' | 'mtx' | 'imf', ChipsFutTable | null> | null
+  fut_tr?: Record<'tx' | 'mtx' | 'imf', ChipsFutTable | null> | null
 
   // 選擇權當日交易（口）
   opt_tr: {

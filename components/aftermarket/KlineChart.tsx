@@ -36,8 +36,83 @@ function f1(n: number | string | null | undefined): string {
   return isNaN(v) || n === '' || n == null ? '—' : v.toFixed(1)
 }
 
+// 期貨詳情（2026-07-15）：大台/小台/微台切換；當日交易僅三大法人（TAIFEX 不公布散戶明細），
+// 未平倉含散戶（推導值）；Total = 三大法人合計（散戶=市場−法人，計入會失真）
+const FUT_PRODUCTS: { key: 'tx' | 'mtx' | 'imf'; label: string }[] = [
+  { key: 'tx',  label: '大台' },
+  { key: 'mtx', label: '小台' },
+  { key: 'imf', label: '微台' },
+]
+
+function FutTable({ title, table, withRetail }: {
+  title: string
+  table: { foreign: number[]; trust: number[]; dealer: number[]; retail?: number[] } | null | undefined
+  withRetail: boolean
+}) {
+  const rows: { label: string; vals: number[] | undefined; bold?: boolean }[] = [
+    { label: '外資', vals: table?.foreign },
+    { label: '投信', vals: table?.trust },
+    { label: '自營', vals: table?.dealer },
+  ]
+  if (withRetail) rows.push({ label: '散戶', vals: table?.retail })
+  const inst = ['foreign', 'trust', 'dealer'] as const
+  const total = table
+    ? [0, 1, 2].map(i => inst.reduce((s, p) => s + (table[p]?.[i] ?? 0), 0))
+    : undefined
+  rows.push({ label: 'Total', vals: total, bold: true })
+
+  return (
+    <>
+      <div className="text-[9px] font-semibold text-slate-400 uppercase mt-1">{title}</div>
+      <div className="grid grid-cols-4 gap-0 text-[9px] font-bold text-slate-400 text-center px-0.5">
+        <div className="text-left"></div>
+        <div>多方</div><div>空方</div><div>淨額</div>
+      </div>
+      {rows.map(r => (
+        <div key={r.label}
+          className={`grid grid-cols-4 gap-0 text-[9px] text-center px-0.5 ${r.bold ? 'border-t border-slate-200 pt-0.5' : ''}`}>
+          <div className={`text-left font-semibold ${r.bold ? 'text-slate-600' : 'text-slate-500'}`}>{r.label}</div>
+          <div className="tabular-nums text-red-500">{abs(r.vals?.[0])}</div>
+          <div className="tabular-nums text-green-700">{abs(r.vals?.[1])}</div>
+          <div className={`tabular-nums font-semibold ${(r.vals?.[2] ?? 0) >= 0 ? 'text-red-500' : 'text-green-700'}`}>
+            {r.vals ? sgn(r.vals[2]) : '—'}
+          </div>
+        </div>
+      ))}
+    </>
+  )
+}
+
+// 選擇權表 Total 列（三大法人 BC/SC/BP/SP 各欄合計）＋散戶淨額行
+// 散戶只有推導的淨額（TAIFEX 不公布散戶 BC/SC/BP/SP 明細），另列一行不混入表格
+function OptFooter({ tbl }: { tbl: NonNullable<ChipsData['opt_tr']> }) {
+  const inst = ['foreign', 'trust', 'dealer'] as const
+  const total = (k: 'bc' | 'sc' | 'bp' | 'sp') =>
+    inst.reduce((s, p) => s + ((tbl[p] as ChipsOptionParty)?.[k] ?? 0), 0)
+  const retail = tbl.retail
+  return (
+    <>
+      <div className="grid grid-cols-5 gap-0 text-[9px] text-center px-0.5 border-t border-slate-200 pt-0.5">
+        <div className="text-left text-slate-600 font-semibold">Total</div>
+        <div className="tabular-nums text-red-500 font-semibold">{abs(total('bc'))}</div>
+        <div className="tabular-nums text-green-700 font-semibold">{abs(total('sc'))}</div>
+        <div className="tabular-nums text-red-500 font-semibold">{abs(total('bp'))}</div>
+        <div className="tabular-nums text-green-700 font-semibold">{abs(total('sp'))}</div>
+      </div>
+      {retail && 'call_net' in retail && (
+        <div className="text-[9px] text-slate-400 px-0.5">
+          散戶淨額（推導）：Call <span className={`tabular-nums font-semibold ${retail.call_net >= 0 ? 'text-red-500' : 'text-green-700'}`}>{sgn(retail.call_net)}</span>
+          {' '}· Put <span className={`tabular-nums font-semibold ${retail.put_net >= 0 ? 'text-red-500' : 'text-green-700'}`}>{sgn(retail.put_net)}</span>
+        </div>
+      )}
+    </>
+  )
+}
+
 function ChipsPanel({ chips }: { chips: ChipsData }) {
   const [showOpt, setShowOpt] = useState(false)
+  const [showFut, setShowFut] = useState(false)
+  const [futProd, setFutProd] = useState<'tx' | 'mtx' | 'imf'>('tx')
 
   return (
     <div className="mt-2 pt-2 border-t border-slate-100 space-y-2">
@@ -121,6 +196,42 @@ function ChipsPanel({ chips }: { chips: ChipsData }) {
         </div>
       </div>
 
+      {/* 期貨 — 收合（2026-07-15 新增，位於選擇權上方） */}
+      <button
+        onClick={() => setShowFut(v => !v)}
+        className="w-full text-left text-[10px] text-slate-500 flex items-center gap-1"
+      >
+        <span className={`transition-transform ${showFut ? 'rotate-90' : ''}`}>›</span>
+        期貨詳情 {showFut ? '收合' : '展開'}
+      </button>
+      {showFut && (
+        <div className="space-y-1.5">
+          {/* 商品切換 */}
+          <div className="flex gap-1">
+            {FUT_PRODUCTS.map(p => (
+              <button key={p.key}
+                onClick={() => setFutProd(p.key)}
+                className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                  futProd === p.key ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500'
+                }`}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {chips.fut_oi?.[futProd] || chips.fut_tr?.[futProd] ? (
+            <>
+              <FutTable title="當日交易（口）" table={chips.fut_tr?.[futProd]} withRetail={false} />
+              <FutTable title="未平倉（口）" table={chips.fut_oi?.[futProd]} withRetail={true} />
+              {!chips.fut_tr?.[futProd] && (
+                <div className="text-[9px] text-slate-400">當日交易自 2026-07-15 起提供，較早日期無資料</div>
+              )}
+            </>
+          ) : (
+            <div className="text-[9px] text-slate-400">此日期無期貨明細（2026-07-15 起提供）</div>
+          )}
+        </div>
+      )}
+
       {/* 選擇權 — 收合 */}
       <button
         onClick={() => setShowOpt(v => !v)}
@@ -151,6 +262,7 @@ function ChipsPanel({ chips }: { chips: ChipsData }) {
               </div>
             )
           })}
+          <OptFooter tbl={chips.opt_tr!} />
           {/* 未平倉 */}
           <div className="text-[9px] font-semibold text-slate-400 uppercase mt-1">未平倉（口）</div>
           <div className="grid grid-cols-5 gap-0 text-[9px] font-bold text-slate-400 text-center px-0.5">
@@ -171,6 +283,7 @@ function ChipsPanel({ chips }: { chips: ChipsData }) {
               </div>
             )
           })}
+          <OptFooter tbl={chips.opt_oi!} />
         </div>
       )}
     </div>

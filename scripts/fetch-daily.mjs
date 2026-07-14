@@ -354,6 +354,14 @@ function buildChipsEntry(phase1, marginAmount, prevMarginAmount) {
     vix:            phase1?.vix ?? null,
     opt_tr:         det.opt_tr_raw ?? null,
     opt_oi:         det.opt_oi_raw ?? null,
+    // 2026-07-15：期貨詳情（大台/小台/微台）。fut_*_tr 是 2026-07-15 起 Phase1 新增欄位，
+    // 舊 chips 檔沒有 → null，前端顯示「—」
+    fut_oi: (det.fut_tx || det.fut_mtx || det.fut_imf)
+      ? { tx: det.fut_tx ?? null, mtx: det.fut_mtx ?? null, imf: det.fut_imf ?? null }
+      : null,
+    fut_tr: (det.fut_tx_tr || det.fut_mtx_tr || det.fut_imf_tr)
+      ? { tx: det.fut_tx_tr ?? null, mtx: det.fut_mtx_tr ?? null, imf: det.fut_imf_tr ?? null }
+      : null,
   }
 }
 

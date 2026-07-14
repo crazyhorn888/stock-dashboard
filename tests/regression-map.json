@@ -287,5 +287,8 @@
   ],
   "scripts/fetch-daily.mjs::籌碼補值盯最新bar": [
     "2026-07-14: 融資/籌碼補值目標從「date===今天」改成「indexHistory 最新一根 bar」——MI_MARGN 拖過 23:37 最後一班才發布時，隔天凌晨補課班已換日，舊寫法永遠找不到目標、該日融資永久 null。改盯最新 bar 後換日照補（fetchMarginAmount/fetchChipsFromSupabase 都用 bar 自己的日期查詢）。即時性保證：≤23:37 發布當天反映（班距最長1.5h），>23:37 發布由 02:07/08:07 補課班接手（發布後第一個班次）"
+  ],
+  "components/aftermarket/KlineChart.tsx::期貨詳情": [
+    "2026-07-15: 籌碼面板新增期貨詳情 section（選擇權上方，可收合，大台/小台/微台切換）。當日交易僅三大法人（TAIFEX 不公布散戶交易明細）；未平倉含散戶（全市場OI−法人推導）；Total=三大法人合計（散戶=市場−法人不可計入）。fut_tr 為 2026-07-15 起 Phase1 新欄位，歷史日期顯示提示文字。選擇權表加 OptFooter（Total 列＋散戶淨額行）"
   ]
 }
