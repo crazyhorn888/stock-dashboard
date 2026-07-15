@@ -3,6 +3,7 @@ import { useState, useMemo } from 'react'
 import type { StockRow, StockData } from '@/lib/types'
 import ConceptTags from '@/components/shared/ConceptTags'
 import { useWatchlist } from '@/lib/watchlist'
+import { useStockFilter, type FilterId } from '@/lib/stockFilter'
 
 /**
  * 個股列表共用表格（2026-07-12）——個股清單（StockTable）與泡泡面板（SectorPanel）
@@ -48,14 +49,18 @@ export default function StockRowsTable({
   const { isWatched, toggle: toggleWatch } = useWatchlist()
   const [sortKey, setSortKey] = useState<SortKey>(defaultSortKey)
   const [sortAsc, setSortAsc] = useState(defaultAsc)
+  const [filterOpen, setFilterOpen] = useState(false)
+  const filter = useStockFilter()
+
+  const filteredRows = useMemo(() => filter.filterRows(rows), [filter, rows])
 
   const sorted = useMemo(() => {
     const val = (r: StockRow) => {
       const v = (r[sortKey] as number | null | undefined) ?? 0
       return ABS_KEYS.includes(sortKey) ? Math.abs(v) : v
     }
-    return [...rows].sort((a, b) => sortAsc ? val(a) - val(b) : val(b) - val(a))
-  }, [rows, sortKey, sortAsc])
+    return [...filteredRows].sort((a, b) => sortAsc ? val(a) - val(b) : val(b) - val(a))
+  }, [filteredRows, sortKey, sortAsc])
 
   function handleSort(key: SortKey) {
     if (sortKey === key) setSortAsc(a => !a)
@@ -69,6 +74,12 @@ export default function StockRowsTable({
 
   return (
     <div className={wrapperClassName} style={wrapperStyle}>
+      <StockFilterPanel
+        open={filterOpen}
+        onToggleOpen={() => setFilterOpen(o => !o)}
+        filter={filter}
+        matchedCount={filteredRows.length}
+      />
       <table className="w-full text-xs border-collapse" style={{ minWidth: 760 }}>
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50 sticky top-0">
@@ -91,8 +102,10 @@ export default function StockRowsTable({
           </tr>
         </thead>
         <tbody>
-          {sorted.length === 0 ? (
+          {rows.length === 0 ? (
             <tr><td colSpan={16} className="py-8 text-center text-slate-400">無個股資料</td></tr>
+          ) : sorted.length === 0 ? (
+            <tr><td colSpan={16} className="py-8 text-center text-slate-400">無符合條件的個股（{filter.activeCount} 個條件啟用中）</td></tr>
           ) : sorted.map(r => {
             const chgUp = r.changePercent >= 0
             const highBad = r.highDropPct <= -15
@@ -150,6 +163,96 @@ export default function StockRowsTable({
           })}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+// F1｜個股選股器面板（2026-07-16）——checkbox+數字/範圍輸入，收合展開；chips 在收合時也可見
+// state/rows 都由 useStockFilter() 提供，localStorage 持久化＋跨元件同步（見 lib/stockFilter.ts）
+interface FilterPanelProps {
+  open: boolean
+  onToggleOpen: () => void
+  filter: ReturnType<typeof useStockFilter>
+  matchedCount: number
+}
+
+function StockFilterPanel({ open, onToggleOpen, filter, matchedCount }: FilterPanelProps) {
+  const { state, defs, toggle, setValue, setRange, reset, activeCount } = filter
+
+  function symbol(id: FilterId) {
+    const def = defs.find(d => d.id === id)!
+    return def.kind === 'lt' ? '<' : def.kind === 'gt' ? '>' : '~'
+  }
+
+  return (
+    <div className="border-b border-slate-200 bg-slate-50/60 px-3 py-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={onToggleOpen}
+          className={`font-semibold whitespace-nowrap ${open ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          ⚙ 選股 {open ? '▲' : '▼'}
+        </button>
+
+        {activeCount > 0 && (
+          <>
+            <div className="flex flex-wrap items-center gap-1">
+              {defs.filter(d => state.enabled[d.id]).map(d => (
+                <span key={d.id} className="bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5 text-blue-600 whitespace-nowrap">
+                  {d.label}
+                  {d.kind === 'range' ? `${state.min[d.id]}~${state.max[d.id]}${d.unit}` : `${symbol(d.id)}${state.value[d.id]}${d.unit}`}
+                </span>
+              ))}
+            </div>
+            <span className="text-slate-400 whitespace-nowrap">篩選後 {matchedCount} 檔</span>
+            <button onClick={reset} className="text-slate-400 hover:text-slate-600 underline whitespace-nowrap">一鍵清除</button>
+          </>
+        )}
+      </div>
+
+      {open && (
+        <div className="mt-2 flex flex-col gap-2">
+          {defs.map(def => (
+            <label key={def.id} className="flex items-center gap-2 text-slate-600">
+              <input
+                type="checkbox"
+                checked={state.enabled[def.id]}
+                onChange={() => toggle(def.id)}
+              />
+              <span className="w-24 shrink-0">{def.label}</span>
+              {def.kind === 'range' ? (
+                <span className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    value={state.min[def.id]}
+                    onChange={e => setRange(def.id, Number(e.target.value), state.max[def.id])}
+                    className="w-16 border border-slate-200 rounded px-1.5 py-0.5"
+                  />
+                  <span>~</span>
+                  <input
+                    type="number"
+                    value={state.max[def.id]}
+                    onChange={e => setRange(def.id, state.min[def.id], Number(e.target.value))}
+                    className="w-16 border border-slate-200 rounded px-1.5 py-0.5"
+                  />
+                  <span>{def.unit}</span>
+                </span>
+              ) : (
+                <span className="flex items-center gap-1">
+                  <span>{symbol(def.id)}</span>
+                  <input
+                    type="number"
+                    value={state.value[def.id]}
+                    onChange={e => setValue(def.id, Number(e.target.value))}
+                    className="w-16 border border-slate-200 rounded px-1.5 py-0.5"
+                  />
+                  <span>{def.unit}</span>
+                </span>
+              )}
+            </label>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
