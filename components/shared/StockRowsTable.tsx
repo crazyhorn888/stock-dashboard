@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import type { StockRow, StockData } from '@/lib/types'
 import ConceptTags from '@/components/shared/ConceptTags'
 import { useWatchlist } from '@/lib/watchlist'
@@ -222,29 +222,23 @@ function StockFilterPanel({ open, onToggleOpen, filter, matchedCount }: FilterPa
               <span className="w-24 shrink-0">{def.label}</span>
               {def.kind === 'range' ? (
                 <span className="flex items-center gap-1">
-                  <input
-                    type="number"
+                  <NumberField
                     value={state.min[def.id]}
-                    onChange={e => setRange(def.id, Number(e.target.value), state.max[def.id])}
-                    className="w-16 border border-slate-200 rounded px-1.5 py-0.5"
+                    onCommit={v => setRange(def.id, v, state.max[def.id])}
                   />
                   <span>~</span>
-                  <input
-                    type="number"
+                  <NumberField
                     value={state.max[def.id]}
-                    onChange={e => setRange(def.id, state.min[def.id], Number(e.target.value))}
-                    className="w-16 border border-slate-200 rounded px-1.5 py-0.5"
+                    onCommit={v => setRange(def.id, state.min[def.id], v)}
                   />
                   <span>{def.unit}</span>
                 </span>
               ) : (
                 <span className="flex items-center gap-1">
                   <span>{symbol(def.id)}</span>
-                  <input
-                    type="number"
+                  <NumberField
                     value={state.value[def.id]}
-                    onChange={e => setValue(def.id, Number(e.target.value))}
-                    className="w-16 border border-slate-200 rounded px-1.5 py-0.5"
+                    onCommit={v => setValue(def.id, v)}
                   />
                   <span>{def.unit}</span>
                 </span>
@@ -254,5 +248,44 @@ function StockFilterPanel({ open, onToggleOpen, filter, matchedCount }: FilterPa
         </div>
       )}
     </div>
+  )
+}
+
+// 選股面板數字輸入——本地字串暫存，只有打出合法數字才回寫 filter state。
+// 直接把 value={數字} 綁在 input 上會有兩個坑：(1) 清空成 "" 時 Number('')=0
+// 導致 state 被打回 0；(2) 打 "-" 時 Number('-')=NaN，state 變 NaN 讓瀏覽器把欄位清空，
+// 負號打了跟沒打一樣。兩者疊加會讓「刪除重打」跟「輸入負值」都不順。
+// 用本地 text 暫存 + 只在合法數字時才 commit，未完成的中間態（"-"、"1."、""）留在畫面上不被打斷。
+function NumberField({ value, onCommit }: { value: number; onCommit: (v: number) => void }) {
+  const [text, setText] = useState(() => String(value))
+
+  useEffect(() => {
+    setText(String(value))
+  }, [value])
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const raw = e.target.value
+    if (!/^-?\d*\.?\d*$/.test(raw)) return
+    setText(raw)
+    if (raw !== '' && raw !== '-' && raw !== '.' && raw !== '-.' && !Number.isNaN(Number(raw))) {
+      onCommit(Number(raw))
+    }
+  }
+
+  function handleBlur() {
+    if (text === '' || text === '-' || text === '.' || text === '-.' || Number.isNaN(Number(text))) {
+      setText(String(value))
+    }
+  }
+
+  return (
+    <input
+      type="number"
+      inputMode="decimal"
+      value={text}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      className="w-16 border border-slate-200 rounded px-1.5 py-0.5"
+    />
   )
 }
