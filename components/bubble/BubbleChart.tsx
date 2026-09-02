@@ -61,10 +61,11 @@ function clamp(v: number, lo: number, hi: number) {
 }
 
 // ── 回放彈簧物理（AC-BR-1）────────────────────────────────────────────────
-// a = -k(pos - target) - c·vel；k≈180、c≈18 → 阻尼比 ζ≈0.67，衝過去後回彈一次再收斂，
-// 與 650ms 的自動步進節奏搭配。位置與半徑共用同一組參數，大小變化才不會硬切。
-const SPRING_K = 180
-const SPRING_C = 18
+// a = -k(pos - target) - c·vel；k=260、c=14 → 阻尼比 ζ≈0.43，overshoot 約 20%，
+// 殘餘振幅降到 1px 以下約 660ms，剛好搭上 650ms 的步進節奏（每步彈完才走下一步）。
+// 原本 c=18 只有 4% overshoot，位移小的時候根本看不出彈跳。位置與半徑共用同一組參數。
+const SPRING_K = 260
+const SPRING_C = 14
 
 function springStep(pos: number, vel: number, target: number, dt: number): [number, number] {
   const v = vel + (-SPRING_K * (pos - target) - SPRING_C * vel) * dt
@@ -75,6 +76,12 @@ function springStep(pos: number, vel: number, target: number, dt: number): [numb
 }
 
 type SpringTarget = { px: number; py: number; r: number }
+
+// 一個泡泡群組裡有陰影圓 + 主體圓，兩顆都要跟著半徑變
+function setRadius(g: SVGGElement, r: number) {
+  const v = String(Math.max(0.5, r))
+  g.querySelectorAll('circle').forEach(c => c.setAttribute('r', v))
+}
 
 /**
  * 回放專用彈簧：直接寫 DOM 屬性（transform / r / 尾線終點），不走 React state，
@@ -103,7 +110,7 @@ function useReplaySpring(targets: Record<string, SpringTarget>, active: boolean)
     // 兩種情況都要寫回 DOM：<g>/<circle> 沒有 transform/r prop，重新掛載時屬性是空的
     const s = states.current[key] ?? (states.current[key] = { px: t.px, py: t.py, r: t.r, vx: 0, vy: 0, vr: 0 })
     g.setAttribute('transform', `translate(${s.px} ${s.py})`)
-    g.querySelector('circle')?.setAttribute('r', String(Math.max(0.5, s.r)))
+    setRadius(g, s.r)
   }
 
   // 軌跡最後一段：終點跟著泡泡一起跑（AC-BR-2）
@@ -130,7 +137,7 @@ function useReplaySpring(targets: Record<string, SpringTarget>, active: boolean)
         const g = groups.current[key]
         if (g) {
           g.setAttribute('transform', `translate(${px} ${py})`)
-          g.querySelector('circle')?.setAttribute('r', String(Math.max(0.5, r)))
+          setRadius(g, r)
         }
         const line = lines.current[key]
         if (line) {
@@ -226,6 +233,9 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
   const [vb, setVb] = useState(() => ({ x: 0, y: 0, w: W, h: chartHeight ?? H_DEFAULT }))
   // 聚焦回放（Tide 式）：點泡泡進聚焦模式，按回放才顯示軌跡動畫
   const [focused, setFocused] = useState<string | null>(null)
+  // AC-RP2-1：全域回放（所有泡泡一起走），與聚焦回放互斥
+  const [globalStep, setGlobalStep] = useState<number | null>(null)
+  const [globalPlaying, setGlobalPlaying] = useState(false)
   const [replayStep, setReplayStep] = useState<number | null>(null)
   const [replaying, setReplaying] = useState(false)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -249,6 +259,9 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
   }
 
   function handleBubbleClick(s: SectorBubble) {
+    // AC-RP2-2：兩種回放互斥
+    setGlobalPlaying(false)
+    setGlobalStep(null)
     setClicked(s.sectorName)
     setTimeout(() => setClicked(null), 160)
     setReplayStep(null)
@@ -278,10 +291,13 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
   }
 
   // ── Wheel (desktop zoom) ─────────────────────────────
+  // AC-FIX-2：只有 Ctrl/⌘ + 滾輪才縮放，一般滾輪放行給頁面捲動——
+  // 滿版頁的圖幾乎佔滿視窗，無條件攔截會讓桌機也捲不動（同手機的 touch 問題）
   useEffect(() => {
     const el = svgRef.current
     if (!el) return
     const handler = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return
       e.preventDefault()
       const factor = e.deltaY > 0 ? 1.18 : 1 / 1.18
       const { x: cx, y: cy } = svgPt(e.clientX, e.clientY)
@@ -318,9 +334,11 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
     }
 
     const onMove = (e: TouchEvent) => {
-      e.preventDefault()
       const t = touchRef.current
+      // 沒進入 pinch/pan 就把手勢還給瀏覽器（單指＝捲頁面）。
+      // 2026-09-02 事故：這裡原本無條件 preventDefault，滿版後整頁捲不動
       if (!t) return
+      e.preventDefault()
       const rect = svgRef.current!.getBoundingClientRect()
 
       if (t.type === 'pinch' && e.touches.length === 2) {
@@ -355,6 +373,22 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
 
   const activeSectors = sectors
 
+  // 全域回放的總步數＝最長的 trail 長度（各泡泡 trail 較短時 clamp 到最舊那點）
+  const globalTotalSteps = useMemo(
+    () => Math.max(0, ...activeSectors.map(s => (s.trail ?? []).length)),
+    [activeSectors],
+  )
+
+  // step 0＝最舊、globalTotalSteps＝今日；trail 較短的泡泡停在自己最舊的點
+  function frameOf(s: SectorBubble, step: number | null) {
+    if (step === null || step >= globalTotalSteps) return { x: s.x, y: s.y, size: s.size }
+    const trail = s.trail ?? []
+    if (!trail.length) return { x: s.x, y: s.y, size: s.size }
+    const idx = clamp(trail.length - (globalTotalSteps - step), 0, trail.length - 1)
+    const p = trail[idx]
+    return { x: p.x, y: p.y, size: p.size ?? s.size }
+  }
+
   const maxSize = useMemo(
     () => Math.max(1, ...activeSectors.map(s => s.size)),
     [activeSectors],
@@ -373,17 +407,19 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
   }, [activeSectors, zoom, top15Active, top15Set])
 
   // zoom 模式用可見 sectors 的 range，讓泡泡充分展開；全覽用全部 sectors
+  // 軸範圍把 trail 的歷史點一起算進去，回放時座標系才不會每幀跳動
   const xRange = useMemo<[number, number]>(() => {
     const src = zoom ? visibleSectors : activeSectors
-    // symlog 空間中的對稱範圍（見 symlog）
-    const absMax = Math.max(0.5, ...src.map(s => Math.abs(symlog(s.x))))
+    const vals = src.flatMap(s => [s.x, ...(s.trail ?? []).map(t => t.x)])
+    const absMax = Math.max(0.5, ...vals.map(v => Math.abs(symlog(v))))
     return [-absMax * 1.1, absMax * 1.1]
   }, [activeSectors, visibleSectors, zoom])
 
   // Y 改為加速度（億/日），量級同樣跨百倍，跟 X 一樣走 symlog
   const yRange = useMemo<[number, number]>(() => {
     const src = zoom ? visibleSectors : activeSectors
-    const absMax = Math.max(0.3, ...src.map(s => Math.abs(symlog(s.y))))
+    const vals = src.flatMap(s => [s.y, ...(s.trail ?? []).map(t => t.y)])
+    const absMax = Math.max(0.3, ...vals.map(v => Math.abs(symlog(v))))
     return [-absMax * 1.15, absMax * 1.15]
   }, [activeSectors, visibleSectors, zoom])
 
@@ -391,8 +427,9 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
   const resolvedBubbles = useMemo(() => {
     const sorted = [...visibleSectors].sort((a, b) => a.size - b.size)
     const raw = sorted.map(s => {
-      const { px, py } = toSVG(symlog(s.x), symlog(s.y), zoom, xRange, yRange, H)
-      const r = bubbleRadius(s.size, maxSize)
+      const f = frameOf(s, globalStep)
+      const { px, py } = toSVG(symlog(f.x), symlog(f.y), zoom, xRange, yRange, H)
+      const r = bubbleRadius(f.size, maxSize)
       return { s, px: clamp(px, PAD.left + r + 1, W - PAD.right - r - 1), py: clamp(py, PAD.top + r + 1, H - PAD.bottom - r - 1), r }
     })
     const resolved = resolveCollisions(raw.map(({ px, py, r }) => ({ px, py, r })))
@@ -401,7 +438,8 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
       rpx: clamp(resolved[i].px, PAD.left + item.r + 1, W - PAD.right - item.r - 1),
       rpy: clamp(resolved[i].py, PAD.top  + item.r + 1, H - PAD.bottom - item.r - 1),
     }))
-  }, [visibleSectors, zoom, xRange, yRange, maxSize])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleSectors, zoom, xRange, yRange, maxSize, globalStep, globalTotalSteps, H])
 
   const zeroSVG = toSVG(0, 0, zoom, xRange, yRange, H)
 
@@ -481,6 +519,34 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
     setReplaying(true)
   }
 
+  // AC-RP2-1：全域回放——所有泡泡沿各自 trail 一起走
+  function handleGlobalReplay() {
+    if (globalPlaying) { setGlobalPlaying(false); return }
+    // 互斥：先退出聚焦回放
+    setFocused(null)
+    setReplayStep(null)
+    setReplaying(false)
+    setGlobalStep(st => (st === null || st >= globalTotalSteps) ? 0 : st)
+    setGlobalPlaying(true)
+  }
+
+  useEffect(() => {
+    if (!globalPlaying) return
+    const id = setInterval(() => {
+      setGlobalStep(st => {
+        if (st === null) return 0
+        if (st >= globalTotalSteps) { setGlobalPlaying(false); return st }
+        return st + 1
+      })
+    }, 650)
+    return () => clearInterval(id)
+  }, [globalPlaying, globalTotalSteps])
+
+  // AC-RP2-3：全域回放中顯示該幀日期（frameDates 為 newest first）
+  const globalDate = globalStep !== null && frameDates
+    ? frameDates[globalTotalSteps - globalStep]?.slice(5).replace('-', '/')
+    : null
+
   // path[i] 的日期：i = trailLen → 今日（frameDates[0]）
   const replayDate = replayStep !== null && frameDates
     ? frameDates[trailLen - replayStep]?.slice(5).replace('-', '/')
@@ -491,18 +557,22 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
     ? focusedBubble.s.trail?.[replayStep] ?? focusedBubble.s
     : focusedBubble?.s ?? null
 
-  // 回放彈簧目標：主角 + ghost 陪跑泡泡共用同一組 rAF
+  // 彈簧目標：一般泡泡（常駐）＋ 聚焦回放的主角/ghost。共用同一個 rAF 迴圈
   const springTargets = useMemo(() => {
     const t: Record<string, SpringTarget> = {}
-    if (replayStep === null || !focusedBubble || focusedPath.length === 0) return t
-    t.focus = focusedPath[Math.min(replayStep, focusedPath.length - 1)]
-    for (const { bubble, path } of ghostPaths) {
-      t[`ghost:${bubble.sectorName}`] = path[Math.min(replayStep, path.length - 1)]
+    for (const b of resolvedBubbles) {
+      t[`b:${b.s.sectorName}`] = { px: b.rpx, py: b.rpy, r: b.r }
+    }
+    if (replayStep !== null && focusedBubble && focusedPath.length > 0) {
+      t.focus = focusedPath[Math.min(replayStep, focusedPath.length - 1)]
+      for (const { bubble, path } of ghostPaths) {
+        t[`ghost:${bubble.sectorName}`] = path[Math.min(replayStep, path.length - 1)]
+      }
     }
     return t
-  }, [replayStep, focusedBubble, focusedPath, ghostPaths])
+  }, [resolvedBubbles, replayStep, focusedBubble, focusedPath, ghostPaths])
 
-  const spring = useReplaySpring(springTargets, replayStep !== null)
+  const spring = useReplaySpring(springTargets, true)
 
   return (
     <div className="relative select-none">
@@ -553,6 +623,23 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
               全覽
             </button>
           )}
+          {/* AC-RP2-1：全域回放 */}
+          {globalTotalSteps > 0 && !focused && (
+            <>
+              {globalDate && (
+                <span className="text-[10px] font-semibold text-amber-600 whitespace-nowrap">
+                  {globalDate}{globalStep === globalTotalSteps ? '（今日）' : ''}
+                </span>
+              )}
+              <button
+                onClick={handleGlobalReplay}
+                className="px-2 py-0.5 rounded-full text-[10px] font-semibold border border-amber-300 bg-amber-50 text-amber-600 whitespace-nowrap"
+              >
+                {globalPlaying ? '⏸ 暫停' : '▶ 回放'}
+              </button>
+            </>
+          )}
+
           {/* AC-HELP-1：說明視窗（不影響聚焦/回放狀態） */}
           <button
             onClick={() => setShowHelp(true)}
@@ -568,7 +655,12 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
         ref={svgRef}
         viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
         className="w-full"
-        style={{ touchAction: 'none', cursor: isZoomed ? 'grab' : 'default' }}
+        style={{
+          // 未放大：pan-y 讓單指垂直捲頁面通過（雙指縮放仍由 onMove 處理）
+          // 已放大：none，單指要拿來平移圖表
+          touchAction: isZoomed ? 'none' : 'pan-y',
+          cursor: isZoomed ? 'grab' : 'default',
+        }}
       >
         <defs>
           <style>{`
@@ -673,6 +765,9 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
 
             const active = isHovered || isClicked || isFocused
 
+            // AC-BR-3：位置與半徑一律走彈簧（切分類/象限/回放都會 Q 一下）。
+            // 外層 <g> 只管互動與淡入淡出，內層 <g> 的 transform 由 rAF 直接寫，
+            // 所以 circle 不帶 cx/cy、不帶 r——帶了會在每次 render 把彈簧位置蓋回目標值
             return (
               <g
                 key={s.sectorName}
@@ -681,10 +776,7 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
                 onMouseLeave={() => setHovered(null)}
                 style={{
                   cursor: 'pointer',
-                  transform: isClicked ? 'scale(1.22)' : 'scale(1)',
-                  transition: 'transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 200ms',
-                  transformOrigin: `${rpx}px ${rpy}px`,
-                  // 聚焦時其他泡泡淡出（dimmed 情況停用進場動畫，避免 fill-mode 蓋掉 opacity）
+                  transition: 'opacity 200ms',
                   ...(dimmed
                     ? { opacity: 0.15 }
                     : mounted
@@ -692,41 +784,53 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
                       : { opacity: 0 }),
                 }}
               >
-                {/* Drop shadow */}
-                <circle cx={rpx + 1} cy={rpy + 1.5} r={r}
-                  fill={isClicked ? `${q.color}30` : '#00000018'} />
-                {/* Main bubble */}
-                <circle cx={rpx} cy={rpy} r={r}
-                  fill={active ? q.color : q.fill}
-                  stroke={q.color}
-                  strokeWidth={active ? 2.5 : 1.8}
-                  opacity={active ? 1 : 0.9}
-                />
-                {/* Label */}
-                {r >= 16 ? (
-                  <text
-                    x={rpx} y={rpy + 3}
-                    fontSize={r >= 22 ? 8.5 : 7.5}
-                    fill={active ? '#fff' : q.color}
-                    textAnchor="middle"
-                    fontWeight="700"
-                    style={{ pointerEvents: 'none' }}
-                  >
-                    {shortName(s.sectorName)}
-                  </text>
-                ) : (
-                  <text
-                    x={rpx} y={rpy + r + 9}
-                    fontSize={7}
-                    fill={q.color}
-                    textAnchor="middle"
-                    fontWeight="600"
-                    opacity="0.85"
-                    style={{ pointerEvents: 'none' }}
-                  >
-                    {shortName(s.sectorName)}
-                  </text>
-                )}
+                {/* 外層 g 的 transform attribute 由彈簧寫入；點擊縮放必須放在內層，
+                    否則 CSS scale 會跟 attribute transform 相乘，把座標一起放大 */}
+                <g ref={el => spring.register(`b:${s.sectorName}`, el)}>
+                <g
+                  style={{
+                    transform: isClicked ? 'scale(1.22)' : 'scale(1)',
+                    transformOrigin: '0px 0px',
+                    transition: 'transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+                  }}
+                >
+                  {/* Drop shadow（相對座標，跟著群組的 translate 走） */}
+                  <circle cx={1} cy={1.5}
+                    fill={isClicked ? `${q.color}30` : '#00000018'} />
+                  {/* Main bubble */}
+                  <circle
+                    fill={active ? q.color : q.fill}
+                    stroke={q.color}
+                    strokeWidth={active ? 2.5 : 1.8}
+                    opacity={active ? 1 : 0.9}
+                  />
+                  {/* Label */}
+                  {r >= 16 ? (
+                    <text
+                      y={3}
+                      fontSize={r >= 22 ? 8.5 : 7.5}
+                      fill={active ? '#fff' : q.color}
+                      textAnchor="middle"
+                      fontWeight="700"
+                      style={{ pointerEvents: 'none' }}
+                    >
+                      {shortName(s.sectorName)}
+                    </text>
+                  ) : (
+                    <text
+                      y={r + 9}
+                      fontSize={7}
+                      fill={q.color}
+                      textAnchor="middle"
+                      fontWeight="600"
+                      opacity="0.85"
+                      style={{ pointerEvents: 'none' }}
+                    >
+                      {shortName(s.sectorName)}
+                    </text>
+                  )}
+                </g>
+                </g>
               </g>
             )
           })}
@@ -846,7 +950,7 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
       <p className="text-center text-[10px] text-slate-400 pb-2">
         {focused
           ? '▶ 回放看資金軌跡 · 點空白處返回'
-          : zoom ? '點擊泡泡聚焦' : '點擊象限或上方按鈕放大 · 點擊泡泡聚焦'}
+          : zoom ? '點擊泡泡聚焦' : '點擊象限放大 · 雙指（或 ⌘/Ctrl+滾輪）縮放 · 點擊泡泡聚焦'}
       </p>
 
       {showHelp && <BubbleHelpModal onClose={() => setShowHelp(false)} />}

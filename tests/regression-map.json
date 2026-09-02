@@ -302,9 +302,10 @@
     "資料鮮度 poller（監控表用）：只讀 meta.json 5 個日期戳 + holiday-status.json 判目標交易日；狀態門檻 落後1天=PENDING（盤中正常，不告警）、落後≥2天=DELAYED（告警）——門檻若改動需同步 docs/資料鮮度監控.md。DATASETS 是唯一維護點，新增資料集在此加欄。延伸欄（市場訊號/AI總結）走 market.json，缺檔要留白不可炸。純計算+stdout，寫入 Sheet 由 n8n 端負責（FRESHNESS_SHEET_WEBHOOK）"
   ],
   "components/bubble/BubbleChart.tsx::useReplaySpring": [
-    "AC-BR-1 回放彈簧物理：k=180 / c=18（阻尼比≈0.67，衝過去回彈一次再收斂），位置與半徑共用同一組參數",
-    "刻意繞過 React state 直接寫 DOM（transform / circle r / 尾線 x2,y2），否則 60fps 會重繪整張圖（全覽上百顆泡泡）；泡泡 <g> 與 <circle> 不可再傳 transform/r prop，否則每次 render 會把彈簧位置蓋回目標值造成跳動",
-    "ref callback 每次 render 都會 detach/attach，states 以 key 保存故動畫不中斷；新 key 首次註冊直接就定位，不從 (0,0) 飛入"
+    "AC-BR-1/BR-3 彈簧：k=260 / c=14（ζ≈0.43、overshoot 20%、殘餘振幅 <1px 約 660ms，搭 650ms 步進）。原 c=18 只有 4% overshoot 看不出彈跳",
+    "彈簧改成常駐（active 恆為 true）：切換分類/象限/熱門15/回放時泡泡都走彈簧",
+    "刻意繞過 React state 直接寫 DOM（transform / circle r / 尾線 x2,y2），否則 60fps 會重繪整張圖",
+    "泡泡的 <g>/<circle> 絕對不能再帶 transform/cx/cy/r prop，否則每次 render 會把彈簧位置蓋回目標值；點擊縮放要放在內層 <g>（CSS transform 會與 attribute transform 相乘，放同一層會連座標一起放大）"
   ],
   "lib/consolidationPattern.ts": [
     "AC-CS-2~5 整理平台形態判斷（純函式）：整理期＝扣除當日往前 N 日，五條件全成立（區間收斂/日振幅/收盤圍繞均價/穿越次數/期間無爆量）+ 當日訊號（爆量 或 連兩日遞增）+ 股價分段均量門檻",
@@ -335,5 +336,14 @@
   ],
   "app/intraday/page.tsx": [
     "AC-NAV-1/5：泡泡圖滿版頁，內容全部來自 SectorBubbleSection；原 Phase 3 佔位頁已移除"
+  ],
+  "components/bubble/BubbleChart.tsx::touchScroll": [
+    "AC-FIX-2 手機捲動：touchAction 依縮放狀態切換（未放大 pan-y 讓單指捲頁面／放大後 none 才能單指平移）；touchmove 的 preventDefault 必須在 `if (!t) return` 之後，無條件擋會讓整頁捲不動（2026-09-02 滿版後爆出來的事故）",
+    "wheel 同理：只有 Ctrl/⌘ + 滾輪才縮放，一般滾輪放行給頁面捲動"
+  ],
+  "components/bubble/BubbleChart.tsx::globalReplay": [
+    "AC-RP2-1~3 全域回放：所有可見泡泡沿各自 trail 一起走。step 0＝最舊、globalTotalSteps（= 最長 trail 長度）＝今日；trail 較短的泡泡 clamp 在自己最舊那點",
+    "xRange/yRange 把 trail 歷史點一起算進去，回放時座標軸才不會每幀跳動；collision 每步重算",
+    "與聚焦回放互斥（handleBubbleClick 會停掉全域回放）"
   ]
 }
