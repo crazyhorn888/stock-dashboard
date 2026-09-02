@@ -293,5 +293,8 @@
   ],
   "scripts/backfill-chips.mjs": [
     "2026-07-15: 籌碼歷史回補工具（HTTP-only，不碰本機 data/）。資料源：TWSE BFI82U（現貨三大法人）+ TAIFEX futContractsDateDown/callsAndPutsDateDown/pcRatioDown/futDataDown。合併原則：只填 null 永不覆蓋（Phase1 產的日子保持原樣）。踩坑：散戶 OI 推導的全市場 OI 要用「全部月份合計」不是當月+次月（結算週當月 OI 縮水會讓法人合計超過兩月總量→散戶被 max(0,..) 歸零）；BFI82U 逐日查詢偶發 null 需重跑補漏（腳本冪等可重複執行）。VIX 無官方歷史端點→回補日恆為 null"
+  ],
+  "scripts/freshness-log.mjs": [
+    "資料鮮度 poller（監控表用）：只讀 meta.json 5 個日期戳 + holiday-status.json 判目標交易日；狀態門檻 落後1天=PENDING（盤中正常，不告警）、落後≥2天=DELAYED（告警）——門檻若改動需同步 docs/資料鮮度監控.md。DATASETS 是唯一維護點，新增資料集在此加欄。延伸欄（市場訊號/AI總結）走 market.json，缺檔要留白不可炸。純計算+stdout，寫入 Sheet 由 n8n 端負責（FRESHNESS_SHEET_WEBHOOK）"
   ]
 }
