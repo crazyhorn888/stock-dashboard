@@ -1,6 +1,7 @@
 'use client'
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { SectorBubble } from '@/lib/types'
+import BubbleHelpModal from './BubbleHelpModal'
 
 interface Props {
   sectors: SectorBubble[]
@@ -11,22 +12,24 @@ interface Props {
   onFocusChange?: (sector: SectorBubble | null) => void
   // P2-5 Ghost：回放時跟著聚焦泡泡一起動的半透明陪跑泡泡（同概念股），trail 長度須與 sectors 來源一致
   ghostBubbles?: SectorBubble[]
+  // AC-NAV-4：繪圖高度（viewBox 座標），滿版頁傳 560，預設 320
+  chartHeight?: number
 }
 
+// AC-Q-1：命名對齊 Tide（流入/流出 × 加速/放緩），顏色沿用台股慣例（紅買綠賣）
 const QUADRANTS = [
-  { id: 'TL', label: '觀望', xSign: -1, ySign:  1, color: '#64748b', fill: '#f1f5f9', border: '#cbd5e1' },
-  { id: 'TR', label: '漲潮', xSign:  1, ySign:  1, color: '#dc2626', fill: '#fff1f2', border: '#fca5a5' },
-  { id: 'BL', label: '退潮', xSign: -1, ySign: -1, color: '#16a34a', fill: '#f0fdf4', border: '#86efac' },
-  { id: 'BR', label: '輪動', xSign:  1, ySign: -1, color: '#d97706', fill: '#fffbeb', border: '#fcd34d' },
+  { id: 'TL', label: '流出放緩', xSign: -1, ySign:  1, color: '#64748b', fill: '#f1f5f9', border: '#cbd5e1' },
+  { id: 'TR', label: '流入加速', xSign:  1, ySign:  1, color: '#dc2626', fill: '#fff1f2', border: '#fca5a5' },
+  { id: 'BL', label: '流出加速', xSign: -1, ySign: -1, color: '#16a34a', fill: '#f0fdf4', border: '#86efac' },
+  { id: 'BR', label: '流入放緩', xSign:  1, ySign: -1, color: '#d97706', fill: '#fffbeb', border: '#fcd34d' },
 ] as const
 
 type QuadrantId = typeof QUADRANTS[number]['id'] | null
 
 const W = 360
-const H = 320
+const H_DEFAULT = 320   // AC-NAV-4：滿版頁（/intraday）會傳更高的 chartHeight
 const PAD = { top: 28, right: 16, bottom: 28, left: 20 }
 const CX = PAD.left + (W - PAD.left - PAD.right) / 2
-const CY = PAD.top  + (H - PAD.top  - PAD.bottom) / 2
 
 // P1-4：symlog 轉換（linthresh = 1 億）。X（近5日淨買超總額）與 Y（加速度）共用。
 // 板塊資金量級差距上百倍，線性刻度會把小板塊全部擠在原點附近；
@@ -149,6 +152,7 @@ function toSVG(
   zoom: QuadrantId,
   xRange: [number, number],
   yRange: [number, number],
+  H: number,
 ): { px: number; py: number } {
   const [xMin, xMax] = xRange
   const [yMin, yMax] = yRange
@@ -176,8 +180,6 @@ function toSVG(
     py: H - PAD.bottom - ((dy - yMin) / ySpan) * drawH,
   }
 }
-
-const DEFAULT_VB = { x: 0, y: 0, w: W, h: H }
 
 // ── Collision resolution ──────────────────────────────────────────────────
 function resolveCollisions(
@@ -210,13 +212,18 @@ function resolveCollisions(
   return p
 }
 
-export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocusChange, ghostBubbles }: Props) {
+export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocusChange, ghostBubbles, chartHeight }: Props) {
+  // 繪圖高度（viewBox 內部座標）：SVG 寬度固定 100%，H 越大畫面上就越高
+  const H = chartHeight ?? H_DEFAULT
+  const CY = PAD.top + (H - PAD.top - PAD.bottom) / 2
+  const DEFAULT_VB = useMemo(() => ({ x: 0, y: 0, w: W, h: H }), [H])
   const [zoom, setZoom] = useState<QuadrantId>(null)
   const [top15Active, setTop15Active] = useState(false)
   const [hovered, setHovered] = useState<string | null>(null)
   const [clicked, setClicked] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
-  const [vb, setVb] = useState(DEFAULT_VB)
+  const [showHelp, setShowHelp] = useState(false)
+  const [vb, setVb] = useState(() => ({ x: 0, y: 0, w: W, h: chartHeight ?? H_DEFAULT }))
   // 聚焦回放（Tide 式）：點泡泡進聚焦模式，按回放才顯示軌跡動畫
   const [focused, setFocused] = useState<string | null>(null)
   const [replayStep, setReplayStep] = useState<number | null>(null)
@@ -384,7 +391,7 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
   const resolvedBubbles = useMemo(() => {
     const sorted = [...visibleSectors].sort((a, b) => a.size - b.size)
     const raw = sorted.map(s => {
-      const { px, py } = toSVG(symlog(s.x), symlog(s.y), zoom, xRange, yRange)
+      const { px, py } = toSVG(symlog(s.x), symlog(s.y), zoom, xRange, yRange, H)
       const r = bubbleRadius(s.size, maxSize)
       return { s, px: clamp(px, PAD.left + r + 1, W - PAD.right - r - 1), py: clamp(py, PAD.top + r + 1, H - PAD.bottom - r - 1), r }
     })
@@ -396,11 +403,14 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
     }))
   }, [visibleSectors, zoom, xRange, yRange, maxSize])
 
-  const zeroSVG = toSVG(0, 0, zoom, xRange, yRange)
+  const zeroSVG = toSVG(0, 0, zoom, xRange, yRange, H)
 
   // AC-BX-4：回放時每一幀的泡泡半徑用該幀的 size（近20日買賣總額是滾動視窗，會漲也會縮）；
-  // maxSize 固定用今日全體最大值當基準，不逐幀重新正規化，否則相對大小會失真
-  const frameRadius = (size: number) => bubbleRadius(size, maxSize)
+  // maxSize 固定用今日全體最大值當基準，不逐幀重新正規化，否則相對大小會失真。
+  // fallback：改版前的舊快照 trail 只有 {x,y} 沒有 size，缺值時退回該泡泡今日的 size，
+  // 否則 bubbleRadius 會算出 NaN，回放中的泡泡（r="NaN"）會整顆消失
+  const frameRadius = (size: number | undefined, fallback: number) =>
+    bubbleRadius(Number.isFinite(size) ? (size as number) : fallback, maxSize)
 
   // ── 聚焦回放 ──────────────────────────────────────────────
   const focusedBubble = focused
@@ -417,8 +427,8 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
   const focusedPath = useMemo(() => {
     if (!focusedBubble) return []
     const pts = (focusedBubble.s.trail ?? []).map(p => ({
-      ...toSVG(symlog(p.x), symlog(p.y), zoom, xRange, yRange),
-      r: frameRadius(p.size),
+      ...toSVG(symlog(p.x), symlog(p.y), zoom, xRange, yRange, H),
+      r: frameRadius(p.size, focusedBubble.s.size),
     }))
     return [...pts, { px: focusedBubble.rpx, py: focusedBubble.rpy, r: focusedBubble.r }]
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -431,12 +441,12 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
     if (!ghostBubbles?.length) return []
     return ghostBubbles.map(g => {
       const pts = (g.trail ?? []).map(p => ({
-        ...toSVG(symlog(p.x), symlog(p.y), zoom, xRange, yRange),
-        r: frameRadius(p.size),
+        ...toSVG(symlog(p.x), symlog(p.y), zoom, xRange, yRange, H),
+        r: frameRadius(p.size, g.size),
       }))
       const todayPt = {
-        ...toSVG(symlog(g.x), symlog(g.y), zoom, xRange, yRange),
-        r: frameRadius(g.size),
+        ...toSVG(symlog(g.x), symlog(g.y), zoom, xRange, yRange, H),
+        r: frameRadius(g.size, g.size),
       }
       return { bubble: g, path: [...pts, todayPt] }
     })
@@ -543,6 +553,14 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
               全覽
             </button>
           )}
+          {/* AC-HELP-1：說明視窗（不影響聚焦/回放狀態） */}
+          <button
+            onClick={() => setShowHelp(true)}
+            aria-label="圖表說明"
+            className="w-6 h-6 flex-shrink-0 rounded-full border border-slate-200 text-slate-400 text-[11px] font-bold leading-none"
+          >
+            ?
+          </button>
         </div>
       </div>
 
@@ -618,7 +636,7 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
         {[-500, -200, -100, -50, -20, -5, 5, 20, 50, 100, 200, 500].map(v => {
           const tx = symlog(v)
           if (tx < xRange[0] || tx > xRange[1]) return null
-          const { px } = toSVG(tx, 0, zoom, xRange, yRange)
+          const { px } = toSVG(tx, 0, zoom, xRange, yRange, H)
           if (px < PAD.left + 6 || px > W - PAD.right - 6) return null
           return (
             <g key={`xtick-${v}`}>
@@ -632,7 +650,7 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
         {[-50, -20, -5, 5, 20, 50].map(v => {
           const ty = symlog(v)
           if (ty < yRange[0] || ty > yRange[1]) return null
-          const { py } = toSVG(0, ty, zoom, xRange, yRange)
+          const { py } = toSVG(0, ty, zoom, xRange, yRange, H)
           if (py < PAD.top + 6 || py > H - PAD.bottom - 6) return null
           return (
             <g key={`ytick-${v}`}>
@@ -798,7 +816,7 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
               <p className="text-[10px] text-slate-400 whitespace-nowrap">
                 近5日法人淨買超 {(frameStats?.x ?? 0) >= 0 ? '+' : ''}{(frameStats?.x ?? 0).toFixed(1)} 億
                 {' · '}加速 {(frameStats?.y ?? 0) >= 0 ? '+' : ''}{(frameStats?.y ?? 0).toFixed(1)} 億/天
-                {' · '}20日買賣 {(frameStats?.size ?? 0).toFixed(0)} 億
+                {' · '}20日買賣 {(Number.isFinite(frameStats?.size) ? frameStats!.size : fb.s.size).toFixed(0)} 億
               </p>
             </div>
             <button
@@ -830,6 +848,8 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
           ? '▶ 回放看資金軌跡 · 點空白處返回'
           : zoom ? '點擊泡泡聚焦' : '點擊象限或上方按鈕放大 · 點擊泡泡聚焦'}
       </p>
+
+      {showHelp && <BubbleHelpModal onClose={() => setShowHelp(false)} />}
     </div>
   )
 }

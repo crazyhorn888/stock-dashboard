@@ -9,12 +9,12 @@ interface Props {
   onSectorClick?: (sector: SectorBubble) => void  // 點清單裡的板塊名稱 → 開該板塊的 SectorPanel
 }
 
-// 象限判斷需與 BubbleChart 的 QUADRANTS 完全一致
+// 象限判斷需與 BubbleChart 的 QUADRANTS 完全一致（AC-Q-1：命名對齊 Tide）
 const QUADS = [
-  { id: 'TR', label: '漲潮', desc: '資金加速流入', dot: 'bg-red-500',    text: 'text-red-600',    match: (x: number, y: number) => x >= 0 && y >= 0 },
-  { id: 'BR', label: '輪動', desc: '流入但放緩',   dot: 'bg-amber-500',  text: 'text-amber-600',  match: (x: number, y: number) => x >= 0 && y < 0 },
-  { id: 'TL', label: '觀望', desc: '流出但放緩',   dot: 'bg-slate-400',  text: 'text-slate-500',  match: (x: number, y: number) => x < 0 && y >= 0 },
-  { id: 'BL', label: '退潮', desc: '資金流出',     dot: 'bg-green-500',  text: 'text-green-600',  match: (x: number, y: number) => x < 0 && y < 0 },
+  { id: 'TR', label: '流入加速', desc: '買超且力道增強', dot: 'bg-red-500',   text: 'text-red-600',   match: (x: number, y: number) => x >= 0 && y >= 0 },
+  { id: 'BR', label: '流入放緩', desc: '買超但力道減弱', dot: 'bg-amber-500', text: 'text-amber-600', match: (x: number, y: number) => x >= 0 && y < 0 },
+  { id: 'TL', label: '流出放緩', desc: '賣超但賣壓減輕', dot: 'bg-slate-400', text: 'text-slate-500', match: (x: number, y: number) => x < 0 && y >= 0 },
+  { id: 'BL', label: '流出加速', desc: '賣超且賣壓加重', dot: 'bg-green-500', text: 'text-green-600', match: (x: number, y: number) => x < 0 && y < 0 },
 ] as const
 
 export default function QuadrantSummary({ sectors, todayRows, marketChangePct, onSectorClick }: Props) {

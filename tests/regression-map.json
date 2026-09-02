@@ -305,5 +305,35 @@
     "AC-BR-1 回放彈簧物理：k=180 / c=18（阻尼比≈0.67，衝過去回彈一次再收斂），位置與半徑共用同一組參數",
     "刻意繞過 React state 直接寫 DOM（transform / circle r / 尾線 x2,y2），否則 60fps 會重繪整張圖（全覽上百顆泡泡）；泡泡 <g> 與 <circle> 不可再傳 transform/r prop，否則每次 render 會把彈簧位置蓋回目標值造成跳動",
     "ref callback 每次 render 都會 detach/attach，states 以 key 保存故動畫不中斷；新 key 首次註冊直接就定位，不從 (0,0) 飛入"
+  ],
+  "lib/consolidationPattern.ts": [
+    "AC-CS-2~5 整理平台形態判斷（純函式）：整理期＝扣除當日往前 N 日，五條件全成立（區間收斂/日振幅/收盤圍繞均價/穿越次數/期間無爆量）+ 當日訊號（爆量 或 連兩日遞增）+ 股價分段均量門檻",
+    "驗收基準（AC-CS-8）：2026-09-02 收盤資料 + 預設參數 = 2812/2330/2353/2542/2618 五支；改動公式後必須重跑比對",
+    "收盤帶寬刻意綁定 rangePct 的一半（rangePct/200），不另外開參數，避免兩個相關參數互相打架"
+  ],
+  "lib/stockFilter.ts": [
+    "F1 選股器：localStorage 持久化 + CustomEvent 跨元件同步；缺值一律視為不符合（不當 0）",
+    "2026-09-02 新增兩個需 ohlc.json 的條件：volume（kind='bars-gt'，當日量能>X張）與 consolidation（kind='pattern'，整理平台）。BARS_FILTER_IDS 是「需要 K 線資料」的清單，needsBars 讓外層決定要不要 lazy fetch",
+    "filterRows(rows, bars?)：勾了需 bars 的條件但 bars 還沒到 → 直接回傳全部 rows 不套用（AC-CS-1），避免表格瞬間清空"
+  ],
+  "components/shared/StockRowsTable.tsx::barsLazyLoad": [
+    "勾選整理平台/量能條件才 fetch ohlc.json（1.4MB，module-level cache）；載入中顯示提示且不套用篩選；失敗則自動取消勾選那兩個條件，否則會永遠卡在載入中",
+    "effect 依賴 filter 物件（每 render 都是新物件），靠 needsBars/bars/barsLoading 三重 guard 擋掉重複 fetch"
+  ],
+  "components/bubble/SectorBubbleSection.tsx": [
+    "AC-NAV-3：產業板塊整區抽出的自足元件（自己載 snapshot、算 rows、管三種資料來源與 SectorPanel/StockDetailSheet），供 /intraday 滿版使用",
+    "座標一律前端 calcSectors/calcConcepts 當場算（AC-NAV-6），不吃伺服器的 data.sectors；fullHeight 時把 chartHeight 從 320 拉到 560"
+  ],
+  "components/bubble/BubbleHelpModal.tsx": [
+    "AC-HELP-2 說明視窗：四象限定義 + X/Y/size 公式 + 回放說明。象限名稱與顏色必須與 BubbleChart QUADRANTS 一致"
+  ],
+  "components/bubble/BubbleChart.tsx::chartHeight": [
+    "AC-NAV-4：H 由模組常數改成 prop（預設 320，滿版頁 560）。toSVG 因此多吃一個 H 參數；CY/DEFAULT_VB 一併移進元件內，模組級只留 W/PAD/H_DEFAULT"
+  ],
+  "components/shared/BottomNav.tsx": [
+    "AC-NAV-1：分頁順序 盤後行情 → 泡泡圖(/intraday) → 市場條件；/intraday 的 label 是「泡泡圖」不是「盤中即時」（Fugle 盤中即時功能已 deferred）"
+  ],
+  "app/intraday/page.tsx": [
+    "AC-NAV-1/5：泡泡圖滿版頁，內容全部來自 SectorBubbleSection；原 Phase 3 佔位頁已移除"
   ]
 }

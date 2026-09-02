@@ -4,10 +4,10 @@ import type { SectorBubble, StockData, StockRow } from '@/lib/types'
 import StockRowsTable from '@/components/shared/StockRowsTable'
 
 const QUADRANT_LABEL: Record<string, { label: string; color: string }> = {
-  TR: { label: '漲潮', color: 'text-red-500'   },
-  TL: { label: '觀望', color: 'text-slate-400' },
-  BL: { label: '退潮', color: 'text-green-600' },
-  BR: { label: '輪動', color: 'text-amber-500' },
+  TR: { label: '流入加速', color: 'text-red-500'   },
+  TL: { label: '流出放緩', color: 'text-slate-400' },
+  BL: { label: '流出加速', color: 'text-green-600' },
+  BR: { label: '流入放緩', color: 'text-amber-500' },
 }
 
 function quadrantOf(x: number, y: number) {

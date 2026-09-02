@@ -10,10 +10,10 @@ interface Props {
 
 // 與 BubbleChart / QuadrantSummary 一致的象限語意
 function quadrantMeta(x: number, y: number) {
-  if (x >= 0 && y >= 0) return { label: '漲潮', dot: 'bg-red-500' }
-  if (x >= 0)           return { label: '輪動', dot: 'bg-amber-500' }
-  if (y >= 0)           return { label: '觀望', dot: 'bg-slate-400' }
-  return                       { label: '退潮', dot: 'bg-green-500' }
+  if (x >= 0 && y >= 0) return { label: '流入加速', dot: 'bg-red-500' }
+  if (x >= 0)           return { label: '流入放緩', dot: 'bg-amber-500' }
+  if (y >= 0)           return { label: '流出放緩', dot: 'bg-slate-400' }
+  return                       { label: '流出加速', dot: 'bg-green-500' }
 }
 
 function numColor(v: number) {

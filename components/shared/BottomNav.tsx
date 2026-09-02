@@ -4,17 +4,6 @@ import { usePathname } from 'next/navigation'
 
 const tabs = [
   {
-    href: '/intraday',
-    label: '盤中即時',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="7" cy="16" r="3" />
-        <circle cx="17" cy="8" r="4.5" />
-        <circle cx="13" cy="18" r="1.8" />
-      </svg>
-    ),
-  },
-  {
     href: '/aftermarket',
     label: '盤後行情',
     icon: (
@@ -22,6 +11,17 @@ const tabs = [
         <rect x="3" y="13" width="4" height="8" rx="1" />
         <rect x="10" y="8" width="4" height="13" rx="1" />
         <rect x="17" y="3" width="4" height="18" rx="1" />
+      </svg>
+    ),
+  },
+  {
+    href: '/intraday',
+    label: '泡泡圖',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="7" cy="16" r="3" />
+        <circle cx="17" cy="8" r="4.5" />
+        <circle cx="13" cy="18" r="1.8" />
       </svg>
     ),
   },

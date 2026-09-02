@@ -1,28 +1,23 @@
 'use client'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import MarketSignalCards from '@/components/aftermarket/MarketSignalCards'
 import KlineChart from '@/components/aftermarket/KlineChart'
 import StockTable from '@/components/aftermarket/StockTable'
 import GlobalIndexLights from '@/components/aftermarket/GlobalIndexLights'
 import DailyBriefCard from '@/components/aftermarket/DailyBriefCard'
 import GlobalIndexModal from '@/components/aftermarket/GlobalIndexModal'
-import BubbleChart from '@/components/bubble/BubbleChart'
-import QuadrantSummary from '@/components/bubble/QuadrantSummary'
-import SectorRanking from '@/components/bubble/SectorRanking'
 import SectorPanel from '@/components/bubble/SectorPanel'
 import StockDetailSheet from '@/components/stock/StockDetailSheet'
 import FreshnessBar from '@/components/shared/FreshnessBar'
 import { calcStockRow } from '@/lib/calcMetrics'
 import { MOCK_DATA } from '@/lib/mockData'
 import { fetchSnapshot } from '@/lib/fetchSnapshot'
-import { fetchStockHistory } from '@/lib/fetchStockHistory'
 import { fetchHolidayStatus } from '@/lib/fetchHolidayStatus'
-import { calcWatchlistBubbles, getGhostPeers } from '@/lib/calcWatchlistBubbles'
+import { calcConcepts } from '@/lib/calcSectors'
 import { buildInstNetMap } from '@/lib/instNet'
-import { useWatchlist } from '@/lib/watchlist'
-import type { SnapshotData, SectorBubble, StockData, MarketSignals, StockHistoryDay, HolidayStatus } from '@/lib/types'
+import type { SnapshotData, SectorBubble, StockData, MarketSignals, HolidayStatus } from '@/lib/types'
 
-const TABS = ['大盤關鍵資料', '產業板塊', '個股清單', '基本面'] as const
+const TABS = ['大盤關鍵資料', '個股清單', '基本面'] as const
 type Tab = typeof TABS[number]
 const DISABLED_TABS: Tab[] = ['基本面']
 
@@ -35,17 +30,7 @@ export default function AftermarketPage() {
   const [error, setError] = useState<string | null>(null)
   const [activeSector, setActiveSector] = useState<SectorBubble | null>(null)
   const [activeStock, setActiveStock] = useState<StockData | null>(null)
-  const [sectorView, setSectorView] = useState<'bubble' | 'ranking'>('bubble')
-  const [sectorSource, setSectorSource] = useState<'official' | 'concept' | 'watchlist'>('official')
   const [globalModalKey, setGlobalModalKey] = useState<string | null>(null)
-  // P2-5：觀察清單 + 自選股泡泡回放
-  const { codes: watchlistCodes } = useWatchlist()
-  const [stockHistory, setStockHistory] = useState<StockHistoryDay[]>([])
-  const [stockHistoryLoading, setStockHistoryLoading] = useState(false)
-  const [stockHistoryFetched, setStockHistoryFetched] = useState(false)
-  // Ghost：同概念陪跑泡泡。conceptStockMap 是 code -> 概念[] 的靜態資料，動態 import 才不會讓一般使用者也下載到
-  const [conceptStockMap, setConceptStockMap] = useState<Record<string, string[]> | null>(null)
-  const [focusedWatchlistBubble, setFocusedWatchlistBubble] = useState<SectorBubble | null>(null)
   // 台股是否休市（TWSE 官方行事曆）：用來把「待更新中」類文字換成「今日休市」說明，避免上午誤讀
   const [holidayStatus, setHolidayStatus] = useState<HolidayStatus | null>(null)
   // /review 待審核數量：>0 時齒輪圖示發亮提醒
@@ -97,79 +82,33 @@ export default function AftermarketPage() {
     [rows],
   )
 
-  // P2-2：點概念 tag → 關閉目前的個股詳情/板塊面板，開啟該概念的 SectorPanel
+  // P2-2：點概念 tag → 關閉目前的個股詳情，開啟該概念的 SectorPanel。
+  // 概念泡泡改前端算（AC-NAV-6），分組成本較高 → 點到才算、算完快取，data 換掉時失效
+  const conceptBubblesRef = useRef<{ src: SnapshotData; list: SectorBubble[] } | null>(null)
   function handleConceptClick(name: string) {
-    const bubble = data.concepts?.find(c => c.sectorName === name)
+    if (conceptBubblesRef.current?.src !== data) {
+      conceptBubblesRef.current = {
+        src: data,
+        list: data.conceptHistory?.length
+          ? calcConcepts(data.conceptHistory, data.stocks, conceptMapByCode)
+          : (data.concepts ?? []),
+      }
+    }
+    const bubble = conceptBubblesRef.current.list.find(c => c.sectorName === name)
     if (!bubble) return
     setActiveStock(null)
     setActiveSector(bubble)
   }
 
-  // P2-5：進入自選股模式才 lazy fetch stock-history.json（module-level cache，之後切換不重抓）
-  // 用 stockHistoryFetched 標記「已經嘗試過」，不管成功或失敗都不再重試——
-  // 原本用 stockHistory.length/stockHistoryLoading 當條件，fetch 失敗時 loading 會被設回 false，
-  // 導致 effect 依賴陣列變化又重新觸發，形成無限迴圈（畫面一直閃爍）
-  useEffect(() => {
-    if (sectorSource !== 'watchlist' || stockHistoryFetched) return
-    setStockHistoryFetched(true)
-    setStockHistoryLoading(true)
-    fetchStockHistory()
-      .then(setStockHistory)
-      .catch(e => console.warn('[stockHistory] 載入失敗：', e.message))
-      .finally(() => setStockHistoryLoading(false))
-  }, [sectorSource, stockHistoryFetched])
-
-  const stockIndexByCode = useMemo(
-    () => Object.fromEntries(data.stocks.map(s => [s.code, s])),
+  // 概念分類的分組查表：code → 概念名稱[]（StockData.concepts 由 pipeline 寫入）
+  const conceptMapByCode = useMemo(
+    () => Object.fromEntries(data.stocks.map(s => [s.code, s.concepts ?? []])),
     [data.stocks],
   )
 
-  const watchlistBubbles = useMemo(
-    () => calcWatchlistBubbles(stockHistory, watchlistCodes, stockIndexByCode),
-    [stockHistory, watchlistCodes, stockIndexByCode],
-  )
-
-  // Ghost：只在自選股模式且已聚焦某泡泡時才需要 concept-sectors.json，動態 import 避免影響一般使用者的 JS bundle
-  useEffect(() => {
-    if (sectorSource !== 'watchlist' || !focusedWatchlistBubble || conceptStockMap) return
-    import('@/data/concept-sectors.json').then(mod => setConceptStockMap((mod.default ?? mod).stocks ?? {}))
-  }, [sectorSource, focusedWatchlistBubble, conceptStockMap])
-
-  const ghostBubbles = useMemo(() => {
-    if (sectorSource !== 'watchlist' || !focusedWatchlistBubble || !conceptStockMap) return []
-    const code = focusedWatchlistBubble.stocks[0]?.code
-    if (!code) return []
-    const peers = getGhostPeers(code, conceptStockMap, stockHistory, 8)
-    return calcWatchlistBubbles(stockHistory, peers, stockIndexByCode)
-  }, [sectorSource, focusedWatchlistBubble, conceptStockMap, stockHistory, stockIndexByCode])
-
-  // P2-1/P2-5：產業板塊分類來源切換（官方 sector / 概念股 / 自選股，一股多概念）
-  const activeSectors =
-    sectorSource === 'official'  ? (data.sectors ?? []) :
-    sectorSource === 'concept'   ? (data.concepts ?? []) :
-    watchlistBubbles
-  const activeSectorHistory =
-    sectorSource === 'official'  ? data.sectorHistory :
-    sectorSource === 'concept'   ? data.conceptHistory :
-    stockHistory
-  // QuadrantSummary 的「逆勢買超」概念定義在板塊/概念層級，自選股模式不適用，故只在前兩種模式提供
-  const activeTodayRows =
-    sectorSource === 'official' ? data.sectorHistory?.[0]?.rows :
-    sectorSource === 'concept'  ? data.conceptHistory?.[0]?.rows :
-    undefined
-
-  // 板塊/概念資料若非今日（T86 尚未更新），泡泡圖/象限/排行榜會靜默沿用前一天資料，加日期標示避免誤讀
-  const sectorDataDate = (sectorSource === 'official' ? data.sectorHistory : data.conceptHistory)?.[0]?.date ?? null
   const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' })
-  const sectorDataIsStale = !!sectorDataDate && sectorDataDate !== todayStr
   // 休市日不算「尚未更新」，是本來就不會有新資料——文字改成中性說明，不要暗示異常
   const isHolidayToday = holidayStatus?.date === todayStr && holidayStatus.isHoliday
-
-  // 聚焦回放的日期標籤：trail 最多 5 點 + 今日 = 6 個日期（newest first）
-  const frameDates = useMemo(
-    () => (activeSectorHistory ?? []).slice(0, 6).map(d => d.date),
-    [activeSectorHistory]
-  )
 
   // 用前端 n 重新計算大盤訊號（後端 marketSignals.nDays 固定為 100，不隨使用者 N 更新）
   const computedSignals = useMemo<MarketSignals>(() => {
@@ -363,105 +302,6 @@ export default function AftermarketPage() {
 
             {activeTab === '個股清單' && (
               <StockTable rows={rows} onStockClick={setActiveStock} onConceptClick={handleConceptClick} />
-            )}
-
-            {activeTab === '產業板塊' && (
-              <div className="rounded-xl bg-white shadow-sm overflow-hidden">
-                {/* 四象限統計條（P1-5）：大盤漲跌% 由 indexHistory 前兩根 K 棒推算；自選股模式不適用 */}
-                {sectorSource !== 'watchlist' && (
-                  <QuadrantSummary
-                    sectors={activeSectors}
-                    todayRows={activeTodayRows}
-                    marketChangePct={(() => {
-                      const [t, p] = data.indexHistory ?? []
-                      return t && p && p.close > 0 ? ((t.close - p.close) / p.close) * 100 : null
-                    })()}
-                    onSectorClick={s => setActiveSector(s)}
-                  />
-                )}
-
-                {/* 官方分類 / 概念分類 / 自選股 資料來源切換（P2-1、P2-5） */}
-                <div className="flex items-center gap-1.5 px-3 pt-2 flex-wrap">
-                  {([['official', '官方分類'], ['concept', '概念分類'], ['watchlist', '⭐ 自選股']] as const).map(([v, label]) => (
-                    <button
-                      key={v}
-                      onClick={() => setSectorSource(v)}
-                      className={[
-                        'px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors',
-                        sectorSource === v
-                          ? 'bg-slate-800 text-white border-slate-800'
-                          : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400',
-                      ].join(' ')}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                  {sectorSource === 'concept' && (
-                    <span className="text-[10px] text-slate-400 ml-1">一股可能屬於多個概念，資金會重複計算</span>
-                  )}
-                  {sectorSource !== 'watchlist' && sectorDataIsStale && sectorDataDate && (
-                    <span className="text-[10px] text-amber-500 ml-1">
-                      {isHolidayToday
-                        ? `今日休市${holidayStatus?.name ? `（${holidayStatus.name}）` : ''}，顯示 ${sectorDataDate.slice(5).replace('-', '/')} 資料`
-                        : `板塊資料（${sectorDataDate.slice(5).replace('-', '/')}）尚未更新至今日`}
-                    </span>
-                  )}
-                </div>
-
-                {sectorSource === 'watchlist' ? (
-                  watchlistCodes.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-14 text-slate-400 gap-1">
-                      <div className="text-3xl mb-1">⭐</div>
-                      <p className="text-xs font-medium">還沒有觀察清單</p>
-                      <p className="text-[10px]">到「個股清單」點股票列最左邊的 ★ 加入觀察</p>
-                    </div>
-                  ) : stockHistoryLoading ? (
-                    <div className="py-14 text-center text-xs text-slate-400">個股歷史資料載入中...</div>
-                  ) : (
-                    <BubbleChart
-                      sectors={activeSectors}
-                      onBubbleClick={s => setActiveSector(s)}
-                      frameDates={frameDates}
-                      onFocusChange={setFocusedWatchlistBubble}
-                      ghostBubbles={ghostBubbles}
-                    />
-                  )
-                ) : (
-                  <>
-                    {/* 泡泡圖 / 排行榜 視圖切換 */}
-                    <div className="flex gap-1.5 px-3 py-2">
-                      {([['bubble', '🫧 泡泡圖'], ['ranking', '📋 排行榜']] as const).map(([v, label]) => (
-                        <button
-                          key={v}
-                          onClick={() => setSectorView(v)}
-                          className={[
-                            'px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors',
-                            sectorView === v
-                              ? 'bg-blue-600 text-white border-blue-600'
-                              : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300',
-                          ].join(' ')}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {sectorView === 'bubble' ? (
-                      <BubbleChart
-                        sectors={activeSectors}
-                        onBubbleClick={s => setActiveSector(s)}
-                        frameDates={frameDates}
-                      />
-                    ) : (
-                      <SectorRanking
-                        sectors={activeSectors}
-                        allStocks={data.stocks}
-                        onSectorClick={s => setActiveSector(s)}
-                      />
-                    )}
-                  </>
-                )}
-              </div>
             )}
 
             {activeTab === '基本面' && (

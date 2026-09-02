@@ -3,7 +3,9 @@ import { useState, useEffect, useMemo } from 'react'
 import type { StockRow, StockData } from '@/lib/types'
 import ConceptTags from '@/components/shared/ConceptTags'
 import { useWatchlist } from '@/lib/watchlist'
-import { useStockFilter, type FilterId } from '@/lib/stockFilter'
+import { useStockFilter, CONSOLIDATION_FIELDS, BARS_FILTER_IDS, type FilterId } from '@/lib/stockFilter'
+import { fetchOHLCSnapshot } from '@/lib/fetchStockOHLC'
+import type { OHLCSnapshot } from '@/lib/types'
 
 /**
  * 個股列表共用表格（2026-07-12）——個股清單（StockTable）與泡泡面板（SectorPanel）
@@ -52,7 +54,29 @@ export default function StockRowsTable({
   const [filterOpen, setFilterOpen] = useState(false)
   const filter = useStockFilter()
 
-  const filteredRows = useMemo(() => filter.filterRows(rows), [filter, rows])
+  // AC-CS-1／AC-VOL-2：整理平台與量能條件要吃 ohlc.json（1.4MB），勾選了才抓。
+  // 抓失敗就把這兩個條件取消勾選，否則畫面會一直卡在「載入中、不套用」的狀態
+  const [bars, setBars] = useState<OHLCSnapshot['bars'] | null>(null)
+  const [barsLoading, setBarsLoading] = useState(false)
+  const [barsError, setBarsError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!filter.needsBars || bars || barsLoading) return
+    setBarsLoading(true)
+    setBarsError(null)
+    fetchOHLCSnapshot()
+      .then(snap => setBars(snap.bars))
+      .catch(e => {
+        setBarsError(e.message ?? '載入失敗')
+        BARS_FILTER_IDS.forEach(id => { if (filter.state.enabled[id]) filter.toggle(id) })
+      })
+      .finally(() => setBarsLoading(false))
+  }, [filter, bars, barsLoading])
+
+  const filteredRows = useMemo(
+    () => filter.filterRows(rows, bars ?? undefined),
+    [filter, rows, bars],
+  )
 
   const sorted = useMemo(() => {
     const val = (r: StockRow) => {
@@ -79,6 +103,8 @@ export default function StockRowsTable({
         onToggleOpen={() => setFilterOpen(o => !o)}
         filter={filter}
         matchedCount={filteredRows.length}
+        barsLoading={barsLoading}
+        barsError={barsError}
       />
       <table className="w-full text-xs border-collapse" style={{ minWidth: 760 }}>
         <thead>
@@ -174,14 +200,17 @@ interface FilterPanelProps {
   onToggleOpen: () => void
   filter: ReturnType<typeof useStockFilter>
   matchedCount: number
+  barsLoading: boolean
+  barsError: string | null
 }
 
-function StockFilterPanel({ open, onToggleOpen, filter, matchedCount }: FilterPanelProps) {
-  const { state, defs, toggle, setValue, setRange, reset, activeCount } = filter
+function StockFilterPanel({ open, onToggleOpen, filter, matchedCount, barsLoading, barsError }: FilterPanelProps) {
+  const { state, defs, toggle, setValue, setRange, reset, activeCount, setConsolidationParam } = filter
+  const [advOpen, setAdvOpen] = useState(false)
 
   function symbol(id: FilterId) {
     const def = defs.find(d => d.id === id)!
-    return def.kind === 'lt' ? '<' : def.kind === 'gt' ? '>' : '~'
+    return def.kind === 'lt' ? '<' : def.kind === 'range' ? '~' : '>'
   }
 
   return (
@@ -200,11 +229,17 @@ function StockFilterPanel({ open, onToggleOpen, filter, matchedCount }: FilterPa
               {defs.filter(d => state.enabled[d.id]).map(d => (
                 <span key={d.id} className="bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5 text-blue-600 whitespace-nowrap">
                   {d.label}
-                  {d.kind === 'range' ? `${state.min[d.id]}~${state.max[d.id]}${d.unit}` : `${symbol(d.id)}${state.value[d.id]}${d.unit}`}
+                  {d.kind === 'pattern'
+                    ? `（${state.consolidation.days}日）`
+                    : d.kind === 'range'
+                      ? `${state.min[d.id]}~${state.max[d.id]}${d.unit}`
+                      : `${symbol(d.id)}${state.value[d.id]}${d.unit}`}
                 </span>
               ))}
             </div>
             <span className="text-slate-400 whitespace-nowrap">篩選後 {matchedCount} 檔</span>
+            {barsLoading && <span className="text-amber-500 whitespace-nowrap">K 線資料載入中…（尚未套用）</span>}
+            {barsError && <span className="text-red-500 whitespace-nowrap">K 線資料載入失敗，已取消該條件</span>}
             <button onClick={reset} className="text-slate-400 hover:text-slate-600 underline whitespace-nowrap">一鍵清除</button>
           </>
         )}
@@ -212,7 +247,52 @@ function StockFilterPanel({ open, onToggleOpen, filter, matchedCount }: FilterPa
 
       {open && (
         <div className="mt-2 flex flex-col gap-2">
-          {defs.map(def => (
+          {defs.map(def => def.kind === 'pattern' ? (
+            <div key={def.id} className="flex flex-col gap-1.5">
+              <label className="flex items-center gap-2 text-slate-600">
+                <input type="checkbox" checked={state.enabled[def.id]} onChange={() => toggle(def.id)} />
+                <span className="w-24 shrink-0">{def.label}</span>
+                <span className="text-[10px] text-slate-400">前幾日窄幅整理、量能平穩，當日放量或連兩日量遞增</span>
+              </label>
+
+              {state.enabled[def.id] && (
+                <div className="ml-6 flex flex-col gap-1.5">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    {CONSOLIDATION_FIELDS.filter(f => !f.advanced).map(f => (
+                      <span key={f.key} className="flex items-center gap-1 text-slate-500">
+                        <span className="text-[11px]">{f.label}</span>
+                        <NumberField
+                          value={state.consolidation[f.key]}
+                          onCommit={v => setConsolidationParam(f.key, v)}
+                        />
+                        <span className="text-[11px]">{f.unit}</span>
+                      </span>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setAdvOpen(o => !o)}
+                    className="self-start text-[11px] text-blue-500 hover:text-blue-600"
+                  >
+                    進階參數 {advOpen ? '▲' : '▼'}
+                  </button>
+                  {advOpen && (
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      {CONSOLIDATION_FIELDS.filter(f => f.advanced).map(f => (
+                        <span key={f.key} className="flex items-center gap-1 text-slate-500">
+                          <span className="text-[11px]">{f.label}</span>
+                          <NumberField
+                            value={state.consolidation[f.key]}
+                            onCommit={v => setConsolidationParam(f.key, v)}
+                          />
+                          <span className="text-[11px]">{f.unit}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
             <label key={def.id} className="flex items-center gap-2 text-slate-600">
               <input
                 type="checkbox"

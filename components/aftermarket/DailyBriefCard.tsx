@@ -7,7 +7,7 @@ interface Props {
 }
 
 const QUADRANT_LABEL: [keyof DailyBriefFacts['quadrantCounts'], string][] = [
-  ['TR', '漲潮'], ['TL', '觀望'], ['BL', '退潮'], ['BR', '輪動'],
+  ['TR', '流入加速'], ['TL', '流出放緩'], ['BL', '流出加速'], ['BR', '流入放緩'],
 ]
 
 // P2-4：盤後總結可折疊卡片。summary 由 n8n 呼叫 OpenAI 寫回，pipeline 剛跑完可能還是 null
