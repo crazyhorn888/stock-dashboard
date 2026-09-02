@@ -44,7 +44,7 @@ export default function SectorRanking({ sectors, allStocks, onSectorClick }: Pro
   return (
     <div>
       <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100">
-        <span className="text-[11px] text-slate-400">近 5 日法人平均買賣超（億/日）・點列看個股</span>
+        <span className="text-[11px] text-slate-400">近 5 日法人買賣超總額（億）・點列看個股</span>
         <button
           onClick={() => setDir(d => (d === 'desc' ? 'asc' : 'desc'))}
           className="text-[11px] text-blue-600 font-semibold px-2 py-0.5 rounded hover:bg-blue-50"

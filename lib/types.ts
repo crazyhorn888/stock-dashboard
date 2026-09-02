@@ -209,10 +209,11 @@ export interface SectorStock {
 
 export interface SectorBubble {
   sectorName: string  // 類股名稱（e.g., 電子工業）
-  x: number          // 近5日三大法人均淨買超（億元/日，正=買超，P1-3 起）
-  y: number          // 加速指標 = (近5日均值/近20日均值) - 1
-  size: number       // 近5日買賣均金額（億元/日），控制泡泡半徑
-  trail?: { x: number; y: number }[]  // 歷史位置（oldest first），最多5筆
+  x: number          // 近5日三大法人淨買超總額（億元，正=買超）
+  y: number          // 資金加速度（億元/日）= 近5日均淨買超 − 近20日均淨買超
+  size: number       // 近20日三大法人買賣總額（買+賣，億元，滾動視窗），控制泡泡半徑
+  // 歷史位置（oldest first），最多5筆；size 逐點重算，回放時泡泡會跟著漲縮
+  trail?: { x: number; y: number; size: number }[]
   stocks: SectorStock[]
 }
 

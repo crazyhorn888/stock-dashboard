@@ -8,7 +8,6 @@ export function calcSectors(
   if (!sectorHistory || sectorHistory.length === 0) return []
   matchFn ??= (s, name) => s.sector === name || s.industry === name
 
-  const days5  = sectorHistory.slice(0, Math.min(5,  sectorHistory.length))
   const days20 = sectorHistory.slice(0, Math.min(20, sectorHistory.length))
 
   const sectorNames = [...new Set(days20.flatMap(d => d.rows.map(r => r.name)))]
@@ -19,17 +18,20 @@ export function calcSectors(
     const get = (arr: SectorDayData[], field: 'net' | 'buySell') =>
       arr.reduce((s, d) => s + (d.rows.find(r => r.name === name)?.[field] ?? 0), 0)
 
-    const net5  = get(days5,  'net')
-    const net20 = get(days20, 'net')
-    const buy5  = get(days5,  'buySell')
+    // 第 k 天（k=0 今日）往前的滾動視窗座標；P1-3 起 rows 內數值已是億元
+    // X＝近5日淨買超總額（億）、Y＝加速度（億/日）＝5日均−20日均、size＝近20日買賣總額（買+賣，億）
+    const pointAt = (k: number) => {
+      const w5  = sectorHistory.slice(k, k + 5)
+      const w20 = sectorHistory.slice(k, k + 20)
+      const net5 = get(w5, 'net')
+      return {
+        x:    net5,
+        y:    (net5 / w5.length) - (get(w20, 'net') / w20.length),
+        size: get(w20, 'buySell'),
+      }
+    }
 
-    const avg5  = net5  / days5.length
-    const avg20 = net20 / days20.length
-
-    // P1-3 起 rows 內數值已是億元，直接使用（不再 /1000 換千張）
-    const x    = avg5
-    const y    = avg20 !== 0 ? (avg5 / Math.abs(avg20)) - (avg20 > 0 ? 1 : -1) : 0
-    const size = Math.abs(buy5 / days5.length)
+    const { x, y, size } = pointAt(0)
 
     // 今日 T86 個股 map（只有 frame 0 有意義；歷史 frame 顯示 0）
     const todayRow  = sectorHistory[0]?.rows.find(r => r.name === name)
@@ -68,21 +70,10 @@ export function calcSectors(
           }))
           .sort((a, b) => b.netBuy - a.netBuy)
 
-    // 歷史軌跡：最多 5 個往前位置（每個需要 20 天資料）
-    const trail: { x: number; y: number }[] = []
+    // 歷史軌跡：最多 5 個往前位置（每個需要 20 天資料），與今日同一組公式
+    const trail: { x: number; y: number; size: number }[] = []
     const maxTrail = Math.min(5, sectorHistory.length - 20)
-    for (let k = 1; k <= maxTrail; k++) {
-      const s5  = sectorHistory.slice(k, k + 5)
-      const s20 = sectorHistory.slice(k, k + 20)
-      const n5  = s5.reduce((s, d)  => s + (d.rows.find(r => r.name === name)?.net ?? 0), 0)
-      const n20 = s20.reduce((s, d) => s + (d.rows.find(r => r.name === name)?.net ?? 0), 0)
-      const a5  = n5 / s5.length
-      const a20 = n20 / s20.length
-      trail.unshift({
-        x: a5,
-        y: a20 !== 0 ? (a5 / Math.abs(a20)) - (a20 > 0 ? 1 : -1) : 0,
-      })
-    }
+    for (let k = 1; k <= maxTrail; k++) trail.unshift(pointAt(k))
 
     bubbles.push({ sectorName: name, x, y, size, trail, stocks: finalStocks })
   }

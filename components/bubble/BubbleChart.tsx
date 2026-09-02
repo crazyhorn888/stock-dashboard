@@ -28,10 +28,10 @@ const PAD = { top: 28, right: 16, bottom: 28, left: 20 }
 const CX = PAD.left + (W - PAD.left - PAD.right) / 2
 const CY = PAD.top  + (H - PAD.top  - PAD.bottom) / 2
 
-// P1-4：X 軸 symlog 轉換（linthresh = 1 億）。
+// P1-4：symlog 轉換（linthresh = 1 億）。X（近5日淨買超總額）與 Y（加速度）共用。
 // 板塊資金量級差距上百倍，線性刻度會把小板塊全部擠在原點附近；
 // symlog 在 ±1 億內近似線性、之外按 10 倍壓縮，保留正負號與象限語意。
-function symX(v: number): number {
+function symlog(v: number): number {
   return Math.sign(v) * Math.log10(1 + Math.abs(v))
 }
 
@@ -55,6 +55,93 @@ function shortName(name: string): string {
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v))
+}
+
+// ── 回放彈簧物理（AC-BR-1）────────────────────────────────────────────────
+// a = -k(pos - target) - c·vel；k≈180、c≈18 → 阻尼比 ζ≈0.67，衝過去後回彈一次再收斂，
+// 與 650ms 的自動步進節奏搭配。位置與半徑共用同一組參數，大小變化才不會硬切。
+const SPRING_K = 180
+const SPRING_C = 18
+
+function springStep(pos: number, vel: number, target: number, dt: number): [number, number] {
+  const v = vel + (-SPRING_K * (pos - target) - SPRING_C * vel) * dt
+  const p = pos + v * dt
+  // 夠靠近就吸附，避免永遠停不下來的殘餘抖動
+  if (Math.abs(p - target) < 0.05 && Math.abs(v) < 0.05) return [target, 0]
+  return [p, v]
+}
+
+type SpringTarget = { px: number; py: number; r: number }
+
+/**
+ * 回放專用彈簧：直接寫 DOM 屬性（transform / r / 尾線終點），不走 React state，
+ * 避免 60fps 重繪整張圖（全覽有上百顆泡泡）。目標變動時叫醒迴圈，收斂後自動停止。
+ */
+function useReplaySpring(targets: Record<string, SpringTarget>, active: boolean) {
+  const groups = useRef<Record<string, SVGGElement>>({})
+  const lines  = useRef<Record<string, SVGLineElement>>({})
+  const states = useRef<Record<string, { px: number; py: number; r: number; vx: number; vy: number; vr: number }>>({})
+  const targetRef = useRef(targets)
+  targetRef.current = targets
+  const rafRef = useRef<number | null>(null)
+
+  // 目標簽名：位置/半徑一變就重新啟動迴圈
+  const sig = Object.entries(targets)
+    .map(([k, t]) => `${k}:${t.px.toFixed(1)},${t.py.toFixed(1)},${t.r.toFixed(1)}`)
+    .join('|')
+
+  // 首次掛載的節點直接就定位（不從 0,0 飛入）；重新掛載時保留現有動畫狀態
+  function register(key: string, g: SVGGElement | null) {
+    if (!g) { delete groups.current[key]; return }
+    groups.current[key] = g
+    const t = targetRef.current[key]
+    if (!t) return
+    // 已在動畫中 → 沿用目前狀態；首次出現 → 直接就定位（不從 0,0 飛入）。
+    // 兩種情況都要寫回 DOM：<g>/<circle> 沒有 transform/r prop，重新掛載時屬性是空的
+    const s = states.current[key] ?? (states.current[key] = { px: t.px, py: t.py, r: t.r, vx: 0, vy: 0, vr: 0 })
+    g.setAttribute('transform', `translate(${s.px} ${s.py})`)
+    g.querySelector('circle')?.setAttribute('r', String(Math.max(0.5, s.r)))
+  }
+
+  // 軌跡最後一段：終點跟著泡泡一起跑（AC-BR-2）
+  function registerLine(key: string, line: SVGLineElement | null) {
+    if (line) lines.current[key] = line
+    else delete lines.current[key]
+  }
+
+  useEffect(() => {
+    if (!active) { states.current = {}; return }
+    let last = performance.now()
+    const tick = (now: number) => {
+      const dt = Math.min(0.032, (now - last) / 1000)  // 分頁切回來時 dt 會爆大，夾住避免彈飛
+      last = now
+      let moving = false
+      for (const [key, t] of Object.entries(targetRef.current)) {
+        const s = states.current[key] ?? (states.current[key] = { px: t.px, py: t.py, r: t.r, vx: 0, vy: 0, vr: 0 })
+        const [px, vx] = springStep(s.px, s.vx, t.px, dt)
+        const [py, vy] = springStep(s.py, s.vy, t.py, dt)
+        const [r,  vr] = springStep(s.r,  s.vr, t.r,  dt)
+        Object.assign(s, { px, py, r, vx, vy, vr })
+        if (vx !== 0 || vy !== 0 || vr !== 0) moving = true
+
+        const g = groups.current[key]
+        if (g) {
+          g.setAttribute('transform', `translate(${px} ${py})`)
+          g.querySelector('circle')?.setAttribute('r', String(Math.max(0.5, r)))
+        }
+        const line = lines.current[key]
+        if (line) {
+          line.setAttribute('x2', String(px))
+          line.setAttribute('y2', String(py))
+        }
+      }
+      rafRef.current = moving ? requestAnimationFrame(tick) : null
+    }
+    rafRef.current = requestAnimationFrame(tick)
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); rafRef.current = null }
+  }, [sig, active])
+
+  return { register, registerLine }
 }
 
 function toSVG(
@@ -281,22 +368,23 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
   // zoom 模式用可見 sectors 的 range，讓泡泡充分展開；全覽用全部 sectors
   const xRange = useMemo<[number, number]>(() => {
     const src = zoom ? visibleSectors : activeSectors
-    // symlog 空間中的對稱範圍（見 symX）
-    const absMax = Math.max(0.5, ...src.map(s => Math.abs(symX(s.x))))
+    // symlog 空間中的對稱範圍（見 symlog）
+    const absMax = Math.max(0.5, ...src.map(s => Math.abs(symlog(s.x))))
     return [-absMax * 1.1, absMax * 1.1]
   }, [activeSectors, visibleSectors, zoom])
 
+  // Y 改為加速度（億/日），量級同樣跨百倍，跟 X 一樣走 symlog
   const yRange = useMemo<[number, number]>(() => {
     const src = zoom ? visibleSectors : activeSectors
-    const absMax = Math.max(0.01, ...src.map(s => Math.abs(s.y)))
-    return [-absMax * 1.2, absMax * 1.2]
+    const absMax = Math.max(0.3, ...src.map(s => Math.abs(symlog(s.y))))
+    return [-absMax * 1.15, absMax * 1.15]
   }, [activeSectors, visibleSectors, zoom])
 
   // 預先計算 SVG 位置並解決重疊；collision 後再次 clamp 避免泡泡溢出 SVG
   const resolvedBubbles = useMemo(() => {
     const sorted = [...visibleSectors].sort((a, b) => a.size - b.size)
     const raw = sorted.map(s => {
-      const { px, py } = toSVG(symX(s.x), s.y, zoom, xRange, yRange)
+      const { px, py } = toSVG(symlog(s.x), symlog(s.y), zoom, xRange, yRange)
       const r = bubbleRadius(s.size, maxSize)
       return { s, px: clamp(px, PAD.left + r + 1, W - PAD.right - r - 1), py: clamp(py, PAD.top + r + 1, H - PAD.bottom - r - 1), r }
     })
@@ -310,6 +398,10 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
 
   const zeroSVG = toSVG(0, 0, zoom, xRange, yRange)
 
+  // AC-BX-4：回放時每一幀的泡泡半徑用該幀的 size（近20日買賣總額是滾動視窗，會漲也會縮）；
+  // maxSize 固定用今日全體最大值當基準，不逐幀重新正規化，否則相對大小會失真
+  const frameRadius = (size: number) => bubbleRadius(size, maxSize)
+
   // ── 聚焦回放 ──────────────────────────────────────────────
   const focusedBubble = focused
     ? resolvedBubbles.find(b => b.s.sectorName === focused) ?? null
@@ -321,12 +413,16 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focused])
 
-  // 回放路徑：trail（oldest first）+ 今日 collision 後位置
+  // 回放路徑：trail（oldest first）+ 今日 collision 後位置；每點帶自己的半徑
   const focusedPath = useMemo(() => {
     if (!focusedBubble) return []
-    const pts = (focusedBubble.s.trail ?? []).map(p => toSVG(symX(p.x), p.y, zoom, xRange, yRange))
-    return [...pts, { px: focusedBubble.rpx, py: focusedBubble.rpy }]
-  }, [focusedBubble, zoom, xRange, yRange])
+    const pts = (focusedBubble.s.trail ?? []).map(p => ({
+      ...toSVG(symlog(p.x), symlog(p.y), zoom, xRange, yRange),
+      r: frameRadius(p.size),
+    }))
+    return [...pts, { px: focusedBubble.rpx, py: focusedBubble.rpy, r: focusedBubble.r }]
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedBubble, zoom, xRange, yRange, maxSize])
 
   const trailLen = focusedPath.length - 1
 
@@ -334,11 +430,18 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
   const ghostPaths = useMemo(() => {
     if (!ghostBubbles?.length) return []
     return ghostBubbles.map(g => {
-      const pts = (g.trail ?? []).map(p => toSVG(symX(p.x), p.y, zoom, xRange, yRange))
-      const todayPt = toSVG(symX(g.x), g.y, zoom, xRange, yRange)
+      const pts = (g.trail ?? []).map(p => ({
+        ...toSVG(symlog(p.x), symlog(p.y), zoom, xRange, yRange),
+        r: frameRadius(p.size),
+      }))
+      const todayPt = {
+        ...toSVG(symlog(g.x), symlog(g.y), zoom, xRange, yRange),
+        r: frameRadius(g.size),
+      }
       return { bubble: g, path: [...pts, todayPt] }
     })
-  }, [ghostBubbles, zoom, xRange, yRange])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ghostBubbles, zoom, xRange, yRange, maxSize])
 
   // 自動步進（oldest → today）
   useEffect(() => {
@@ -372,6 +475,24 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
   const replayDate = replayStep !== null && frameDates
     ? frameDates[trailLen - replayStep]?.slice(5).replace('-', '/')
     : null
+
+  // 回放中該幀的座標值（資訊卡數字要跟著泡泡位置走，不然會對不上）
+  const frameStats = replayStep !== null && focusedBubble && replayStep < trailLen
+    ? focusedBubble.s.trail?.[replayStep] ?? focusedBubble.s
+    : focusedBubble?.s ?? null
+
+  // 回放彈簧目標：主角 + ghost 陪跑泡泡共用同一組 rAF
+  const springTargets = useMemo(() => {
+    const t: Record<string, SpringTarget> = {}
+    if (replayStep === null || !focusedBubble || focusedPath.length === 0) return t
+    t.focus = focusedPath[Math.min(replayStep, focusedPath.length - 1)]
+    for (const { bubble, path } of ghostPaths) {
+      t[`ghost:${bubble.sectorName}`] = path[Math.min(replayStep, path.length - 1)]
+    }
+    return t
+  }, [replayStep, focusedBubble, focusedPath, ghostPaths])
+
+  const spring = useReplaySpring(springTargets, replayStep !== null)
 
   return (
     <div className="relative select-none">
@@ -487,14 +608,15 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
         />
 
         {/* Axis labels：軸的意思＋單位，放在軸兩端對應位置（不用 rotate，避免 pivot 與文字座標不一致跑位） */}
-        <text x={W - PAD.right - 2} y={H - 6}  fontSize={8} fill="#94a3b8" textAnchor="end">X：買超（億/日）→</text>
-        <text x={PAD.left + 2}       y={H - 6}  fontSize={8} fill="#94a3b8" textAnchor="start">← 賣超</text>
-        <text x={PAD.left + 2}       y={PAD.top + 8}  fontSize={8} fill="#94a3b8" textAnchor="start">↑ Y：加速指標(%)</text>
+        <text x={W - PAD.right - 2} y={H - 6}  fontSize={8} fill="#94a3b8" textAnchor="end">資金流入（億）→</text>
+        <text x={PAD.left + 2}       y={H - 6}  fontSize={8} fill="#94a3b8" textAnchor="start">← 資金流出（億）</text>
+        <text x={PAD.left + 2}       y={PAD.top + 8}  fontSize={8} fill="#94a3b8" textAnchor="start">↑ 力道加速（億/天）</text>
         <text x={PAD.left + 2}       y={H - PAD.bottom - 4} fontSize={8} fill="#94a3b8" textAnchor="start">↓ 放緩</text>
 
-        {/* X 軸 symlog 刻度（億/日）：只渲染落在目前範圍內的刻度 */}
+        {/* X 軸 symlog 刻度（近5日淨買超總額，億）：只渲染落在目前範圍內的刻度。
+            改總額後量級放大 5 倍（2026-09-01 實測半導體業 +322 億），刻度需延伸到 ±500 */}
         {[-500, -200, -100, -50, -20, -5, 5, 20, 50, 100, 200, 500].map(v => {
-          const tx = symX(v)
+          const tx = symlog(v)
           if (tx < xRange[0] || tx > xRange[1]) return null
           const { px } = toSVG(tx, 0, zoom, xRange, yRange)
           if (px < PAD.left + 6 || px > W - PAD.right - 6) return null
@@ -506,16 +628,16 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
           )
         })}
 
-        {/* Y 軸刻度（加速指標，%）：線性軸，只渲染落在目前範圍內的刻度 */}
-        {[-100, -50, -20, -10, 10, 20, 50, 100].map(pct => {
-          const v = pct / 100
-          if (v < yRange[0] || v > yRange[1]) return null
-          const { py } = toSVG(0, v, zoom, xRange, yRange)
+        {/* Y 軸 symlog 刻度（加速度，億/天）：只渲染落在目前範圍內的刻度 */}
+        {[-50, -20, -5, 5, 20, 50].map(v => {
+          const ty = symlog(v)
+          if (ty < yRange[0] || ty > yRange[1]) return null
+          const { py } = toSVG(0, ty, zoom, xRange, yRange)
           if (py < PAD.top + 6 || py > H - PAD.bottom - 6) return null
           return (
-            <g key={`ytick-${pct}`}>
+            <g key={`ytick-${v}`}>
               <line x1={zeroSVG.px - 2} y1={py} x2={zeroSVG.px + 2} y2={py} stroke="#cbd5e1" strokeWidth={0.6} />
-              <text x={zeroSVG.px + 4} y={py + 2} fontSize={6} fill="#b6c2d1" textAnchor="start">{pct > 0 ? `+${pct}%` : `${pct}%`}</text>
+              <text x={zeroSVG.px + 4} y={py + 2} fontSize={6} fill="#b6c2d1" textAnchor="start">{v > 0 ? `+${v}` : v}</text>
             </g>
           )
         })}
@@ -593,21 +715,24 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
 
         {/* P2-5 Ghost：同概念陪跑泡泡，半透明、不可互動，同步 replayStep 一起動 */}
         {focusedBubble && replayStep !== null && ghostPaths.map(({ bubble: g, path }) => {
-          const gr = bubbleRadius(g.size, maxSize)
-          const pos = path[Math.min(replayStep, path.length - 1)]
+          const step = Math.min(replayStep, path.length - 1)
+          const gr  = path[step].r
+          const key = `ghost:${g.sectorName}`
+          const lastSeg = Math.max(replayStep, 0) - 1   // 最後一段終點交給彈簧跟著泡泡跑
           return (
             <g key={g.sectorName} style={{ pointerEvents: 'none' }} opacity={0.35}>
               {path.slice(0, Math.max(replayStep, 0)).map((pt, i) => {
                 const next = path[i + 1]
                 return (
                   <line key={i}
+                    ref={i === lastSeg ? el => spring.registerLine(key, el) : undefined}
                     x1={pt.px} y1={pt.py} x2={next.px} y2={next.py}
                     stroke="#94a3b8" strokeWidth={1} strokeLinecap="round" opacity={0.5}
                   />
                 )
               })}
-              <g style={{ transform: `translate(${pos.px}px, ${pos.py}px)`, transition: 'transform 600ms ease-in-out' }}>
-                <circle r={gr} fill="#94a3b8" stroke="#94a3b8" strokeWidth={1} opacity={0.5} />
+              <g ref={el => spring.register(key, el)}>
+                <circle fill="#94a3b8" stroke="#94a3b8" strokeWidth={1} opacity={0.5} />
                 {gr >= 14 && (
                   <text y={3} fontSize={7} fill="#475569" textAnchor="middle" fontWeight="600">
                     {shortName(g.sectorName)}
@@ -622,7 +747,8 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
         {focusedBubble && replayStep !== null && (() => {
           const fb = focusedBubble
           const q = QUADRANTS.find(q => q.id === quadrantOf(fb.s.x, fb.s.y))!
-          const pos = focusedPath[Math.min(replayStep, focusedPath.length - 1)]
+          const stepR = focusedPath[Math.min(replayStep, focusedPath.length - 1)].r
+          const lastSeg = Math.max(replayStep, 0) - 1   // 最後一段終點交給彈簧跟著泡泡跑
           return (
             <g style={{ pointerEvents: 'none' }}>
               {focusedPath.slice(0, Math.max(replayStep, 0)).map((pt, i) => {
@@ -631,6 +757,7 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
                 return (
                   <g key={i}>
                     <line
+                      ref={i === lastSeg ? el => spring.registerLine('focus', el) : undefined}
                       x1={pt.px} y1={pt.py} x2={next.px} y2={next.py}
                       stroke={q.color} strokeWidth={1.8} strokeLinecap="round"
                       opacity={0.25 + ratio * 0.45}
@@ -639,10 +766,10 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
                   </g>
                 )
               })}
-              <g style={{ transform: `translate(${pos.px}px, ${pos.py}px)`, transition: 'transform 600ms ease-in-out' }}>
-                <circle r={fb.r} fill={q.color} stroke={q.color} strokeWidth={2.5} opacity={0.95} />
-                {fb.r >= 16 && (
-                  <text y={3} fontSize={fb.r >= 22 ? 8.5 : 7.5} fill="#fff" textAnchor="middle" fontWeight="700">
+              <g ref={el => spring.register('focus', el)}>
+                <circle fill={q.color} stroke={q.color} strokeWidth={2.5} opacity={0.95} />
+                {stepR >= 16 && (
+                  <text y={3} fontSize={stepR >= 22 ? 8.5 : 7.5} fill="#fff" textAnchor="middle" fontWeight="700">
                     {shortName(fb.s.sectorName)}
                   </text>
                 )}
@@ -669,7 +796,9 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
                 )}
               </div>
               <p className="text-[10px] text-slate-400 whitespace-nowrap">
-                淨買超 {fb.s.x >= 0 ? '+' : ''}{fb.s.x.toFixed(1)} 億/日 · 加速 {fb.s.y >= 0 ? '+' : ''}{(fb.s.y * 100).toFixed(1)}%
+                近5日法人淨買超 {(frameStats?.x ?? 0) >= 0 ? '+' : ''}{(frameStats?.x ?? 0).toFixed(1)} 億
+                {' · '}加速 {(frameStats?.y ?? 0) >= 0 ? '+' : ''}{(frameStats?.y ?? 0).toFixed(1)} 億/天
+                {' · '}20日買賣 {(frameStats?.size ?? 0).toFixed(0)} 億
               </p>
             </div>
             <button

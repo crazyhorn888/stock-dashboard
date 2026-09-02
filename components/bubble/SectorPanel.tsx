@@ -85,8 +85,8 @@ export default function SectorPanel({ sector, onClose, rowsByCode, onStockClick,
               <span className={`text-xs font-semibold ${q.color}`}>{q.label}</span>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              法人淨買超 {sign(sector.x)}{sector.x.toFixed(1)} 億/日 ·
-              加速指標 {sign(sector.y)}{(sector.y * 100).toFixed(1)}%
+              近5日法人淨買超 {sign(sector.x)}{sector.x.toFixed(1)} 億 ·
+              加速 {sign(sector.y)}{sector.y.toFixed(1)} 億/天
             </p>
           </div>
           <button onClick={onClose} className="text-slate-400 text-lg leading-none px-1 pt-1">✕</button>
