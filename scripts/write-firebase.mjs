@@ -161,15 +161,51 @@ async function main() {
   // 1c. 上傳 meta.json（~1KB）：Guard 檢查與前端鮮度標示用，避免為了看日期戳下載整包 latest.json
   const latestWithMargin = snapshot.indexHistory?.find(r => r.chips?.margin_amount != null)
   const latestWithChips  = snapshot.indexHistory?.find(r => r.chips?.inst_total != null)
+
+  // AC-FR-1：逐項「最後更新時間」。每個資料集只有在「資料日期真的往前走」時才蓋新時間戳，
+  // 否則沿用舊值——否則每次 run 都會把全部時間戳刷成現在，看不出哪一項其實卡住了。
+  // 讀舊 meta 失敗（首次上傳／網路問題）→ prevMeta = null，所有有資料的項目都記為現在。
+  let prevMeta = null
+  try {
+    const res = await fetch(`${process.env.SUPABASE_URL}/storage/v1/object/public/snapshots/meta.json`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    })
+    if (res.ok) prevMeta = await res.json()
+  } catch (e) {
+    console.warn('[write] 讀取舊 meta.json 失敗，逐項時間戳重新起算：', e.message)
+  }
+
+  const nowISO = new Date().toISOString()
+  const stampOf = (dateKey, date) => {
+    if (!date) return null
+    const prevDate  = prevMeta?.[dateKey] ?? null
+    const stampKey  = dateKey.replace(/Date$/, 'UpdatedAt')
+    const prevStamp = prevMeta?.[stampKey] ?? null
+    // 日期沒前進且已有舊時間戳 → 保留；其餘（前進／首次／缺時間戳）→ 記為現在
+    return (prevDate === date && prevStamp) ? prevStamp : nowISO
+  }
+
+  const dates = {
+    stocksDate:  snapshot.stocksDate ?? null,
+    indexDate:   snapshot.indexHistory?.[0]?.date ?? null,
+    marginDate:  latestWithMargin?.date ?? null,
+    chipsDate:   latestWithChips?.date ?? null,
+    sectorDate:  snapshot.sectorHistory?.[0]?.date ?? null,
+    conceptDate: snapshot.conceptHistory?.[0]?.date ?? null,
+  }
+
   const meta = {
     updatedAt:        snapshot.updatedAt,
-    stocksDate:       snapshot.stocksDate ?? null,
-    indexDate:        snapshot.indexHistory?.[0]?.date ?? null,
-    marginDate:       latestWithMargin?.date ?? null,
-    chipsDate:        latestWithChips?.date ?? null,
-    sectorDate:       snapshot.sectorHistory?.[0]?.date ?? null,
+    ...dates,
+    // 逐項時間戳（stocksUpdatedAt / indexUpdatedAt / ...），後台資料鮮度區塊用
+    ...Object.fromEntries(
+      Object.entries(dates).map(([k, v]) => [k.replace(/Date$/, 'UpdatedAt'), stampOf(k, v)]),
+    ),
     sectorHistoryLen: snapshot.sectorHistory?.length ?? 0,
     stockCount:       snapshot.stocks.length,
+    // 資料量健康指標：抓取殘缺時這些數字會先掉下來
+    ohlcCount:        Object.keys(ohclBars).length,
+    volCount:         Object.values(ohclBars).filter(b => (b.v?.length ?? 0) > 0).length,
   }
   await uploadToSupabase('meta.json', JSON.stringify(meta))
   console.log('[write] meta.json 上傳完成')

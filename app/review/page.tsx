@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import PendingTab from './PendingTab'
 import EditTab from './EditTab'
 import DailyBriefCard from '@/components/aftermarket/DailyBriefCard'
+import FreshnessPanel from '@/components/review/FreshnessPanel'
 import type { DailyBriefFacts } from '@/lib/types'
 
 const STORAGE_KEY = 'review_password'
@@ -163,6 +164,8 @@ export default function ReviewPage() {
             {forceRunMsg}
           </p>
         )}
+
+        <FreshnessPanel />
 
         <DailyBriefCard brief={brief} />
 

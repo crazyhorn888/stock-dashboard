@@ -372,5 +372,19 @@
   "components/stock/StockKChart.tsx::isoWeekKey": [
     "週線分組全程用 UTC 解析與運算（同 lib/calcMA.ts::resampleWeekly）",
     "2026-09-03 修復：原本 new Date(dateISO) 解析成 UTC 午夜、卻用 getDay()/getDate() 等本地方法取值，使用者在美洲（UTC-7）會整個位移一天，週一被併進上一週。已用 4 個時區驗證輸出一致"
+  ],
+  "scripts/write-firebase.mjs::metaTimestamps": [
+    "AC-FR-1 逐項時間戳：寫 meta.json 前先讀 Supabase 上的舊 meta，只有『該資料集的日期真的前進』才蓋新時間戳，否則沿用舊值——每次都刷新的話就看不出哪一項卡住了",
+    "新增欄位：stocksUpdatedAt / indexUpdatedAt / marginUpdatedAt / chipsUpdatedAt / sectorUpdatedAt / conceptUpdatedAt、conceptDate、ohlcCount、volCount",
+    "讀舊 meta 失敗（首次上傳／網路問題）→ prevMeta=null，所有有資料的項目記為現在，不會中斷 pipeline"
+  ],
+  "components/review/FreshnessPanel.tsx": [
+    "AC-FR-2 後台資料鮮度區塊：直接讀 meta.json（~1KB），列六項的資料日期／最後更新／落後天數／狀態燈（綠=最新、橘=落後1天、紅=落後≥2天）＋ 資料量健康指標",
+    "基準日走 lib/tradingDay.ts（13:30 收盤規則 + 週末判斷）；國定假日不查 holiday-status，後台自用可接受顯示落後 1 天",
+    "逐項時間戳要等新版 write-firebase.mjs 跑過一次才會有值，之前顯示「—」"
+  ],
+  "lib/tradingDay.ts": [
+    "台股交易日／鮮度基準的共用判斷，一律以 Asia/Taipei 計算（使用者出國時手機時區會變）",
+    "freshnessBaseDate：休市→最近交易日；13:30 後→今日；13:30 前→上一個交易日。FreshnessBar（有 holiday prop 的完整版）與 FreshnessPanel（後台簡化版）都應遵循同一規則"
   ]
 }
