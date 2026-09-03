@@ -62,16 +62,16 @@ function clamp(v: number, lo: number, hi: number) {
 
 // ── 回放彈簧物理（AC-BR-1）────────────────────────────────────────────────
 // a = -k(pos - target) - c·vel。重點是「看得到移動過程」而不是彈得多大：
-// k=40 / c=13 → ζ≈1.03（臨界阻尼，無回彈，會確實走到定位）。
-// 走九成 650ms、完全到位 1167ms，配 1350ms 的步進 → 每站約 180ms 的頓點。
-// 移動佔一幀的 86%（第一版 k=260 只佔 18%，所以看起來是跳一下再乾等）。
+// k=24 / c=7.4 → ζ≈0.76，末端輕輕過頭 2% 再收回來（要多一點回彈就再降 c）。
+// 移動到定位約 1533ms，配 1620ms 的步進 → 每站約 90ms 的短頓點。
+// 移動佔一幀的 95%（第一版 k=260 只佔 18%，所以看起來是跳一下再乾等）。
 // （k=260 時 117ms 就到位，650ms 的步進裡有 530ms 是靜止的，看起來就是瞬間跳過去再抖一下）
 // 位置與半徑共用同一組參數，大小變化才不會硬切。
-const SPRING_K = 40
-const SPRING_C = 13
+const SPRING_K = 24
+const SPRING_C = 7.4
 
-// 每一幀停留時間＝走到定位（約 1167ms）+ 約 180ms 頓點
-const REPLAY_STEP_MS = 1350
+// 每一幀停留時間＝走到定位（約 1533ms）+ 約 90ms 頓點
+const REPLAY_STEP_MS = 1620
 
 function springStep(pos: number, vel: number, target: number, dt: number): [number, number] {
   const v = vel + (-SPRING_K * (pos - target) - SPRING_C * vel) * dt
