@@ -14,6 +14,9 @@ interface Props {
   ghostBubbles?: SectorBubble[]
   // AC-NAV-4：繪圖高度（viewBox 座標），滿版頁傳 560，預設 320
   chartHeight?: number
+  // 象限篩選改由外層的統計卡控制（受控）；沒傳就退回元件內部 state
+  zoom?: QuadrantId
+  onZoomChange?: (q: QuadrantId) => void
 }
 
 // AC-Q-1：命名對齊 Tide（流入/流出 × 加速/放緩），顏色沿用台股慣例（紅買綠賣）
@@ -586,7 +589,9 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
       {/* Toolbar */}
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex gap-1.5 flex-wrap">
-          {QUADRANTS.map(q => (
+          {/* 象限篩選按鈕：只在「非受控」時出現（自選股模式沒有統計卡可以點）。
+              板塊／概念模式由上方 QuadrantSummary 的統計卡兼任，這裡不重複放一排同名按鈕 */}
+          {!onZoomChange && QUADRANTS.map(q => (
             <button
               key={q.id}
               onClick={() => { setZoom(zoom === q.id ? null : q.id); setVb(DEFAULT_VB) }}
@@ -727,8 +732,11 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
         {/* Axis labels：軸的意思＋單位，放在軸兩端對應位置（不用 rotate，避免 pivot 與文字座標不一致跑位） */}
         <text x={W - PAD.right - 2} y={H - 6}  fontSize={8} fill="#94a3b8" textAnchor="end">資金流入（億）→</text>
         <text x={PAD.left + 2}       y={H - 6}  fontSize={8} fill="#94a3b8" textAnchor="start">← 資金流出（億）</text>
-        <text x={PAD.left + 2}       y={PAD.top + 8}  fontSize={8} fill="#94a3b8" textAnchor="start">↑ 力道加速（億/天）</text>
-        <text x={PAD.left + 2}       y={H - PAD.bottom - 4} fontSize={8} fill="#94a3b8" textAnchor="start">↓ 放緩</text>
+        {/* Y 軸說明放在繪圖區「上方」的留白（y=10），比照 X 軸放在繪圖區下方的做法。
+            原本放 PAD.top+8（=36）會跟左上象限的角落標籤（y≈41）疊在一起 */}
+        <text x={PAD.left + 2} y={10} fontSize={8} fill="#94a3b8" textAnchor="start">
+          ↑ 力道加速 ／ ↓ 放緩（億/天）
+        </text>
 
         {/* X 軸 symlog 刻度（近5日淨買超總額，億）：只渲染落在目前範圍內的刻度。
             改總額後量級放大 5 倍（2026-09-01 實測半導體業 +322 億），刻度需延伸到 ±500 */}

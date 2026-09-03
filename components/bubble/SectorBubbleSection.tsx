@@ -28,11 +28,19 @@ import type { SnapshotData, SectorBubble, StockData, StockHistoryDay, HolidaySta
 // rows 的 N 值只影響「距 N 高/低」欄位，泡泡圖本身用不到，固定 100 即可
 const ROW_N = 100
 
-export default function SectorBubbleSection({ fullHeight = false }: { fullHeight?: boolean }) {
+interface SectionProps {
+  fullHeight?: boolean
+  // 把「板塊資料日期／是否落後」往上送，讓頁面 header 右上角統一顯示（比照盤後行情／市場條件）
+  onDataStatus?: (status: { date: string | null; stale: boolean; isHoliday: boolean; holidayName?: string | null }) => void
+}
+
+export default function SectorBubbleSection({ fullHeight = false, onDataStatus }: SectionProps) {
   const [data, setData] = useState<SnapshotData>(MOCK_DATA)
   const [loading, setLoading] = useState(true)
   const [holidayStatus, setHolidayStatus] = useState<HolidayStatus | null>(null)
   const [sectorView, setSectorView] = useState<'bubble' | 'ranking'>('bubble')
+  // 象限篩選：統計卡與泡泡圖共用同一個狀態（統計卡即篩選按鈕）
+  const [quadrant, setQuadrant] = useState<'TL' | 'TR' | 'BL' | 'BR' | null>(null)
   const [sectorSource, setSectorSource] = useState<'official' | 'concept' | 'watchlist'>('official')
   const [activeSector, setActiveSector] = useState<SectorBubble | null>(null)
   const [activeStock, setActiveStock] = useState<StockData | null>(null)
@@ -151,6 +159,16 @@ export default function SectorBubbleSection({ fullHeight = false }: { fullHeight
   const sectorDataIsStale = !!sectorDataDate && sectorDataDate !== todayStr
   const isHolidayToday = holidayStatus?.date === todayStr && holidayStatus.isHoliday
 
+  useEffect(() => {
+    onDataStatus?.({
+      date: sectorDataDate,
+      stale: sectorDataIsStale,
+      isHoliday: !!isHolidayToday,
+      holidayName: holidayStatus?.name ?? null,
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sectorDataDate, sectorDataIsStale, isHolidayToday])
+
   // 聚焦回放的日期標籤：trail 最多 5 點 + 今日 = 6 個日期（newest first）
   const frameDates = useMemo(
     () => (activeSectorHistory ?? []).slice(0, 6).map(d => d.date),
@@ -171,36 +189,52 @@ export default function SectorBubbleSection({ fullHeight = false }: { fullHeight
             return t && p && p.close > 0 ? ((t.close - p.close) / p.close) * 100 : null
           })()}
           onSectorClick={s => setActiveSector(s)}
+          activeQuadrant={quadrant}
+          onQuadrantClick={id => setQuadrant(id as typeof quadrant)}
         />
       )}
 
-      {/* 官方分類 / 概念分類 / 自選股 資料來源切換（P2-1、P2-5） */}
-      <div className="flex items-center gap-1.5 px-3 pt-2 flex-wrap">
-        {([['official', '官方分類'], ['concept', '概念分類'], ['watchlist', '⭐ 自選股']] as const).map(([v, label]) => (
-          <button
-            key={v}
-            onClick={() => setSectorSource(v)}
-            className={[
-              'px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors',
-              sectorSource === v
-                ? 'bg-slate-800 text-white border-slate-800'
-                : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400',
-            ].join(' ')}
-          >
-            {label}
-          </button>
-        ))}
-        {sectorSource === 'concept' && (
-          <span className="text-[10px] text-slate-400 ml-1">一股可能屬於多個概念，資金會重複計算</span>
-        )}
-        {sectorSource !== 'watchlist' && sectorDataIsStale && sectorDataDate && (
-          <span className="text-[10px] text-amber-500 ml-1">
-            {isHolidayToday
-              ? `今日休市${holidayStatus?.name ? `（${holidayStatus.name}）` : ''}，顯示 ${sectorDataDate.slice(5).replace('-', '/')} 資料`
-              : `板塊資料（${sectorDataDate.slice(5).replace('-', '/')}）尚未更新至今日`}
-          </span>
+      {/* 一列搞定：左＝資料來源，右＝泡泡圖／排行榜圖示切換（原本各佔一列） */}
+      <div className="flex items-center justify-between gap-2 px-3 pt-2">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {([['official', '官方分類'], ['concept', '概念分類'], ['watchlist', '⭐ 自選股']] as const).map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => setSectorSource(v)}
+              className={[
+                'px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors',
+                sectorSource === v
+                  ? 'bg-slate-800 text-white border-slate-800'
+                  : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400',
+              ].join(' ')}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {sectorSource !== 'watchlist' && (
+          <div className="flex items-center rounded-md border border-slate-200 overflow-hidden shrink-0">
+            {([['bubble', '🫧', '泡泡圖'], ['ranking', '📋', '排行榜']] as const).map(([v, icon, title]) => (
+              <button
+                key={v}
+                onClick={() => setSectorView(v)}
+                title={title}
+                aria-label={title}
+                className={`px-2.5 py-1 text-[13px] leading-none transition-colors ${
+                  sectorView === v ? 'bg-blue-600' : 'bg-white hover:bg-slate-50'
+                }`}
+              >
+                <span className={sectorView === v ? '' : 'opacity-40'}>{icon}</span>
+              </button>
+            ))}
+          </div>
         )}
       </div>
+
+      {sectorSource === 'concept' && (
+        <p className="text-[10px] text-slate-400 px-3 pt-1">一股可能屬於多個概念，資金會重複計算</p>
+      )}
 
       {loading ? (
         <div className="py-14 text-center text-xs text-slate-400">資料載入中...</div>
@@ -221,34 +255,20 @@ export default function SectorBubbleSection({ fullHeight = false }: { fullHeight
             onFocusChange={setFocusedWatchlistBubble}
             ghostBubbles={ghostBubbles}
             chartHeight={chartHeight}
+            zoom={quadrant}
+            onZoomChange={q => setQuadrant(q)}
           />
         )
       ) : (
         <>
-          {/* 泡泡圖 / 排行榜 視圖切換 */}
-          <div className="flex gap-1.5 px-3 py-2">
-            {([['bubble', '🫧 泡泡圖'], ['ranking', '📋 排行榜']] as const).map(([v, label]) => (
-              <button
-                key={v}
-                onClick={() => setSectorView(v)}
-                className={[
-                  'px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors',
-                  sectorView === v
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300',
-                ].join(' ')}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
           {sectorView === 'bubble' ? (
             <BubbleChart
               sectors={activeSectors}
               onBubbleClick={s => setActiveSector(s)}
               frameDates={frameDates}
               chartHeight={chartHeight}
+              zoom={quadrant}
+              onZoomChange={q => setQuadrant(q)}
             />
           ) : (
             <SectorRanking

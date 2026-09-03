@@ -7,6 +7,9 @@ interface Props {
   todayRows?: SectorDayRow[]        // sectorHistory[0].rows（當日板塊淨買賣，億元）
   marketChangePct?: number | null   // 大盤當日漲跌%（逆勢買超判斷用）
   onSectorClick?: (sector: SectorBubble) => void  // 點清單裡的板塊名稱 → 開該板塊的 SectorPanel
+  // 統計卡兼作象限篩選：卡片即按鈕，泡泡圖工具列不再重複放一排同名按鈕
+  activeQuadrant?: string | null
+  onQuadrantClick?: (id: string | null) => void
 }
 
 // 象限判斷需與 BubbleChart 的 QUADRANTS 完全一致（AC-Q-1：命名對齊 Tide）
@@ -17,7 +20,9 @@ const QUADS = [
   { id: 'BL', label: '流出加速', desc: '賣超且賣壓加重', dot: 'bg-green-500', text: 'text-green-600', match: (x: number, y: number) => x < 0 && y < 0 },
 ] as const
 
-export default function QuadrantSummary({ sectors, todayRows, marketChangePct, onSectorClick }: Props) {
+export default function QuadrantSummary({
+  sectors, todayRows, marketChangePct, onSectorClick, activeQuadrant, onQuadrantClick,
+}: Props) {
   const [showModal, setShowModal] = useState(false)
   const counts = useMemo(
     () => QUADS.map(q => sectors.filter(s => q.match(s.x, s.y)).length),
@@ -41,16 +46,30 @@ export default function QuadrantSummary({ sectors, todayRows, marketChangePct, o
   return (
     <>
       <div className="flex items-stretch gap-1.5 px-3 py-2 overflow-x-auto scrollbar-none">
-        {QUADS.map((q, i) => (
-          <div key={q.id} className="flex-1 min-w-[72px] rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5 text-center">
-            <div className="flex items-center justify-center gap-1">
-              <span className={`w-1.5 h-1.5 rounded-full ${q.dot}`} />
-              <span className={`text-[11px] font-bold ${q.text}`}>{q.label}</span>
-              <span className={`text-sm font-extrabold ${q.text}`}>{counts[i]}</span>
-            </div>
-            <div className="text-[9px] text-slate-400 mt-0.5 whitespace-nowrap">{q.desc}</div>
-          </div>
-        ))}
+        {QUADS.map((q, i) => {
+          const active = activeQuadrant === q.id
+          return (
+            <button
+              key={q.id}
+              onClick={() => onQuadrantClick?.(active ? null : q.id)}
+              disabled={!onQuadrantClick}
+              className={[
+                'flex-1 min-w-[72px] rounded-lg border px-2 py-1.5 text-center transition-all',
+                active ? 'border-slate-400 bg-white shadow-sm ring-1 ring-slate-300' : 'border-slate-100 bg-slate-50',
+                onQuadrantClick ? 'cursor-pointer hover:border-slate-300' : '',
+              ].join(' ')}
+            >
+              <div className="flex items-center justify-center gap-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${q.dot}`} />
+                <span className={`text-[11px] font-bold ${q.text}`}>{q.label}</span>
+                <span className={`text-sm font-extrabold ${q.text}`}>{counts[i]}</span>
+              </div>
+              <div className="text-[9px] text-slate-400 mt-0.5 whitespace-nowrap">
+                {active ? '● 篩選中' : q.desc}
+              </div>
+            </button>
+          )
+        })}
         {counterTrendList != null && (
           <button
             onClick={() => setShowModal(true)}
