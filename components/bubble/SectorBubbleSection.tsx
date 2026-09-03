@@ -180,11 +180,15 @@ export default function SectorBubbleSection({ fullHeight = false, onDataStatus }
 
   return (
     <div className={`rounded-xl bg-white shadow-sm overflow-hidden ${fullHeight ? 'h-full' : ''}`}>
-      {sectorSource !== 'watchlist' && (
+      {/* 統計卡＝象限篩選入口，三種資料來源都要有（自選股模式也適用）。
+          「逆勢買超」那張卡靠 todayRows/marketChangePct 判斷，自選股模式自然不會出現；
+          只有觀察清單是空的時候才整條隱藏，避免顯示一排 0 */}
+      {(sectorSource !== 'watchlist' || watchlistCodes.length > 0) && (
         <QuadrantSummary
           sectors={activeSectors}
           todayRows={activeTodayRows}
           marketChangePct={(() => {
+            if (sectorSource === 'watchlist') return null
             const [t, p] = data.indexHistory ?? []
             return t && p && p.close > 0 ? ((t.close - p.close) / p.close) * 100 : null
           })()}
