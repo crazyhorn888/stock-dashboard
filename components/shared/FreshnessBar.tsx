@@ -55,17 +55,19 @@ export default function FreshnessBar({ data, holiday }: { data: SnapshotData; ho
       </span>
       <span className="w-px h-3 bg-slate-200 shrink-0" />
       {info.items.map(({ label, date }) => {
-        // 非交易日：全部顯示中性狀態（資料就是最近交易日的，不標更新中）
-        const fresh = info.closed ? true : date === info.today
+        // 2026-09-03 起改成直接標日期：與基準日相符＝綠、落後＝橘（原本只顯示 ✓／更新中，
+        // 看不出落後幾天）。非交易日的基準日是最近交易日，資料齊全時一樣是綠色
+        const base = info.closed ? info.refDate : info.today
+        const fresh = date != null && date === base
         return (
           <span key={label} className="flex items-center gap-0.5 text-[10px] whitespace-nowrap">
             <span className="text-slate-400">{label}</span>
             {date == null ? (
               <span className="text-slate-300 font-semibold">—</span>
-            ) : fresh ? (
-              <span className="text-blue-600 font-semibold">✓</span>
             ) : (
-              <span className="text-amber-500 font-semibold animate-pulse">更新中</span>
+              <span className={`font-semibold ${fresh ? 'text-green-600' : 'text-amber-500'}`}>
+                {fmt(date)}
+              </span>
             )}
           </span>
         )

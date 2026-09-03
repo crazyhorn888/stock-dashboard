@@ -9,6 +9,7 @@ import GlobalIndexModal from '@/components/aftermarket/GlobalIndexModal'
 import SectorPanel from '@/components/bubble/SectorPanel'
 import StockDetailSheet from '@/components/stock/StockDetailSheet'
 import FreshnessBar from '@/components/shared/FreshnessBar'
+import UpdateStamp from '@/components/shared/UpdateStamp'
 import { calcStockRow } from '@/lib/calcMetrics'
 import { MOCK_DATA } from '@/lib/mockData'
 import { fetchSnapshot } from '@/lib/fetchSnapshot'
@@ -145,34 +146,12 @@ export default function AftermarketPage() {
               )}
             </a>
           </div>
-          {!loading && data.updatedAt && (() => {
-            const klineDate = data.indexHistory?.[0]?.date ?? null
-            const stocksPending = klineDate && data.stocksDate && data.stocksDate < klineDate
-            return stocksPending ? (
-              <div className="flex flex-col items-end gap-0.5">
-                <span className="text-xs text-amber-600 font-medium">
-                  指數更新{' '}
-                  {new Date(data.updatedAt).toLocaleString('zh-TW', {
-                    timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric',
-                    hour: '2-digit', minute: '2-digit',
-                  })}
-                </span>
-                <span className="text-[10px] text-slate-400">
-                  {isHolidayToday
-                    ? `今日休市${holidayStatus?.name ? `（${holidayStatus.name}）` : ''}，顯示最近交易日資料`
-                    : `股價 ${data.stocksDate?.slice(5).replace('-', '/')} 待更新中`}
-                </span>
-              </div>
-            ) : (
-              <span className="text-xs text-amber-600 font-medium">
-                更新{' '}
-                {new Date(data.updatedAt).toLocaleString('zh-TW', {
-                  timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric',
-                  hour: '2-digit', minute: '2-digit',
-                })}
-              </span>
-            )
-          })()}
+          {!loading && (
+            <UpdateStamp
+              updatedAt={data.updatedAt}
+              sub={{ label: '股價資料', date: data.stocksDate ?? null }}
+            />
+          )}
         </div>
 
         {/* Tab pills */}

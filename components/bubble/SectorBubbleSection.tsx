@@ -31,7 +31,13 @@ const ROW_N = 100
 interface SectionProps {
   fullHeight?: boolean
   // 把「板塊資料日期／是否落後」往上送，讓頁面 header 右上角統一顯示（比照盤後行情／市場條件）
-  onDataStatus?: (status: { date: string | null; stale: boolean; isHoliday: boolean; holidayName?: string | null }) => void
+  onDataStatus?: (status: {
+    updatedAt: string | null
+    date: string | null
+    stale: boolean
+    isHoliday: boolean
+    holidayName?: string | null
+  }) => void
 }
 
 export default function SectorBubbleSection({ fullHeight = false, onDataStatus }: SectionProps) {
@@ -161,13 +167,14 @@ export default function SectorBubbleSection({ fullHeight = false, onDataStatus }
 
   useEffect(() => {
     onDataStatus?.({
+      updatedAt: data.updatedAt ?? null,
       date: sectorDataDate,
       stale: sectorDataIsStale,
       isHoliday: !!isHolidayToday,
       holidayName: holidayStatus?.name ?? null,
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sectorDataDate, sectorDataIsStale, isHolidayToday])
+  }, [data.updatedAt, sectorDataDate, sectorDataIsStale, isHolidayToday])
 
   // 聚焦回放的日期標籤：trail 最多 5 點 + 今日 = 6 個日期（newest first）
   const frameDates = useMemo(

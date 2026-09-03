@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { MOCK_DATA } from '@/lib/mockData'
 import { calcMarketSignals } from '@/lib/calcMarketSignals'
 import { useNDays, N_DEFAULT } from '@/lib/nDays'
+import UpdateStamp from '@/components/shared/UpdateStamp'
 import { fetchSnapshot } from '@/lib/fetchSnapshot'
 import type { MarketSignals, IndexOHLC } from '@/lib/types'
 
@@ -138,11 +139,7 @@ export default function SignalsPage() {
     <div className="bg-slate-50 min-h-screen text-slate-800">
       <div className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 bg-white border-b border-slate-200 shadow-sm">
         <span className="font-extrabold text-blue-600 text-base tracking-tight">StockView</span>
-        {!loading && signals.updatedAt && (
-          <span className="text-xs text-amber-600 font-medium">
-            更新 {new Date(signals.updatedAt).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-          </span>
-        )}
+        {!loading && <UpdateStamp updatedAt={signals.updatedAt} />}
       </div>
 
       <main className="max-w-screen-xl mx-auto px-4 py-5">
