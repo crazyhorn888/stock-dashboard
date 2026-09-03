@@ -21,7 +21,10 @@
     "sectorHistory/conceptHistory 更新與 25 天回補；舊「張」格式 filter 丟棄邏輯；兩個 history 陣列必須同步增減"
   ],
   "scripts/guard-check.mjs": [
-    "Actions 前置攔截；誤攔 = 當日資料不更新（保守原則：無法判斷必須放行）"
+    "GitHub Actions 前置 Guard（npm ci 之前跑，被攔的 run 30 秒結束）。判斷邏輯必須與 fetch-daily.mjs 的 isAlreadyDoneToday()/isTradingDay() 一致",
+    "AC-FIX-4 落後偵測：今日尚無 FMTQIK K 棒時，若 meta.json 的 stocksDate/marginDate 落後於 indexDate 就照樣放行，並輸出 SKIP_GUARD2=true 讓 fetch-daily 的 Guard 2 一起略過",
+    "2026-09-02 事故：TWSE 深夜才發 09/02 股價，過午夜後 today=09-03、Guard 2 問「有沒有 09-03 K 棒」必然沒有 → 之後每班都被攔，股價卡在 09-01 一整天。原本的 02:07／08:07 補課班次靠 github.event.schedule 字串比對，實測沒有成立（log 顯示 FORCE_SKIP_GUARD2 為空），等於沒作用",
+    "保守原則不變：任何檢查失敗（網路錯誤、meta.json 不存在）一律放行"
   ],
   "scripts/calc-sectors.mjs::calcSectors": [
     "泡泡圖 X/Y/size/trail 計算（與 lib/calcSectors.ts 邏輯必須一致）；matchFn 參數化供 calcConcepts 共用",
@@ -326,7 +329,9 @@
     "座標一律前端 calcSectors/calcConcepts 當場算（AC-NAV-6），不吃伺服器的 data.sectors；fullHeight 時把 chartHeight 從 320 拉到 560"
   ],
   "components/bubble/BubbleHelpModal.tsx": [
-    "AC-HELP-2 說明視窗：四象限定義 + X/Y/size 公式 + 回放說明。象限名稱與顏色必須與 BubbleChart QUADRANTS 一致"
+    "AC-HELP-2 說明視窗：四象限定義 + X/Y/size 公式 + 各象限白話例子 + 回放說明。象限名稱與顏色必須與 BubbleChart QUADRANTS 一致",
+    "QUAD_EXAMPLES 的數字取自 2026-09-02 實際型態但刻意不寫板塊名稱——板塊每天換象限，寫死會過期",
+    "例子區塊放在公式之後（需捲動才看到），避免干擾上方簡潔的公式說明"
   ],
   "components/bubble/BubbleChart.tsx::chartHeight": [
     "AC-NAV-4：H 由模組常數改成 prop（預設 320，滿版頁 560）。toSVG 因此多吃一個 H 參數；CY/DEFAULT_VB 一併移進元件內，模組級只留 W/PAD/H_DEFAULT"
@@ -355,5 +360,8 @@
     "從 /aftermarket 抽出的大盤訊號重算（N 日高低點 → 大盤/融資增減幅 → 正負向觸發），兩頁必須共用這一份，否則同一個 N 會算出兩種答案",
     "融資欄位往前找最近一筆有值的日期（白天融資尚未發布），todayMarginDate 供前端標示實際日期",
     "觸發門檻：正向 posGapPct >= 5%、負向 negGapPct >= 7%（見專案記憶的大盤融資指標公式）"
+  ],
+  ".github/workflows/daily-fetch.yml::skipGuard2": [
+    "fetch step 的 FORCE_SKIP_GUARD2 取 steps.guard.outputs.SKIP_GUARD2，覆寫 job 層那個靠 github.event.schedule 比對的值（後者實測不可靠，見 AC-FIX-4）"
   ]
 }

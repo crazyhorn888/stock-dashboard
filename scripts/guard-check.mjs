@@ -30,9 +30,8 @@ async function fetchJSON(url) {
   return res.json()
 }
 
-// Guard 1：今日資料是否已完整上傳（讀 ~1KB 的 meta.json）
-// 回傳 true = 已完成（不用跑）；null = 無法判斷（放行）
-async function isAlreadyDone(today) {
+// 讀 ~1KB 的 meta.json（Guard 1 與落後偵測共用）。失敗回 null = 無法判斷
+async function fetchMeta() {
   const supabaseUrl = process.env.SUPABASE_URL
   if (!supabaseUrl) return null
   try {
@@ -41,13 +40,32 @@ async function isAlreadyDone(today) {
     })
     if (!res.ok) return null   // meta.json 尚不存在 → 放行，由 pipeline fallback 判斷
     const m = await res.json()
-    if (!m?.updatedAt) return null
-    const uploaded = new Date(m.updatedAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' })
-    return uploaded === today
-      && (m.stocksDate ?? null) === today
-      && (m.marginDate ?? null) === today
-      && (m.sectorHistoryLen ?? 0) >= 20
+    return m?.updatedAt ? m : null
   } catch { return null }
+}
+
+// Guard 1：今日資料是否已完整上傳。回傳 true = 已完成（不用跑）；null = 無法判斷（放行）
+function isAlreadyDone(m, today) {
+  if (!m) return null
+  const uploaded = new Date(m.updatedAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' })
+  return uploaded === today
+    && (m.stocksDate ?? null) === today
+    && (m.marginDate ?? null) === today
+    && (m.sectorHistoryLen ?? 0) >= 20
+}
+
+// AC-FIX-4：哪些資料集還落後於「最近一個有 K 棒的交易日」（indexDate）。
+// 2026-09-02 事故：TWSE 深夜才發布 09/02 的 STOCK_DAY_ALL，過了午夜後 today 變成 09-03，
+// Guard 2 問「有沒有 09-03 的 K 棒」當然沒有 → 之後每一班都被攔，股價永遠停在 09-01。
+// 原本設計了 02:07／08:07 兩班補課班次，但它靠 github.event.schedule 字串比對認班次，
+// 實際上沒有成立（log 顯示 FORCE_SKIP_GUARD2 是空的），補課機制形同虛設。
+// 改用資料本身判斷：只要有資料落後就補跑，不依賴 cron 字串。
+function laggingDatasets(m) {
+  if (!m?.indexDate) return []
+  const lag = []
+  if ((m.stocksDate ?? '') < m.indexDate) lag.push('股價')
+  if ((m.marginDate ?? '') < m.indexDate) lag.push('融資')
+  return lag
 }
 
 // Guard 2：FMTQIK 是否已有今日 K 棒（非交易日 / 15:30 前 → false）
@@ -69,8 +87,8 @@ async function hasTodayBar(today) {
   return null   // TWSE 異常 → 放行，讓 pipeline 自行判斷
 }
 
-function emit(shouldRun, reason) {
-  const lines = `SHOULD_RUN=${shouldRun}\nREASON=${reason}\n`
+function emit(shouldRun, reason, skipGuard2 = false) {
+  const lines = `SHOULD_RUN=${shouldRun}\nREASON=${reason}\nSKIP_GUARD2=${skipGuard2 ? 'true' : ''}\n`
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, lines)
   console.log(`[guard] SHOULD_RUN=${shouldRun}（${reason}）`)
 }
@@ -85,18 +103,27 @@ async function main() {
     return emit(true, 'force_run=true，略過 Guard 1/2 強制執行')
   }
 
-  const done = await isAlreadyDone(today)
+  const meta = await fetchMeta()
+  const done = isAlreadyDone(meta, today)
   if (done === true) return emit(false, `今日 ${today} 資料已完整上傳`)
 
   // 不受開盤限制的補課班次（凌晨/清晨，見 daily-fetch.yml）：略過 FMTQIK 檢查，
   // 讓 fetch-daily.mjs 有機會抓到深夜才發布的 STOCK_DAY_ALL／融資資料，
   // 不用等到隔天正常交易時段才追上
   if (process.env.FORCE_SKIP_GUARD2 === 'true') {
-    return emit(true, '不受開盤限制的補課班次，略過 FMTQIK 檢查')
+    return emit(true, '不受開盤限制的補課班次，略過 FMTQIK 檢查', true)
   }
 
   const bar = await hasTodayBar(today)
-  if (bar === false) return emit(false, `FMTQIK 尚無今日（${today}）K 棒：非交易日或 15:30 前`)
+  if (bar === false) {
+    // AC-FIX-4：今天還沒有 K 棒（非交易日或未收盤），但上一個交易日的股價／融資
+    // 仍未追上 → 照樣跑，並要求 fetch-daily.mjs 一起略過它自己的 Guard 2
+    const lag = laggingDatasets(meta)
+    if (lag.length) {
+      return emit(true, `今日（${today}）尚無 K 棒，但 ${lag.join('／')} 仍落後於 ${meta.indexDate}，補跑`, true)
+    }
+    return emit(false, `FMTQIK 尚無今日（${today}）K 棒：非交易日或 15:30 前`)
+  }
 
   return emit(true, done === null ? 'meta.json 無法判斷，放行由 pipeline 決定' : '今日資料未完整，需要執行')
 }

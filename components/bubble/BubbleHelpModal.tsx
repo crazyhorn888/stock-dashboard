@@ -17,6 +17,31 @@ const QUAD_ROWS = [
   { label: '流出加速', pos: '左下', color: '#16a34a', bg: '#f0fdf4', desc: '近 5 日法人賣超，且賣壓還在加重' },
 ]
 
+// 各象限的白話例子。數字取自 2026-09-02 的實際板塊型態，但刻意不寫板塊名稱——
+// 名稱每天都在換象限，寫死會過期；這裡要教的是「怎麼讀這四個位置」
+const QUAD_EXAMPLES = [
+  {
+    label: '流入加速', pos: '右上', color: '#dc2626', bg: '#fff1f2',
+    numbers: '近5日每天買 41 億 · 過去20日每天賣 3 億 → Y = +45',
+    plain: '過去大半個月法人一直在倒貨，最近五天突然轉成大買——從賣轉買、力道爆增，這是圖上最右上角的位置。',
+  },
+  {
+    label: '流入放緩', pos: '右下', color: '#d97706', bg: '#fffbeb',
+    numbers: '近5日每天買 26 億 · 過去20日每天買 43 億 → Y = −16',
+    plain: '還是在買，但每天買的金額比過去少了快四成。錢還在流進來，只是動能在退，追高要留意。',
+  },
+  {
+    label: '流出放緩', pos: '左上', color: '#64748b', bg: '#f1f5f9',
+    numbers: '近5日每天賣 3.4 億 · 過去20日每天賣 7.8 億 → Y = +4.5',
+    plain: '法人還在賣，但賣的力道砍了一半以上。賣壓正在減輕，是「跌不太動了」的訊號，但還沒轉成買方。',
+  },
+  {
+    label: '流出加速', pos: '左下', color: '#16a34a', bg: '#f0fdf4',
+    numbers: '近5日每天賣 5.8 億 · 過去20日每天買 24.5 億 → Y = −30',
+    plain: '過去一個月都在買，最近五天翻臉變成賣——從買轉賣，資金在撤退，這是圖上最左下角的位置。',
+  },
+]
+
 export default function BubbleHelpModal({ onClose }: Props) {
   return (
     <div
@@ -64,7 +89,11 @@ export default function BubbleHelpModal({ onClose }: Props) {
           </div>
           <div className="rounded-lg bg-slate-50 px-2.5 py-2">
             <div className="text-[11px] font-semibold text-slate-600">Y 軸：力道加速（億/天）</div>
-            <div className="text-[10px] text-slate-500 mt-0.5">近期力道比中期基準快多少，正值＝加速</div>
+            <div className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">
+              最近 5 天「平均每天」買超多少，減掉過去 20 天「平均每天」買超多少。
+              要除以天數才比得出力道——不然 20 天的錢一定比 5 天多。
+              正值＝比以前買得更兇，負值＝力道在退。
+            </div>
             <code className="block text-[10px] text-slate-400 mt-1">Y = 近5日日均淨買超 − 近20日日均淨買超</code>
           </div>
           <div className="rounded-lg bg-slate-50 px-2.5 py-2">
@@ -72,6 +101,21 @@ export default function BubbleHelpModal({ onClose }: Props) {
             <div className="text-[10px] text-slate-500 mt-0.5">近 20 日買進＋賣出，滾動視窗，所以回放時會漲也會縮</div>
             <code className="block text-[10px] text-slate-400 mt-1">size = Σ(近20日 買進金額 + 賣出金額)</code>
           </div>
+        </div>
+
+        {/* 各象限實例（放在下方，捲動才看到，不干擾上面簡潔的公式） */}
+        <div className="text-[11px] font-bold text-slate-500 mb-1.5">看個例子</div>
+        <div className="space-y-2 mb-4">
+          {QUAD_EXAMPLES.map(e => (
+            <div key={e.label} className="rounded-lg border px-2.5 py-2" style={{ borderColor: e.bg, background: e.bg }}>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-bold" style={{ color: e.color }}>{e.label}</span>
+                <span className="text-[9px] text-slate-400">{e.pos}</span>
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1 font-mono leading-relaxed">{e.numbers}</div>
+              <div className="text-[11px] text-slate-600 mt-1 leading-relaxed">{e.plain}</div>
+            </div>
+          ))}
         </div>
 
         {/* 回放 */}

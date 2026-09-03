@@ -101,6 +101,10 @@ jobs:
         id: fetch
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          # AC-FIX-4：guard-check 偵測到「股價／融資落後於最近交易日」時會輸出 SKIP_GUARD2=true，
+          # 這裡覆寫 job 層的值，讓 fetch-daily.mjs 內部的 Guard 2 一起放行。
+          # 不能只靠 job 層那個 github.event.schedule 字串比對——2026-09-02 實測它沒有成立
+          FORCE_SKIP_GUARD2: ${{ steps.guard.outputs.SKIP_GUARD2 || env.FORCE_SKIP_GUARD2 }}
         run: |
           node scripts/fetch-daily.mjs
           # 確認 latest.json stocks 非空 → 代表本次 run 實際跑了完整 pipeline
