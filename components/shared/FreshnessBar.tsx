@@ -18,6 +18,15 @@ export default function FreshnessBar({ data, holiday }: { data: SnapshotData; ho
     const hourTW = parseInt(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }))
     const dowTW = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' })).getDay()
 
+    const minsTW = (() => {
+      const hhmm = now.toLocaleString('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false })
+      const [h, m] = hhmm.split(':').map(Number)
+      return h * 60 + m
+    })()
+    // 台股 13:30 收盤：當天收盤前，「最新應有的資料」還是前一個交易日的，
+    // 拿今天當基準會讓整排變橘色（2026-09-03 Franky 指正）
+    const afterClose = minsTW >= 13 * 60 + 30
+
     const indexDate  = data.indexHistory?.[0]?.date ?? null
     const marginDate = data.indexHistory?.find(r => r.chips?.margin_amount != null)?.date ?? null
     const chipsDate  = data.indexHistory?.find(r => r.chips?.inst_total != null)?.date ?? null
@@ -31,8 +40,13 @@ export default function FreshnessBar({ data, holiday }: { data: SnapshotData; ho
     const closed = isWeekend || isHoliday
     const holidayName = holidayKnown && holiday!.isHoliday ? holiday!.name : null
 
+    // 收盤前的比較基準＝上一個交易日（indexHistory 裡第一筆不是今天的日期）
+    const prevTradingDate = data.indexHistory?.find(r => r.date !== today)?.date ?? indexDate
+
     return {
-      today, closed, holidayName,
+      today, closed, holidayName, afterClose,
+      // 顏色比較基準：休市→最近交易日；交易日收盤後→今日；收盤前→上一個交易日
+      baseDate: closed ? indexDate : afterClose ? today : prevTradingDate,
       refDate: closed ? indexDate : today,
       items: [
         { label: 'K線',  date: indexDate },
@@ -51,14 +65,15 @@ export default function FreshnessBar({ data, holiday }: { data: SnapshotData; ho
       <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
         {info.closed
           ? `${info.holidayName ? `今日休市（${info.holidayName}）` : '最近交易日'} ${fmt(info.refDate)}`
-          : `今日 ${fmt(info.today)}`}
+          : info.afterClose
+            ? `今日 ${fmt(info.today)}`
+            : `今日 ${fmt(info.today)}（13:30 前，以 ${fmt(info.baseDate)} 為準）`}
       </span>
       <span className="w-px h-3 bg-slate-200 shrink-0" />
       {info.items.map(({ label, date }) => {
         // 2026-09-03 起改成直接標日期：與基準日相符＝綠、落後＝橘（原本只顯示 ✓／更新中，
         // 看不出落後幾天）。非交易日的基準日是最近交易日，資料齊全時一樣是綠色
-        const base = info.closed ? info.refDate : info.today
-        const fresh = date != null && date === base
+        const fresh = date != null && date === info.baseDate
         return (
           <span key={label} className="flex items-center gap-0.5 text-[10px] whitespace-nowrap">
             <span className="text-slate-400">{label}</span>
