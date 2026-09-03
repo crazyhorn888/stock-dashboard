@@ -67,13 +67,16 @@ function aggregateBars(closes: number[], dates: string[], period: 'W' | 'M'): OH
     .reverse()
 }
 
+// 全程用 UTC 解析與運算（同 lib/calcMA.ts 的 resampleWeekly）。
+// 2026-09-03：原本 new Date(dateISO) 會解析成 UTC 午夜，卻用 getDay()/getDate()
+// 這類「本地時區」方法取值——使用者出國到美洲（UTC-7）時整個位移一天，
+// 週線分組會把週一併進上一週。日期字串本身沒有時區，判斷一律走 UTC。
 function isoWeekKey(dateISO: string): string {
-  const d = new Date(dateISO)
-  const day = d.getDay() || 7
-  d.setDate(d.getDate() + 4 - day)
-  const year = d.getFullYear()
-  const startOfYear = new Date(year, 0, 1)
-  const week = Math.ceil(((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7)
+  const d = new Date(dateISO.slice(0, 10) + 'T00:00:00Z')
+  const day = d.getUTCDay() || 7          // 週日視為 7
+  d.setUTCDate(d.getUTCDate() + 4 - day)  // ISO 週：移到該週的星期四
+  const year = d.getUTCFullYear()
+  const week = Math.ceil(((d.getTime() - Date.UTC(year, 0, 1)) / 86400000 + 1) / 7)
   return `${year}-W${String(week).padStart(2, '0')}`
 }
 
