@@ -14,6 +14,8 @@ import { MOCK_DATA } from '@/lib/mockData'
 import { fetchSnapshot } from '@/lib/fetchSnapshot'
 import { fetchHolidayStatus } from '@/lib/fetchHolidayStatus'
 import { calcConcepts } from '@/lib/calcSectors'
+import { calcMarketSignals } from '@/lib/calcMarketSignals'
+import { useNDays, N_DEFAULT } from '@/lib/nDays'
 import { buildInstNetMap } from '@/lib/instNet'
 import type { SnapshotData, SectorBubble, StockData, MarketSignals, HolidayStatus } from '@/lib/types'
 
@@ -23,8 +25,9 @@ const DISABLED_TABS: Tab[] = ['基本面']
 
 export default function AftermarketPage() {
   const [activeTab, setActiveTab] = useState<Tab>('大盤關鍵資料')
-  const [n, setN] = useState(100)
-  const [nDraft, setNDraft] = useState('100')
+  // N 改用跨頁共享（localStorage + CustomEvent），市場條件頁才會跟著同一個 N
+  const { n, setN } = useNDays()
+  const [nDraft, setNDraft] = useState(String(N_DEFAULT))
   const [data, setData] = useState<SnapshotData>(MOCK_DATA)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -35,6 +38,8 @@ export default function AftermarketPage() {
   const [holidayStatus, setHolidayStatus] = useState<HolidayStatus | null>(null)
   // /review 待審核數量：>0 時齒輪圖示發亮提醒
   const [pendingCount, setPendingCount] = useState(0)
+
+  useEffect(() => { setNDraft(String(n)) }, [n])
 
   useEffect(() => {
     fetchHolidayStatus().then(setHolidayStatus)
@@ -110,69 +115,15 @@ export default function AftermarketPage() {
   // 休市日不算「尚未更新」，是本來就不會有新資料——文字改成中性說明，不要暗示異常
   const isHolidayToday = holidayStatus?.date === todayStr && holidayStatus.isHoliday
 
-  // 用前端 n 重新計算大盤訊號（後端 marketSignals.nDays 固定為 100，不隨使用者 N 更新）
-  const computedSignals = useMemo<MarketSignals>(() => {
-    const history = data.indexHistory ?? []
-    const slice = history.slice(0, n) // newest first
-    if (!slice.length) return data.marketSignals
-
-    const todayBar = slice[0]
-    const todayIndex = todayBar.close
-    // 融資通常傍晚後才發布，白天使用時「今天」大多還沒有值——往前找最近一筆有資料的日期當作顯示值，
-    // 而不是整天顯示「資料累積中」；todayMarginDate 讓前端能標示這是哪一天的數字，避免誤會成當天數字
-    const marginBar = history.find(d => d.chips?.margin_amount != null)
-    const todayMargin = marginBar?.chips?.margin_amount ?? null
-    const todayMarginDate = marginBar?.date ?? null
-
-    let peakBar = slice[0]
-    let troughBar = slice[0]
-    for (const d of slice) {
-      if (d.close > peakBar.close) peakBar = d
-      if (d.close < troughBar.close) troughBar = d
-    }
-
-    const peakIndex    = peakBar.close
-    const peakMargin   = peakBar.chips?.margin_amount ?? null
-    const troughIndex  = troughBar.close
-    const troughMargin = troughBar.chips?.margin_amount ?? null
-
-    const indexDropPct  = peakIndex  > 0 ? Math.abs((todayIndex  - peakIndex)  / peakIndex  * 100) : 0
-    const marginDropPct = (peakMargin != null && todayMargin != null && peakMargin > 0)
-      ? Math.abs((todayMargin - peakMargin) / peakMargin * 100) : null
-    const posGapPct = marginDropPct != null ? marginDropPct - indexDropPct : null
-
-    const indexRisePct  = troughIndex  > 0 ? Math.abs((todayIndex  - troughIndex)  / troughIndex  * 100) : 0
-    const marginRisePct = (troughMargin != null && todayMargin != null && troughMargin > 0)
-      ? Math.abs((todayMargin - troughMargin) / troughMargin * 100) : null
-    const negGapPct = marginRisePct != null ? marginRisePct - indexRisePct : null
-
-    return {
-      ...data.marketSignals,
-      nDays: n,
-      todayIndex,
-      todayMargin,
-      todayMarginDate,
-      peakDate:    peakBar.date,
-      peakIndex,
-      peakMargin,
-      indexDropPct,
-      marginDropPct,
-      posGapPct,
-      posTriggered: posGapPct != null && posGapPct >= 5,
-      troughDate:   troughBar.date,
-      troughIndex,
-      troughMargin,
-      indexRisePct,
-      marginRisePct,
-      negGapPct,
-      negTriggered: negGapPct != null && negGapPct >= 7,
-    }
-  }, [data.indexHistory, data.marketSignals, n])
+  // 用前端 n 重新計算大盤訊號（與 /signals 共用同一套：lib/calcMarketSignals.ts）
+  const computedSignals = useMemo<MarketSignals>(
+    () => calcMarketSignals(data.indexHistory, data.marketSignals, n),
+    [data.indexHistory, data.marketSignals, n],
+  )
 
   function commitN(val: string) {
-    const v = Math.min(250, Math.max(10, parseInt(val) || 100))
+    const v = setN(parseInt(val) || N_DEFAULT)
     setNDraft(String(v))
-    setN(v)
   }
 
   return (

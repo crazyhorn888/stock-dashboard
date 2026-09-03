@@ -1,8 +1,10 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { MOCK_DATA } from '@/lib/mockData'
+import { calcMarketSignals } from '@/lib/calcMarketSignals'
+import { useNDays, N_DEFAULT } from '@/lib/nDays'
 import { fetchSnapshot } from '@/lib/fetchSnapshot'
-import type { MarketSignals } from '@/lib/types'
+import type { MarketSignals, IndexOHLC } from '@/lib/types'
 
 interface Condition {
   id: string
@@ -61,15 +63,36 @@ function buildConditions(s: MarketSignals): Condition[] {
 }
 
 export default function SignalsPage() {
-  const [signals, setSignals] = useState<MarketSignals>(MOCK_DATA.marketSignals)
+  const [baseSignals, setBaseSignals] = useState<MarketSignals>(MOCK_DATA.marketSignals)
+  const [indexHistory, setIndexHistory] = useState<IndexOHLC[]>(MOCK_DATA.indexHistory ?? [])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<Condition | null>(null)
+  // 與盤後行情共用同一個 N（localStorage + CustomEvent）
+  const { n, setN } = useNDays()
+  const [nDraft, setNDraft] = useState(String(N_DEFAULT))
+
+  useEffect(() => { setNDraft(String(n)) }, [n])
 
   useEffect(() => {
     fetchSnapshot()
-      .then(d => { setSignals(d.marketSignals); setLoading(false) })
+      .then(d => {
+        setBaseSignals(d.marketSignals)
+        if (d.indexHistory?.length) setIndexHistory(d.indexHistory)
+        setLoading(false)
+      })
       .catch(() => setLoading(false))
   }, [])
+
+  // 後端 marketSignals.nDays 固定 100，這裡用使用者的 N 重算（與 /aftermarket 同一套函式）
+  const signals = useMemo(
+    () => calcMarketSignals(indexHistory, baseSignals, n),
+    [indexHistory, baseSignals, n],
+  )
+
+  function commitN(val: string) {
+    const v = setN(parseInt(val) || N_DEFAULT)
+    setNDraft(String(v))
+  }
 
   const conditions = buildConditions(signals)
   const pos = conditions.filter(c => c.type === 'positive')
@@ -124,7 +147,23 @@ export default function SignalsPage() {
 
       <main className="max-w-screen-xl mx-auto px-4 py-5">
         <h1 className="text-base font-bold text-slate-700 mb-1">市場條件</h1>
-        <p className="text-xs text-slate-400 mb-6">紅字 = 正向（看多），綠字 = 負向（看空）。點擊卡片查看計算說明。</p>
+        <p className="text-xs text-slate-400 mb-3">紅字 = 正向（看多），綠字 = 負向（看空）。點擊卡片查看計算說明。</p>
+
+        {/* 參考區間 N：與盤後行情共用同一個值，任一頁改動另一頁即時跟上 */}
+        <div className="flex items-center gap-2 mb-6">
+          <span className="text-xs text-slate-500 font-medium">參考區間 N =</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            value={nDraft}
+            onChange={e => setNDraft(e.target.value)}
+            onBlur={() => commitN(nDraft)}
+            onKeyDown={e => e.key === 'Enter' && commitN(nDraft)}
+            className="w-16 px-2 py-1 text-sm text-center font-semibold text-blue-600 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-400"
+          />
+          <span className="text-xs text-slate-500">天</span>
+          <span className="text-[10px] text-slate-400">與盤後行情共用</span>
+        </div>
 
         {loading ? (
           <div className="space-y-4 animate-pulse">

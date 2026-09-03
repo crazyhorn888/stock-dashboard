@@ -345,5 +345,15 @@
     "AC-RP2-1~3 全域回放：所有可見泡泡沿各自 trail 一起走。step 0＝最舊、globalTotalSteps（= 最長 trail 長度）＝今日；trail 較短的泡泡 clamp 在自己最舊那點",
     "xRange/yRange 把 trail 歷史點一起算進去，回放時座標軸才不會每幀跳動；collision 每步重算",
     "與聚焦回放互斥（handleBubbleClick 會停掉全域回放）"
+  ],
+  "lib/nDays.ts": [
+    "AC-FIX-3：參考區間 N 跨頁共享（localStorage key 'nDays' + CustomEvent 'nDays-change'），/aftermarket 與 /signals 共用同一個值",
+    "2026-09-03 事故：N 原本是 /aftermarket 內的 useState(100)，換頁即遺失；/signals 更是完全沒有 N 的概念，直接吃後端固定 nDays=100 的 marketSignals",
+    "首次渲染一律回 N_DEFAULT、掛載後才讀 localStorage，避免 hydration mismatch；clampN 統一夾在 10~250"
+  ],
+  "lib/calcMarketSignals.ts": [
+    "從 /aftermarket 抽出的大盤訊號重算（N 日高低點 → 大盤/融資增減幅 → 正負向觸發），兩頁必須共用這一份，否則同一個 N 會算出兩種答案",
+    "融資欄位往前找最近一筆有值的日期（白天融資尚未發布），todayMarginDate 供前端標示實際日期",
+    "觸發門檻：正向 posGapPct >= 5%、負向 negGapPct >= 7%（見專案記憶的大盤融資指標公式）"
   ]
 }
