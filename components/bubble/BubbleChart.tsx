@@ -62,14 +62,15 @@ function clamp(v: number, lo: number, hi: number) {
 
 // ── 回放彈簧物理（AC-BR-1）────────────────────────────────────────────────
 // a = -k(pos - target) - c·vel。重點是「看得到移動過程」而不是彈得多大：
-// k=15 / c=6 → 走完九成距離要 ~750ms、完全到位約 980ms，末端只輕輕過頭 2%。
+// k=10 / c=15 → 過阻尼（ζ≈2.4），完全沒有回彈，起步快、尾巴拖得很長：
+// 一幀 700ms 只走到約 36%，下一幀就接著追，泡泡會是持續緩慢漂移的感覺。
 // （k=260 時 117ms 就到位，650ms 的步進裡有 530ms 是靜止的，看起來就是瞬間跳過去再抖一下）
 // 位置與半徑共用同一組參數，大小變化才不會硬切。
-const SPRING_K = 15
-const SPRING_C = 6
+const SPRING_K = 10
+const SPRING_C = 15
 
-// 每一幀停留時間：約 750-980ms 在移動、其餘停頓，一天走到下一天看得清楚
-const REPLAY_STEP_MS = 1100
+// 每一幀停留時間
+const REPLAY_STEP_MS = 700
 
 function springStep(pos: number, vel: number, target: number, dt: number): [number, number] {
   const v = vel + (-SPRING_K * (pos - target) - SPRING_C * vel) * dt
