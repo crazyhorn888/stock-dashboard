@@ -61,11 +61,15 @@ function clamp(v: number, lo: number, hi: number) {
 }
 
 // ── 回放彈簧物理（AC-BR-1）────────────────────────────────────────────────
-// a = -k(pos - target) - c·vel；k=260、c=14 → 阻尼比 ζ≈0.43，overshoot 約 20%，
-// 殘餘振幅降到 1px 以下約 660ms，剛好搭上 650ms 的步進節奏（每步彈完才走下一步）。
-// 原本 c=18 只有 4% overshoot，位移小的時候根本看不出彈跳。位置與半徑共用同一組參數。
-const SPRING_K = 260
-const SPRING_C = 14
+// a = -k(pos - target) - c·vel。重點是「看得到移動過程」而不是彈得多大：
+// k=35 / c=9 → 走完九成距離要 ~480ms，末端只輕輕過頭 2%。
+// （k=260 時 117ms 就到位，650ms 的步進裡有 530ms 是靜止的，看起來就是瞬間跳過去再抖一下）
+// 位置與半徑共用同一組參數，大小變化才不會硬切。
+const SPRING_K = 35
+const SPRING_C = 9
+
+// 每一幀停留時間：約 500ms 在移動、300ms 停頓，一天走到下一天看得清楚
+const REPLAY_STEP_MS = 800
 
 function springStep(pos: number, vel: number, target: number, dt: number): [number, number] {
   const v = vel + (-SPRING_K * (pos - target) - SPRING_C * vel) * dt
@@ -499,7 +503,7 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
         if (s === null || s >= focusedPath.length - 1) { setReplaying(false); return s }
         return s + 1
       })
-    }, 650)
+    }, REPLAY_STEP_MS)
     return () => clearInterval(id)
   }, [replaying, focusedPath.length])
 
@@ -538,7 +542,7 @@ export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocu
         if (st >= globalTotalSteps) { setGlobalPlaying(false); return st }
         return st + 1
       })
-    }, 650)
+    }, REPLAY_STEP_MS)
     return () => clearInterval(id)
   }, [globalPlaying, globalTotalSteps])
 
