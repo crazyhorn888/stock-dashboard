@@ -65,9 +65,7 @@ export default function FreshnessBar({ data, holiday }: { data: SnapshotData; ho
       <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
         {info.closed
           ? `${info.holidayName ? `今日休市（${info.holidayName}）` : '最近交易日'} ${fmt(info.refDate)}`
-          : info.afterClose
-            ? `今日 ${fmt(info.today)}`
-            : `今日 ${fmt(info.today)}（13:30 前，以 ${fmt(info.baseDate)} 為準）`}
+          : `今日 ${fmt(info.today)}`}
       </span>
       <span className="w-px h-3 bg-slate-200 shrink-0" />
       {info.items.map(({ label, date }) => {
