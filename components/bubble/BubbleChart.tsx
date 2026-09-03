@@ -68,11 +68,11 @@ function clamp(v: number, lo: number, hi: number) {
 // 移動佔一幀的 95%（第一版 k=260 只佔 18%，所以看起來是跳一下再乾等）。
 // （k=260 時 117ms 就到位，650ms 的步進裡有 530ms 是靜止的，看起來就是瞬間跳過去再抖一下）
 // 位置與半徑共用同一組參數，大小變化才不會硬切。
-const SPRING_K = 24
-const SPRING_C = 6.8
+const SPRING_K = 35
+const SPRING_C = 7.4
 
-// 每一幀停留時間＝走到定位（約 1533ms）+ 約 90ms 頓點
-const REPLAY_STEP_MS = 1620
+// 每一幀停留時間＝走到定位（約 1267ms）+ 約 130ms 頓點
+const REPLAY_STEP_MS = 1400
 
 function springStep(pos: number, vel: number, target: number, dt: number): [number, number] {
   const v = vel + (-SPRING_K * (pos - target) - SPRING_C * vel) * dt

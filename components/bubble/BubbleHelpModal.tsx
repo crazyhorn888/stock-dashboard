@@ -84,22 +84,21 @@ export default function BubbleHelpModal({ onClose }: Props) {
         <div className="space-y-2 mb-4">
           <div className="rounded-lg bg-slate-50 px-2.5 py-2">
             <div className="text-[11px] font-semibold text-slate-600">X 軸：資金流入／流出（億）</div>
-            <div className="text-[10px] text-slate-500 mt-0.5">近 5 日三大法人淨買超總額</div>
             <code className="block text-[10px] text-slate-400 mt-1">X = Σ(近5日 買進金額 − 賣出金額)</code>
+            <div className="text-[10px] text-slate-500 mt-1">近 5 日三大法人淨買超總額</div>
           </div>
           <div className="rounded-lg bg-slate-50 px-2.5 py-2">
             <div className="text-[11px] font-semibold text-slate-600">Y 軸：力道加速（億/天）</div>
-            <div className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">
+            <code className="block text-[10px] text-slate-400 mt-1">Y = 近5日日均淨買超 − 近20日日均淨買超</code>
+            <div className="text-[10px] text-slate-500 mt-1 leading-relaxed">
               最近 5 天「平均每天」買超多少，減掉過去 20 天「平均每天」買超多少。
-              要除以天數才比得出力道——不然 20 天的錢一定比 5 天多。
               正值＝比以前買得更兇，負值＝力道在退。
             </div>
-            <code className="block text-[10px] text-slate-400 mt-1">Y = 近5日日均淨買超 − 近20日日均淨買超</code>
           </div>
           <div className="rounded-lg bg-slate-50 px-2.5 py-2">
             <div className="text-[11px] font-semibold text-slate-600">泡泡大小：交投規模（億）</div>
-            <div className="text-[10px] text-slate-500 mt-0.5">近 20 日買進＋賣出，滾動視窗，所以回放時會漲也會縮</div>
             <code className="block text-[10px] text-slate-400 mt-1">size = Σ(近20日 買進金額 + 賣出金額)</code>
+            <div className="text-[10px] text-slate-500 mt-1">近 20 日買進＋賣出，滾動視窗，所以回放時會漲也會縮</div>
           </div>
         </div>
 
