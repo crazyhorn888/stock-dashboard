@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { freshnessBaseDate, daysBehind, isAfterClose, isWeekendTW } from '@/lib/tradingDay'
+import { freshnessBaseDate, daysBehind, isAfterClose, isWeekendTW, taipeiToday, businessDaysBehind } from '@/lib/tradingDay'
 
 /**
  * AC-FR-2：後台「資料鮮度」區塊。
@@ -44,8 +44,20 @@ function fmtStamp(iso?: string | null) {
   })
 }
 
+// 國際指數：各市場有自己的交易日曆與時區（美股收盤時台北已是隔天凌晨），
+// 不能套台股的 13:30 基準，改用「距今幾天」寬鬆判斷（含週末與時差）
+const GLOBAL_LABEL: Record<string, string> = {
+  spx: 'S&P500', dji: '道瓊', ndq: '那斯達克', sox: '費半', nkx: '日經225', kospi: 'KOSPI',
+}
+
+interface GlobalIndices {
+  updatedAt?: string
+  indices?: Record<string, { name?: string; bars?: { date: string }[] }>
+}
+
 export default function FreshnessPanel() {
   const [meta, setMeta] = useState<Meta | null>(null)
+  const [global, setGlobal] = useState<GlobalIndices | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -54,6 +66,10 @@ export default function FreshnessPanel() {
       .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then(setMeta)
       .catch(e => setError(e.message))
+    fetch(base.replace('latest.json', 'global-indices.json'), { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(setGlobal)
+      .catch(() => setGlobal(null))
   }, [])
 
   if (error) {
@@ -123,6 +139,36 @@ export default function FreshnessPanel() {
           </tbody>
         </table>
       </div>
+
+      {/* 國際指數：獨立判斷，不套台股基準 */}
+      {global?.indices && (
+        <div className="mt-2 pt-2 border-t border-slate-100">
+          <div className="flex items-baseline justify-between mb-1">
+            <span className="text-[11px] font-bold text-slate-600">🌍 國際指數</span>
+            <span className="text-[10px] text-slate-400">檔案更新 {fmtStamp(global.updatedAt)}</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1">
+            {Object.entries(global.indices).map(([key, v]) => {
+              const date = v?.bars?.[0]?.date ?? null
+              // 用交易日（排除週末）而非日曆天：美股收盤時台北已隔天，落後 1 個交易日是正常時差；
+              // 日曆天會被週末灌水，看不出真的卡住
+              const lag  = businessDaysBehind(date, taipeiToday())
+              const tone = lag == null ? 'text-slate-300'
+                : lag <= 1 ? 'text-green-600'
+                : lag === 2 ? 'text-amber-500'
+                : 'text-red-500'
+              return (
+                <div key={key} className="flex items-center justify-between text-[10px]">
+                  <span className="text-slate-500">{GLOBAL_LABEL[key] ?? v?.name ?? key}</span>
+                  <span className={`font-semibold ${tone}`}>
+                    {fmtDate(date)}{lag != null && lag > 1 ? `（落後 ${lag} 個交易日）` : ''}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 資料量健康指標：抓取殘缺時這些數字會先掉下來 */}
       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 pt-2 border-t border-slate-100 text-[10px] text-slate-500">

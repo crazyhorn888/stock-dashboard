@@ -63,3 +63,21 @@ export function daysBehind(date: string | null, base: string | null): number | n
   if (Number.isNaN(a) || Number.isNaN(b)) return null
   return Math.round((b - a) / 86400000)
 }
+
+/**
+ * 兩個日期之間相差幾個「工作日」（排除週末，不含國定假日）。
+ * 國際指數的落後判斷要用這個而不是日曆天——週末會讓日曆天憑空多 2 天，
+ * 例如上週五 vs 本週一是 3 個日曆天但只差 1 個交易日。
+ */
+export function businessDaysBehind(date: string | null, base: string | null): number | null {
+  if (!date || !base) return null
+  const a = Date.parse(date + 'T00:00:00Z')
+  const b = Date.parse(base + 'T00:00:00Z')
+  if (Number.isNaN(a) || Number.isNaN(b) || b < a) return 0
+  let count = 0
+  for (let t = a + 86400000; t <= b; t += 86400000) {
+    const dow = new Date(t).getUTCDay()
+    if (dow !== 0 && dow !== 6) count++
+  }
+  return count
+}
