@@ -229,12 +229,21 @@ function resolveCollisions(
   return p
 }
 
-export default function BubbleChart({ sectors, onBubbleClick, frameDates, onFocusChange, ghostBubbles, chartHeight }: Props) {
+export default function BubbleChart({
+  sectors, onBubbleClick, frameDates, onFocusChange, ghostBubbles, chartHeight,
+  zoom: zoomProp, onZoomChange,
+}: Props) {
   // 繪圖高度（viewBox 內部座標）：SVG 寬度固定 100%，H 越大畫面上就越高
   const H = chartHeight ?? H_DEFAULT
   const CY = PAD.top + (H - PAD.top - PAD.bottom) / 2
   const DEFAULT_VB = useMemo(() => ({ x: 0, y: 0, w: W, h: H }), [H])
-  const [zoom, setZoom] = useState<QuadrantId>(null)
+  // 象限篩選：有傳 onZoomChange 就是受控（由上方統計卡操作），否則用元件內部 state
+  const [zoomLocal, setZoomLocal] = useState<QuadrantId>(null)
+  const zoom = onZoomChange ? (zoomProp ?? null) : zoomLocal
+  const setZoom = (q: QuadrantId) => {
+    if (onZoomChange) onZoomChange(q)
+    else setZoomLocal(q)
+  }
   const [top15Active, setTop15Active] = useState(false)
   const [hovered, setHovered] = useState<string | null>(null)
   const [clicked, setClicked] = useState<string | null>(null)
