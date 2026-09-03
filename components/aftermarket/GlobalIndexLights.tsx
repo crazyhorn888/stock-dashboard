@@ -1,5 +1,6 @@
 'use client'
 import type { GlobalIndexData } from '@/lib/types'
+import { businessDaysBehind, taipeiToday } from '@/lib/tradingDay'
 import { calcMA } from '@/lib/calcMA'
 
 interface Props {
@@ -15,6 +16,14 @@ const ALL_PERIODS = [5, 10, 20, 60, 120] as const
 // 貼線緩衝：價格離均線在 0.5% 以內視為「貼線」，不算跌破/站上，
 // 避免整理期一天上一天下、燈號天天跳動
 const BUFFER = 0.005
+
+// 資料日期的顏色：綠＝跟得上、橘＝落後 2 個交易日、紅＝落後 3 個以上
+function staleTone(date: string): string {
+  const lag = businessDaysBehind(date, taipeiToday())
+  if (lag == null) return 'text-slate-300'
+  if (lag <= 1) return 'text-green-600'
+  return lag === 2 ? 'text-amber-500 font-semibold' : 'text-red-500 font-semibold'
+}
 
 type Row = { key: string; name: string; date: string; belowPeriod: number | null; trend: 'bull' | 'lean-bull' | null; nearBelowLongTerm: boolean }
 
@@ -81,7 +90,9 @@ export default function GlobalIndexLights({ indices, onSelect }: Props) {
             <span className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${r.belowPeriod != null ? 'bg-green-500' : 'bg-red-500'}`} />
             <span className="truncate">
               {r.name} {label(r)}
-              <span className="text-slate-300"> ({r.date.slice(5).replace('-', '/')})</span>
+              {/* 資料日期：落後 1 個交易日內是正常時差（美股收盤時台北已隔天），
+                  2 個交易日轉橘、3 個以上轉紅——2026-09-03 日韓卡在兩天前沒人發現 */}
+              <span className={staleTone(r.date)}> ({r.date.slice(5).replace('-', '/')})</span>
             </span>
           </button>
         ))}

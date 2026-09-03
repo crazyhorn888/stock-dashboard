@@ -48,29 +48,41 @@ async function fetchYahoo(symbol, attempt = 1) {
 
   const { timestamp, indicators } = result
   const quote = indicators.quote[0]
+  // AC-GL-3：quote.close 有洞時的備援（^N225/^KS11 常見）
+  const adjclose = indicators.adjclose?.[0]?.adjclose
   const tz = result.meta.exchangeTimezoneName ?? result.meta.timezone ?? 'UTC'
 
   const bars = []
   for (let i = 0; i < timestamp.length; i++) {
-    if (quote.close[i] == null) continue  // 該日無資料（假日/停牌）
+    // AC-GL-3：^N225/^KS11 的 quote.close 常常整段是 null，但 adjclose 有值。
+    // 指數沒有配息調整，adjclose 等同 close，拿來補洞是安全的。
+    const close = quote.close[i] ?? adjclose?.[i] ?? null
+    if (close == null) continue  // 該日真的無資料（假日/停牌）
     bars.push({
       date:  new Date(timestamp[i] * 1000).toLocaleDateString('en-CA', { timeZone: tz }),
-      open:  quote.open[i],
-      high:  quote.high[i],
-      low:   quote.low[i],
-      close: quote.close[i],
+      open:  quote.open[i]  ?? close,
+      high:  quote.high[i]  ?? close,
+      low:   quote.low[i]   ?? close,
+      close,
       volume: quote.volume[i] ?? 0,
     })
   }
 
-  // R11：06:07 台北時段六個市場都休市所以一直是安全的，但 R7 開放手動補跑後，若剛好在
-  // 該市場盤中觸發，最後一根 bar 會是未收盤的即時值，不能當日 K 存——盤中就剔除最新那根
-  // （bars 此時是舊到新排序，最新的在陣列尾端）
+  // AC-GL-1：只剔除「該市場今天、且還沒收盤定版」的那根。
+  // 2026-09-03 日韓落後事故：原本單看 currentTradingPeriod 判斷盤中，GitHub 排程延遲
+  // 讓台北 06:07 的班次實際跑在 08:01（＝東京 09:01 已開盤），於是剔掉一根、
+  // R16 的 meta 合成又因為 !inSession 不執行，日韓就結構性卡在兩天前。
+  // 現在拆成兩個獨立條件：日期是否為市場當日、以及該市場今天是否已收盤。
+  const marketToday = new Date().toLocaleDateString('en-CA', { timeZone: tz })
   const period = result.meta?.currentTradingPeriod?.regular
   const nowSec = Math.floor(Date.now() / 1000)
-  const inSession = period && nowSec >= period.start && nowSec < period.end
-  if (inSession && bars.length > 0) {
-    console.warn(`[global] ${symbol} 市場盤中，剔除未收盤的最後一根`)
+  const inTradingHours = !!period && nowSec >= period.start && nowSec < period.end
+  // 剛收盤 15 分鐘內 Yahoo 的收盤價還可能變動，一併視為未定版
+  const justClosed = !!period && nowSec >= period.end && nowSec - period.end < 15 * 60
+  const lastIsToday = bars.length > 0 && bars[bars.length - 1].date === marketToday
+  const inSession = lastIsToday && (inTradingHours || justClosed)
+  if (inSession) {
+    console.warn(`[global] ${symbol} ${marketToday} 尚未收盤定版，剔除最後一根`)
     bars.pop()
   }
 
@@ -78,11 +90,13 @@ async function fetchYahoo(symbol, attempt = 1) {
   // null 過濾會讓 06:07 班次的亞股結構性落後兩天。市場非盤中且 meta 的收盤日期比最新 bar 新時，
   // 用 meta 合成當日 bar（meta 無 open，用 chartPreviousClose 近似；跳空日 open 會失真但指數
   // K 線主要看 close/MA，可接受）。等 Yahoo quote 定版後，下次抓取同日期的真值自然覆蓋
+  // AC-GL-2：解除「非盤中才補」的限制——真正該擋的是「用當日未定版的即時價冒充日 K」，
+  // 所以條件改成 metaDate < 市場今日（只補已經收盤的那幾天），盤中執行也能補上前一交易日。
   const meta = result.meta
-  if (!inSession && bars.length > 0 && meta?.regularMarketTime && meta?.regularMarketPrice != null) {
+  if (bars.length > 0 && meta?.regularMarketTime && meta?.regularMarketPrice != null) {
     const metaDate = new Date(meta.regularMarketTime * 1000).toLocaleDateString('en-CA', { timeZone: tz })
     const lastDate = bars[bars.length - 1].date
-    if (metaDate > lastDate) {
+    if (metaDate > lastDate && metaDate < marketToday) {
       bars.push({
         date:   metaDate,
         open:   meta.chartPreviousClose      ?? meta.regularMarketPrice,
