@@ -18,6 +18,7 @@ interface Props {
 const META = {
   low: {
     title: '低點反轉',
+    formula: '4 項條件成立 ≥ 3',
     tone: 'red' as const,
     watch: '融資恐慌殺出，留意落底',
     alert: '恐慌 + 法人接手，反轉訊號',
@@ -26,6 +27,7 @@ const META = {
   },
   high: {
     title: '高點反轉',
+    formula: '4 項條件成立 ≥ 3',
     tone: 'green' as const,
     // AC-RV-8：定位是風險警示，不是見頂放空——命中率約 50%，但命中時跌 5~15%
     watch: '融資過熱，注意回檔風險',
@@ -36,8 +38,8 @@ const META = {
 }
 
 const TONE = {
-  red:   { on: 'border-red-300 bg-red-50 hover:bg-red-100',     text: 'text-red-600',   dot: 'bg-red-500' },
-  green: { on: 'border-green-300 bg-green-50 hover:bg-green-100', text: 'text-green-700', dot: 'bg-green-500' },
+  red:   { on: 'border-red-300 bg-red-50 hover:bg-red-100',       card: 'border-red-300 bg-red-50',     text: 'text-red-500',   dot: 'bg-red-500' },
+  green: { on: 'border-green-300 bg-green-50 hover:bg-green-100', card: 'border-green-300 bg-green-50', text: 'text-green-600', dot: 'bg-green-500' },
 }
 
 export default function ReversalCard({ kind, signal, compact = false }: Props) {
@@ -49,33 +51,54 @@ export default function ReversalCard({ kind, signal, compact = false }: Props) {
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className={`flex flex-col items-start px-3 py-2.5 rounded-xl border text-left transition-colors w-full ${
-          lit ? t.on : 'border-slate-200 bg-white hover:bg-slate-50'
-        }`}
-      >
-        <div className="flex items-center justify-between w-full mb-1">
-          <span className="flex items-center gap-1.5">
-            <span className="text-xs text-slate-500 font-medium">{m.title}</span>
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-              lit ? `${t.text} bg-white/70` : 'text-slate-400 bg-slate-100'
-            }`}>
-              {signal.score}/4
+      {compact ? (
+        <button
+          onClick={() => setOpen(true)}
+          className={`flex flex-col items-start px-3 py-2.5 rounded-xl border text-left transition-colors w-full ${
+            lit ? t.on : 'border-slate-200 bg-white hover:bg-slate-50'
+          }`}
+        >
+          <div className="flex items-center justify-between w-full mb-1">
+            <span className="flex items-center gap-1.5">
+              <span className="text-xs text-slate-500 font-medium">{m.title}</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                lit ? `${t.text} bg-white/70` : 'text-slate-400 bg-slate-100'
+              }`}>
+                {signal.score}/4
+              </span>
+              {signal.level === 'alert' && (
+                <span className={`w-1.5 h-1.5 rounded-full ${t.dot} animate-pulse`} />
+              )}
             </span>
+            <span className="text-[10px] text-slate-300">›</span>
+          </div>
+          <span className={`text-[11px] font-bold leading-snug ${lit ? t.text : 'text-slate-400'}`}>
+            {label}
+          </span>
+        </button>
+      ) : (
+        <button
+          onClick={() => setOpen(true)}
+          className={`text-left rounded-xl p-4 border transition-all hover:-translate-y-0.5 hover:shadow-md w-full ${
+            lit ? t.card : 'border-slate-200 bg-white opacity-70'
+          }`}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="text-sm font-bold text-slate-700">{m.title}</span>
             {signal.level === 'alert' && (
               <span className={`w-1.5 h-1.5 rounded-full ${t.dot} animate-pulse`} />
             )}
-          </span>
-          <span className="text-[10px] text-slate-300">›</span>
-        </div>
-        <span className={`text-[11px] font-bold leading-snug ${lit ? t.text : 'text-slate-400'}`}>
-          {label}
-        </span>
-        {!compact && signal.missing.length > 0 && signal.missing.length <= 2 && (
-          <span className="text-[10px] text-slate-400 mt-0.5">缺：{signal.missing.join('、')}</span>
-        )}
-      </button>
+          </div>
+          <div className="text-xs font-mono text-slate-400 mb-3">{m.formula}</div>
+          <div className={`text-sm font-bold mb-1 ${t.text}`}>
+            {signal.score}/4 項成立
+          </div>
+          <div className={`text-xs font-bold ${lit ? t.text : 'text-slate-400'}`}>
+            {signal.level === 'alert' ? '● 強訊號' : signal.level === 'watch' ? '● 觀察中' : '○ 未觸發'}
+          </div>
+          <div className="text-[10px] text-slate-400 mt-2">點擊查看計算說明 →</div>
+        </button>
+      )}
 
       {open && (
         <div
