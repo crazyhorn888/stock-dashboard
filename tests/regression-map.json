@@ -386,5 +386,20 @@
   "lib/tradingDay.ts": [
     "台股交易日／鮮度基準的共用判斷，一律以 Asia/Taipei 計算（使用者出國時手機時區會變）",
     "freshnessBaseDate：休市→最近交易日；13:30 後→今日；13:30 前→上一個交易日。FreshnessBar（有 holiday prop 的完整版）與 FreshnessPanel（後台簡化版）都應遵循同一規則"
+  ],
+  "lib/reversalSignals.ts": [
+    "AC-RV-1/2 低點與高點反轉的計分邏輯（四條件各1分）。門檻依 647 天回測定案，全部用 Z-Score 等統計相對值，不可改回絕對金額/口數（會隨市值膨脹失效）",
+    "低點最常缺條件④（法人買超）——大跌當天法人通常也在賣；高點條件①沿用現有負向卡的乖離公式，是刻意重疊",
+    "rollingZScore 樣本不足 window 回傳 null → 該條件不成立不計分（AC-RV-6）"
+  ],
+  "components/shared/ReversalCard.tsx": [
+    "AC-RV-4 反轉卡：顯示 N/4 分、亮燈規則 3分黃/4分紅，展開後列出四項成立狀態與目前數值",
+    "AC-RV-8 高點文案定位為風險警示（命中率約 50%），不可寫成「見頂放空」",
+    "市場條件頁與盤後行情頁共用（compact 控制是否顯示「缺：…」）"
+  ],
+  "components/aftermarket/MarketSignalCards.tsx": [
+    "AC-PB-1 標題改「正向指標／負向指標」，其下每個條件各自獨立亮燈方塊",
+    "AC-PB-2/RV-7 四張卡並列：正向＝融資減幅+低點反轉、負向＝融資增幅+高點反轉",
+    "indexHistory 為選填——沒傳就只顯示原本兩張乖離卡，不會壞"
   ]
 }

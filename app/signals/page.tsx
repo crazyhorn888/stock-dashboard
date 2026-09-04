@@ -4,6 +4,8 @@ import { MOCK_DATA } from '@/lib/mockData'
 import { calcMarketSignals } from '@/lib/calcMarketSignals'
 import { useNDays, N_DEFAULT } from '@/lib/nDays'
 import UpdateStamp from '@/components/shared/UpdateStamp'
+import ReversalCard from '@/components/shared/ReversalCard'
+import { calcLowReversal, calcHighReversal } from '@/lib/reversalSignals'
 import { fetchSnapshot } from '@/lib/fetchSnapshot'
 import type { MarketSignals, IndexOHLC } from '@/lib/types'
 
@@ -95,6 +97,10 @@ export default function SignalsPage() {
     setNDraft(String(v))
   }
 
+  // 反轉訊號（AC-RV-1/2）：需要逐日籌碼序列，與乖離卡各自獨立
+  const lowRev  = useMemo(() => (indexHistory.length ? calcLowReversal(indexHistory)  : null), [indexHistory])
+  const highRev = useMemo(() => (indexHistory.length ? calcHighReversal(indexHistory) : null), [indexHistory])
+
   const conditions = buildConditions(signals)
   const pos = conditions.filter(c => c.type === 'positive')
   const neg = conditions.filter(c => c.type === 'negative')
@@ -171,6 +177,17 @@ export default function SignalsPage() {
           </div>
         ) : (
           <>
+            {/* AC-RV-7：四張卡各自獨立亮燈——乖離卡（原有）+ 反轉卡（新） */}
+            {lowRev && (
+              <section className="mb-5">
+                <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">反轉訊號</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <ReversalCard kind="low" signal={lowRev} />
+                  {highRev && <ReversalCard kind="high" signal={highRev} />}
+                </div>
+              </section>
+            )}
+
             <CardGroup title="正向條件（看多）" items={pos} />
             <CardGroup title="負向條件（看空）" items={neg} />
           </>

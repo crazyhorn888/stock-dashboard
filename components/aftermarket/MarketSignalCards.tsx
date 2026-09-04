@@ -1,9 +1,12 @@
 'use client'
 import { useState } from 'react'
-import type { MarketSignals } from '@/lib/types'
+import type { MarketSignals, IndexOHLC } from '@/lib/types'
+import ReversalCard from '@/components/shared/ReversalCard'
+import { calcLowReversal, calcHighReversal } from '@/lib/reversalSignals'
 
 interface Props {
   signals: MarketSignals
+  indexHistory?: IndexOHLC[]   // 反轉訊號要用逐日籌碼序列，沒傳就只顯示原本兩張卡
 }
 
 function Row({ label, value, color }: { label: string; value: string; color?: string }) {
@@ -20,7 +23,10 @@ const fmt = (v: number | null, suffix = '') =>
 const fmtPct = (v: number | null, prefix = '') =>
   v != null ? `${prefix}${v.toFixed(2)}%` : '—'
 
-export default function MarketSignalCards({ signals: s }: Props) {
+export default function MarketSignalCards({ signals: s, indexHistory }: Props) {
+  // AC-PB-2：反轉訊號與原本的乖離卡並列（四張卡各自獨立亮燈）
+  const lowRev  = indexHistory?.length ? calcLowReversal(indexHistory)  : null
+  const highRev = indexHistory?.length ? calcHighReversal(indexHistory) : null
   const posTriggered = s.posTriggered
   const negTriggered = s.negTriggered
   const hasMargin    = s.todayMargin != null
@@ -75,9 +81,10 @@ export default function MarketSignalCards({ signals: s }: Props) {
         </div>
       </div>
 
-      {/* 訊號條：左右並排 */}
-      <div className="grid grid-cols-2 gap-2 mb-4">
-        {/* 減幅指標 */}
+      {/* AC-PB-1：改為「正向指標／負向指標」純文字標題，其下每個條件各自為獨立亮燈方塊 */}
+      <div className="text-[11px] font-bold text-slate-500 mb-1.5">正向指標（看多）</div>
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        {/* 融資減幅 > 大盤減幅 5% */}
         <button
           onClick={() => setModal('pos')}
           className={`flex flex-col items-start px-3 py-2.5 rounded-xl border text-left transition-colors ${
@@ -87,7 +94,7 @@ export default function MarketSignalCards({ signals: s }: Props) {
           }`}
         >
           <div className="flex items-center justify-between w-full mb-1">
-            <span className="text-xs text-slate-500 font-medium">減幅指標</span>
+            <span className="text-xs text-slate-500 font-medium">融資減幅</span>
             <span className="text-[10px] text-slate-300">›</span>
           </div>
           <span className={`text-[11px] font-bold leading-snug ${posTriggered ? 'text-red-600' : 'text-slate-400'}`}>
@@ -95,7 +102,12 @@ export default function MarketSignalCards({ signals: s }: Props) {
           </span>
         </button>
 
-        {/* 增幅指標 */}
+        {lowRev && <ReversalCard kind="low" signal={lowRev} compact />}
+      </div>
+
+      <div className="text-[11px] font-bold text-slate-500 mb-1.5">負向指標（看空）</div>
+      <div className="grid grid-cols-2 gap-2 mb-4">
+        {/* 融資增幅 > 大盤增幅 7% */}
         <button
           onClick={() => setModal('neg')}
           className={`flex flex-col items-start px-3 py-2.5 rounded-xl border text-left transition-colors ${
@@ -105,13 +117,15 @@ export default function MarketSignalCards({ signals: s }: Props) {
           }`}
         >
           <div className="flex items-center justify-between w-full mb-1">
-            <span className="text-xs text-slate-500 font-medium">增幅指標</span>
+            <span className="text-xs text-slate-500 font-medium">融資增幅</span>
             <span className="text-[10px] text-slate-300">›</span>
           </div>
           <span className={`text-[11px] font-bold leading-snug ${negTriggered ? 'text-green-700' : 'text-slate-400'}`}>
             {!hasMargin ? '融資累積中' : '融資增幅>大盤增幅7%'}
           </span>
         </button>
+
+        {highRev && <ReversalCard kind="high" signal={highRev} compact />}
       </div>
 
       {/* Modal */}
@@ -128,7 +142,7 @@ export default function MarketSignalCards({ signals: s }: Props) {
             <div className="flex items-center justify-between mb-4">
               <span className="text-sm font-bold text-slate-700">
                 {modal === 'pos'
-                  ? `減幅指標（過去 ${n} 天，以最高點為基準）`
+                  ? `融資減幅指標（過去 ${n} 天，以最高點為基準）`
                   : `增幅指標（過去 ${n} 天，以最低點為基準）`}
               </span>
               <button onClick={() => setModal(null)} className="text-slate-400 text-lg leading-none">✕</button>

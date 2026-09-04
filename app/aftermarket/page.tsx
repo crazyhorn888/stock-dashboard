@@ -225,7 +225,7 @@ export default function AftermarketPage() {
               <>
                 <DailyBriefCard brief={data.dailyBrief} />
                 <KlineChart data={data.indexHistory ?? []} n={n} />
-                <MarketSignalCards signals={computedSignals} />
+                <MarketSignalCards signals={computedSignals} indexHistory={data.indexHistory} />
                 <GlobalIndexLights indices={data.globalIndices} onSelect={setGlobalModalKey} />
               </>
             )}
