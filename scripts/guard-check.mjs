@@ -18,6 +18,30 @@ function todayTWDate() {
     new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' })
 }
 
+// 台北現在的分鐘數（00:00 起算）
+function minsTW() {
+  const hhmm = new Date().toLocaleString('en-GB', {
+    timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false,
+  })
+  const [h, m] = hhmm.split(':').map(Number)
+  return h * 60 + m
+}
+
+// 今天是否休市（讀 check-holiday.mjs 產出的 holiday-status.json，它不受任何 Guard 限制永遠先跑）。
+// 讀不到就當作交易日——保守原則：寧可多跑一次，也不要漏掉該補的資料
+async function isHolidayToday(today) {
+  const supabaseUrl = process.env.SUPABASE_URL
+  if (!supabaseUrl) return false
+  try {
+    const res = await fetch(`${supabaseUrl}/storage/v1/object/public/snapshots/holiday-status.json`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    })
+    if (!res.ok) return false
+    const h = await res.json()
+    return h?.date === today && h?.isHoliday === true
+  } catch { return false }
+}
+
 function rocToISO(rocStr) {
   const s = String(rocStr).replace(/\//g, '')
   const year = parseInt(s.slice(0, -4)) + 1911
@@ -112,6 +136,18 @@ async function main() {
   // 不用等到隔天正常交易時段才追上
   if (process.env.FORCE_SKIP_GUARD2 === 'true') {
     return emit(true, '不受開盤限制的補課班次，略過 FMTQIK 檢查', true)
+  }
+
+  // AC-SD-5：收盤後補股價。TWSE 的收盤行情（MI_INDEX）約 13:57 就發布，
+  // 但 FMTQIK 要 15:30 才有今日 K 棒——14:05 那班會卡在 Guard 2。
+  // 只要「今天是交易日、已過 13:55、而 stocksDate 還不是今天」就放行，
+  // 讓當天股價下午就能到位，不必等 15:37。
+  const AFTER_CLOSE_DATA = 13 * 60 + 55
+  if (minsTW() >= AFTER_CLOSE_DATA && !(await isHolidayToday(today))) {
+    const stocksDate = meta?.stocksDate ?? null
+    if (stocksDate && stocksDate < today) {
+      return emit(true, `今日（${today}）已收盤但股價仍為 ${stocksDate}，補抓當日收盤行情`, true)
+    }
   }
 
   const bar = await hasTodayBar(today)
