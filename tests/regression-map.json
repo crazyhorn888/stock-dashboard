@@ -411,5 +411,26 @@
     "AC-PB-3 融資維持率估算：166.7%（融資六成建倉）×(今日指數÷60日融資加權成本指數)。官方不公布整體維持率，這是推估值",
     "門檻 175/165/155 依 130 天實測分布（149~197%、中位 173%）。不可改回 160/140/130——那是個別帳戶追繳線，市場整體套上去 92% 都綠燈",
     "樣本 <10 天或該期間融資只減不增 → 回 null 不顯示，寧可不顯示也不給錯數字"
+  ],
+  "scripts/fetch-daily.mjs::fetchIntradayOHLC": [
+    "AC-KL-3（2026-09-04）：大盤當日真實 OHLC 來自 MI_5MINS_INDEX。⚠️ 必須排除 09:00:00 那筆——它是前一日收盤基準不是今日開盤價，不排除會讓 open 與 low 一起錯（9/04 實測 low 會從 45967 誤記成 45858）。historicalData/FMTQIK 已 404，備用端點沒有開高低（open 拿前日收盤湊、high/low 取開收極值），所以影線全是假的；這個函式是唯一的真 OHLC 來源。MI_5MINS_INDEX 不含成交金額，volume 由後續 FMTQIK 補值。"
+  ],
+  "scripts/guard-check.mjs::hasTodayBar": [
+    "Guard 2 的另一份實作，必須與 fetch-daily.mjs::isTradingDay 的判斷保持一致。2026-09-04 事故：fetch-daily 改用 MI_5MINS_INDEX 提早建立當日 K 棒，但這裡還只認 FMTQIK（~15:30），14:05 班次先被 guard 擋掉，提早的效果完全拿不到。改任一邊都要同步另一邊。"
+  ],
+  "lib/marginMaintenance.ts::estimateMarginMaintenance": [
+    "AC-PB-3：lookback 必須由呼叫端傳入頁面的 N（夾在 20~120）。原本寫死 60，使用者改 N 時成本指數完全不動，與頁面其他指標行為不一致（2026-09-04 Franky 回報）。"
+  ],
+  "lib/reversalSignals.ts::calcHighReversal": [
+    "⚠️ nDays 一定要由呼叫端傳入頁面 N。2026-09-04 事故：兩個呼叫點都沒傳，計算一直吃預設 100，但卡片文字用 N 顯示『從 N 日低點起算』，導致市場條件頁的乖離卡不亮、高點反轉卡卻亮（N=30 時差距 2.35%，100 日時 13.13%）。新增呼叫點務必傳 n。"
+  ],
+  "components/aftermarket/SignalHelpModal.tsx": [
+    "AC-PB-6/7：只放四張卡共用的基礎（亮燈規則、相對值原則）。各指標自己的公式與 Z 算法一律跟著卡片走——放這裡會四張卡重複四次。改動時確認沒有把個別指標的說明搬回來。"
+  ],
+  "components/aftermarket/MarginThermometer.tsx": [
+    "AC-PB-3/6：溫度計本身 + 可點開的公式 modal。刻度 145~195、門檻 175/165/155 是依 130 天實測分布訂的，改門檻前要重跑分布，否則會回到『九成日子都綠燈』的狀態。"
+  ],
+  "app/signals/page.tsx": [
+    "市場條件頁。反轉卡併在正向／負向 CardGroup 的 extra slot（AC-PB-5），calcHighReversal 必須傳頁面 n。CardGroup 的 grid 是 3 欄，加卡片時要同步調整『＋未來新增』佔位數。"
   ]
 }
