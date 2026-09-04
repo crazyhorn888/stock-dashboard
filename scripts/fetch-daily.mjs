@@ -197,6 +197,50 @@ async function fetchIndexOHLCForMonth(yyyymmdd) {
   return []
 }
 
+// ── 盤中指數序列 → 當日真實 OHLC（MI_5MINS_INDEX）──────────────────────────
+// 2026-09-04：historicalData/FMTQIK（註解說的「完整 OHLC」主端點）已回 404，
+// 實際跑的一直是備用端點——它只有收盤指數，open 拿前日收盤湊、high/low 取開收極值，
+// 也就是 K 棒的上下影線全是假的。實測 9/04：推算 開45858/高46551/低45858，
+// 真實值是 開45991/高46621/低45967，當天衝到 46621 這件事圖上完全看不到。
+//
+// MI_5MINS_INDEX 給每 5 秒的指數，可以還原真正的 OHLC，收盤值與 FMTQIK 完全吻合。
+// 它也比 FMTQIK（約 15:30）早就緒，順便讓當日 K 棒提早進 pipeline。
+//
+// ⚠️ 09:00:00 那筆是「前一日收盤」的基準值不是今日開盤價，必須排除，
+//    否則開盤價與最低點都會錯（9/04 會把 low 從 45967 誤記成 45858）。
+let _intradayCache = null  // { key, bar|null }
+async function fetchIntradayOHLC(yyyymmdd) {
+  if (_intradayCache?.key === yyyymmdd) return _intradayCache.bar
+
+  const finish = bar => { _intradayCache = { key: yyyymmdd, bar }; return bar }
+  try {
+    const url = `https://www.twse.com.tw/exchangeReport/MI_5MINS_INDEX?response=json&date=${yyyymmdd}`
+    const d = await fetchJSON(url)
+    if (d?.stat !== 'OK' || !Array.isArray(d.data) || d.data.length === 0) return finish(null)
+
+    const col = (d.fields ?? []).indexOf('發行量加權股價指數')
+    if (col < 0) return finish(null)
+
+    const points = []
+    for (const row of d.data) {
+      if (row[0] === '09:00:00') continue          // 前日收盤基準，非今日開盤
+      const v = parseFloat(String(row[col]).replace(/,/g, ''))
+      if (Number.isFinite(v) && v > 0) points.push(v)
+    }
+    if (points.length < 10) return finish(null)     // 盤中還沒跑完，資料不足以定 OHLC
+
+    return finish({
+      date:  `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`,
+      open:  points[0],
+      high:  Math.max(...points),
+      low:   Math.min(...points),
+      close: points[points.length - 1],
+    })
+  } catch {
+    return finish(null)
+  }
+}
+
 /** 初始化 indexHistory：回填最近 13 個月，取最新 250 筆，newest first */
 async function buildFullIndexHistory(todayISO) {
   console.log('[daily] indexHistory 缺失，初始化 13 個月歷史...')
@@ -355,11 +399,17 @@ async function isAlreadyDoneToday() {
 async function isTradingDay(todayISO) {
   const yyyymmdd = todayISO.replace(/-/g, '')
   const rows = await fetchIndexOHLCForMonth(yyyymmdd)  // 有快取，Step 4 不重複 fetch
-  const found = rows.some(r => r.date === todayISO)
-  if (!found) {
-    console.log(`[daily] FMTQIK 尚無今日（${todayISO}）K 棒（非交易日或 15:30 前）`)
+  if (rows.some(r => r.date === todayISO)) return true
+
+  // FMTQIK 約 15:30 才出，MI_5MINS_INDEX 收盤後就有——用它讓當日 K 棒提早進 pipeline
+  const intraday = await fetchIntradayOHLC(yyyymmdd)
+  if (intraday) {
+    console.log(`[daily] FMTQIK 尚無今日 K 棒，但 MI_5MINS_INDEX 已就緒（${todayISO}）`)
+    return true
   }
-  return found
+
+  console.log(`[daily] FMTQIK 與 MI_5MINS_INDEX 均無今日（${todayISO}）資料（非交易日或收盤前）`)
+  return false
 }
 
 // ── 籌碼：讀 Supabase chips/{date}.json（N8N Phase1 寫入）─────────────────
@@ -943,7 +993,20 @@ async function main() {
     indexHistory = await buildFullIndexHistory(today)
   } else {
     const existingDates = new Set(indexHistory.map(r => r.date))
-    const newEntries = todayOHLCMonth.filter(r => !existingDates.has(r.date))
+    let newEntries = todayOHLCMonth.filter(r => !existingDates.has(r.date))
+
+    // 今日 K 棒：FMTQIK 現行端點只有收盤價（開高低是推算的），改以 intraday 的真實 OHLC 為準；
+    // FMTQIK 還沒出今天時，intraday 也負責直接補上這一筆
+    const intradayToday = await fetchIntradayOHLC(todayYYYYMMDD)
+    if (intradayToday && !existingDates.has(today)) {
+      const fmtqikToday = newEntries.find(r => r.date === today)
+      const merged = {
+        ...intradayToday,
+        volume: fmtqikToday?.volume ?? 0,   // 成交金額只有 FMTQIK 有，晚一點的班次會補上
+      }
+      newEntries = [merged, ...newEntries.filter(r => r.date !== today)]
+      console.log(`[daily] 今日 K 棒改用 MI_5MINS_INDEX 真實 OHLC：開 ${merged.open} 高 ${merged.high} 低 ${merged.low} 收 ${merged.close}`)
+    }
 
     if (newEntries.length > 0) {
       // 僅為「目標日期」（today）嘗試讀取籌碼；其他補漏日期不帶籌碼
@@ -966,6 +1029,18 @@ async function main() {
       changed = true
     } else {
       console.warn('[daily] 今日 FMTQIK 無新資料，indexHistory 保留舊值')
+    }
+
+    // 成交金額補值：intraday 先建的今日 K 棒沒有成交金額（MI_5MINS_INDEX 不含），
+    // 等 FMTQIK（~15:30）出來後補上。不補的話那天的量會永遠是 0——日期已存在，
+    // 上面的 newEntries 不會再處理它。
+    if (indexHistory[0] && !indexHistory[0].volume) {
+      const fmtqikRow = todayOHLCMonth.find(r => r.date === indexHistory[0].date)
+      if (fmtqikRow?.volume) {
+        indexHistory[0] = { ...indexHistory[0], volume: fmtqikRow.volume }
+        console.log(`[daily] 成交金額補值（${indexHistory[0].date}）：${fmtqikRow.volume} 億`)
+        changed = true
+      }
     }
 
     // 融資/籌碼補值重試：獨立於上面「有無新 FMTQIK 資料」判斷。
