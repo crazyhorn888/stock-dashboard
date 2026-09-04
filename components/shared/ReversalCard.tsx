@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import Link from 'next/link'
 import type { ReversalSignal } from '@/lib/reversalSignals'
 
 /**
@@ -15,6 +16,9 @@ interface Props {
   compact?: boolean   // 盤後行情頁的小方塊版
   nDays?: number      // 「融資追價過頭」的起算區間，用來把 N 代進公式字串
 }
+
+// 建立在 Z-Score 上的條件；卡片裡出現任何一個就附上 Z 的算式（AC-PB-7）
+const Z_CONDITIONS = new Set(['統計極端恐慌', '軋空燃料枯竭', '外資調節出貨'])
 
 /**
  * 各條件的算式。AC-PB-6：說明跟著它所屬的卡走，不再集中在問號 Modal——
@@ -64,6 +68,7 @@ const TONE = {
 
 export default function ReversalCard({ kind, signal, compact = false, nDays = 100 }: Props) {
   const [open, setOpen] = useState(false)
+  const hasZ = signal.conditions.some(c => Z_CONDITIONS.has(c.label))
   const m = META[kind]
   const t = TONE[m.tone]
   const lit = signal.level !== 'none'
@@ -163,17 +168,47 @@ export default function ReversalCard({ kind, signal, compact = false, nDays = 10
               ))}
             </div>
 
+            {/* AC-PB-7：Z-Score 的算式跟著用到它的卡走，問號不再重複一份 */}
+            {!compact && hasZ && (
+              <div className="rounded-lg bg-slate-50 px-2.5 py-2 mb-2">
+                <div className="text-[11px] font-semibold text-slate-600 mb-1">上面的 Z 怎麼算</div>
+                <code className="block text-[10px] text-slate-400 leading-relaxed whitespace-pre overflow-x-auto">
+{`X = 當期數值相對前期的變動
+Z = (X − 近 N 期平均) ÷ 近 N 期標準差`}
+                </code>
+                <p className="text-[10px] text-slate-500 mt-1.5 leading-relaxed">
+                  衡量「這次的變動比平常誇張多少」。<b>|Z| ≥ 2</b> 落在統計上最極端的 2.5%。
+                  用 Z 而不是「單日減少 50 億」這種固定金額，是因為台股市值會膨脹，
+                  固定門檻幾年後就失效。
+                </p>
+              </div>
+            )}
+
             <div className="rounded-lg bg-slate-50 px-2.5 py-2 mb-2">
               <div className="text-[11px] font-semibold text-slate-600 mb-1">怎麼解讀</div>
               <p className="text-[10px] text-slate-500 leading-relaxed">{m.note}</p>
             </div>
-            <div className="rounded-lg bg-slate-50 px-2.5 py-2">
-              <div className="text-[11px] font-semibold text-slate-600 mb-1">實測表現</div>
-              <p className="text-[10px] text-slate-500 leading-relaxed">{m.backtest}</p>
-            </div>
+
+            {!compact && (
+              <div className="rounded-lg bg-slate-50 px-2.5 py-2">
+                <div className="text-[11px] font-semibold text-slate-600 mb-1">實測表現</div>
+                <p className="text-[10px] text-slate-500 leading-relaxed">{m.backtest}</p>
+              </div>
+            )}
+
             <p className="text-[10px] text-slate-400 leading-relaxed mt-2">
               亮燈規則：3 項成立＝觀察、4 項成立＝強訊號。四項各 1 分、不加權。
             </p>
+
+            {/* 盤後行情只給結論，完整的 Z 原理與回測留在市場條件頁 */}
+            {compact && (
+              <Link
+                href="/signals"
+                className="block mt-2 text-[10px] text-blue-600 font-semibold text-center py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors"
+              >
+                看完整公式與回測 →
+              </Link>
+            )}
           </div>
         </div>
       )}
