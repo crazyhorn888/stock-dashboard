@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { MarketSignals, IndexOHLC } from '@/lib/types'
 import ReversalCard from '@/components/shared/ReversalCard'
 import { calcLowReversal, calcHighReversal } from '@/lib/reversalSignals'
+import SignalHelpModal from '@/components/aftermarket/SignalHelpModal'
 
 interface Props {
   signals: MarketSignals
@@ -34,6 +35,7 @@ export default function MarketSignalCards({ signals: s, indexHistory }: Props) {
   const marginIsStale = hasMargin && !!s.todayMarginDate && s.todayMarginDate !== todayStr
   const n = s.nDays
   const [modal, setModal] = useState<'pos' | 'neg' | null>(null)
+  const [showHelp, setShowHelp] = useState(false)   // AC-PB-4：公式集中說明
 
   return (
     <>
@@ -85,7 +87,16 @@ export default function MarketSignalCards({ signals: s, indexHistory }: Props) {
           同一列是同一組指標的正負版本（融資增幅↔減幅、高點↔低點反轉），左右對稱 */}
       <div className="grid grid-cols-2 gap-2 mb-1.5">
         <div className="text-[11px] font-bold text-green-700">負向指標（看空）</div>
-        <div className="text-[11px] font-bold text-red-600">正向指標（看多）</div>
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-bold text-red-600">正向指標（看多）</span>
+          <button
+            onClick={() => setShowHelp(true)}
+            aria-label="指標說明"
+            className="w-5 h-5 flex items-center justify-center rounded-full border border-slate-200 text-slate-400 text-[10px] font-bold leading-none"
+          >
+            ?
+          </button>
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-2 mb-4">
         {/* 第一列：融資乖離 */}
@@ -127,6 +138,8 @@ export default function MarketSignalCards({ signals: s, indexHistory }: Props) {
         {highRev ? <ReversalCard kind="high" signal={highRev} compact /> : <div />}
         {lowRev  ? <ReversalCard kind="low"  signal={lowRev}  compact /> : <div />}
       </div>
+
+      {showHelp && <SignalHelpModal nDays={n} onClose={() => setShowHelp(false)} />}
 
       {/* Modal */}
       {modal && (
