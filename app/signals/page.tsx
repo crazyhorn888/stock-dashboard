@@ -99,7 +99,7 @@ export default function SignalsPage() {
 
   // 反轉訊號（AC-RV-1/2）：需要逐日籌碼序列，與乖離卡各自獨立
   const lowRev  = useMemo(() => (indexHistory.length ? calcLowReversal(indexHistory)  : null), [indexHistory])
-  const highRev = useMemo(() => (indexHistory.length ? calcHighReversal(indexHistory) : null), [indexHistory])
+  const highRev = useMemo(() => (indexHistory.length ? calcHighReversal(indexHistory, n) : null), [indexHistory, n])
 
   const conditions = buildConditions(signals)
   const pos = conditions.filter(c => c.type === 'positive')

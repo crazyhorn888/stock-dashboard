@@ -30,7 +30,7 @@ export default function MarketSignalCards({ signals: s, indexHistory }: Props) {
   const n = s.nDays
   // AC-PB-2：反轉訊號與原本的乖離卡並列（四張卡各自獨立亮燈）
   const lowRev  = indexHistory?.length ? calcLowReversal(indexHistory)  : null
-  const highRev = indexHistory?.length ? calcHighReversal(indexHistory) : null
+  const highRev = indexHistory?.length ? calcHighReversal(indexHistory, n) : null
   // AC-PB-3：融資維持率（估算），資料不足時回 null → 不顯示溫度計
   const maintenance = indexHistory?.length ? estimateMarginMaintenance(indexHistory, n) : null
   const posTriggered = s.posTriggered

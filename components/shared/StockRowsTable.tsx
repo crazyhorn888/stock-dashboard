@@ -12,7 +12,8 @@ import type { OHLCSnapshot } from '@/lib/types'
  * 共用同一個元件：同欄位、同排序規則、同顯示格式，資料 refer 同一份 StockRow
  * （page.tsx 統一產生，法人欄位來自 day0 T86，見 lib/instNet）。
  *
- * 欄位：⭐ 代號 名稱 收盤 漲跌% 距N高▼% 視覺 距N低▲% P/E EPS 外資 投信 自營 合計 產業 概念
+ * 欄位：⭐ 代號 名稱 收盤 漲跌% 距N高▼% 距N低▲% P/E EPS 外資 投信 自營 合計 產業 概念
+ * （2026-09-04 移除「視覺」欄——它只是把「距N高%」再畫一次長條，佔一整欄不划算）
  * （產業欄 2026-07-12 曾短暫移除後加回——當時整欄「—」是資料 bug 不是欄位沒用，資料修復後保留）
  * 法人四欄（外資/投信/自營/合計）排序用絕對值——大動作在前（2026-07-12 Franky 確認）。
  * 上櫃股無 T86 法人資料 → 投信/自營/合計顯示「—」（外資 fallback TPEX 值）。
@@ -81,6 +82,8 @@ export default function StockRowsTable({
 
   // 兩組資料日期不一致 = 法人那組還停在前一個交易日
   const stale = !!stocksDate && !!instNetDate && instNetDate < stocksDate
+  // 資料格用比標題更淡的琥珀底：捲到下面也看得出這四欄不是今天的數字，但不搶掉數字本身的紅綠
+  const instBg = stale ? 'bg-amber-50/40' : ''
 
   const filteredRows = useMemo(
     () => filter.filterRows(rows, bars ?? undefined),
@@ -123,7 +126,7 @@ export default function StockRowsTable({
           {(stocksDate || instNetDate) && (
             <tr className="bg-slate-50 sticky top-0 z-10">
               <th colSpan={3} className="border-b border-slate-200" />
-              <th colSpan={5} className="px-2 py-1 text-[10px] font-semibold text-slate-500 text-center border-b border-l border-slate-200 bg-blue-50/50">
+              <th colSpan={4} className="px-2 py-1 text-[10px] font-semibold text-slate-500 text-center border-b border-l border-slate-200 bg-blue-50/50">
                 股價{stocksDate && <span className="text-slate-400 font-normal">　{fmtDate(stocksDate)}</span>}
               </th>
               <th colSpan={2} className="px-2 py-1 text-[10px] font-semibold text-slate-400 text-center border-b border-l border-slate-200">
@@ -144,7 +147,6 @@ export default function StockRowsTable({
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400">收盤</th>
             <th className={thCls('changePercent')} onClick={() => handleSort('changePercent')}>漲跌% {arrow('changePercent')}</th>
             <th className={thCls('highDropPct')} onClick={() => handleSort('highDropPct')}>距N高▼% {arrow('highDropPct')}</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 whitespace-nowrap">視覺</th>
             <th className={thCls('lowRisePct')} onClick={() => handleSort('lowRisePct')}>距N低▲% {arrow('lowRisePct')}</th>
             <th className={thCls('pe')} onClick={() => handleSort('pe')}>P/E {arrow('pe')}</th>
             <th className={thCls('eps')} onClick={() => handleSort('eps')}>EPS {arrow('eps')}</th>
@@ -158,9 +160,9 @@ export default function StockRowsTable({
         </thead>
         <tbody>
           {rows.length === 0 ? (
-            <tr><td colSpan={16} className="py-8 text-center text-slate-400">無個股資料</td></tr>
+            <tr><td colSpan={15} className="py-8 text-center text-slate-400">無個股資料</td></tr>
           ) : sorted.length === 0 ? (
-            <tr><td colSpan={16} className="py-8 text-center text-slate-400">無符合條件的個股（{filter.activeCount} 個條件啟用中）</td></tr>
+            <tr><td colSpan={15} className="py-8 text-center text-slate-400">無符合條件的個股（{filter.activeCount} 個條件啟用中）</td></tr>
           ) : sorted.map(r => {
             const chgUp = r.changePercent >= 0
             const highBad = r.highDropPct <= -15
@@ -190,21 +192,13 @@ export default function StockRowsTable({
                 <td className={`px-3 py-2 font-medium ${highBad ? 'text-red-500' : highGood ? 'text-slate-400' : 'text-slate-600'}`}>
                   {r.highDropPct.toFixed(2)}%
                 </td>
-                <td className="px-3 py-2">
-                  <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-red-400 rounded-full"
-                      style={{ width: `${Math.min(Math.abs(r.highDropPct), 50) * 2}%` }}
-                    />
-                  </div>
-                </td>
                 <td className="px-3 py-2 text-red-500 font-medium">+{r.lowRisePct.toFixed(2)}%</td>
                 <td className="px-3 py-2 text-slate-600">{r.pe?.toFixed(1) ?? '—'}</td>
                 <td className="px-3 py-2 text-slate-600">{r.eps?.toFixed(2) ?? '—'}</td>
-                <td className="px-3 py-2">{instCell(r.foreignNetBuy)}</td>
-                <td className="px-3 py-2">{instCell(r.trustNet)}</td>
-                <td className="px-3 py-2">{instCell(r.dealerNet)}</td>
-                <td className="px-3 py-2">{instCell(r.instTotal)}</td>
+                <td className={`px-3 py-2 ${instBg}`}>{instCell(r.foreignNetBuy)}</td>
+                <td className={`px-3 py-2 ${instBg}`}>{instCell(r.trustNet)}</td>
+                <td className={`px-3 py-2 ${instBg}`}>{instCell(r.dealerNet)}</td>
+                <td className={`px-3 py-2 ${instBg}`}>{instCell(r.instTotal)}</td>
                 <td className="px-3 py-2">
                   <span className="bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-slate-500 text-[10px] whitespace-nowrap">
                     {r.industry}
