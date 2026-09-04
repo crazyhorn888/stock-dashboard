@@ -310,26 +310,44 @@ async function fetchChipsFromSupabase(dateYYYYMMDD) {
   } catch { return null }
 }
 
-// ── 籌碼：抓今日融資餘額（仟元 → 億元）─────────────────────────────────
-async function fetchMarginAmount(dateYYYYMMDD) {
+// ── 籌碼：抓今日融資融券（MI_MARGN）─────────────────────────────────────
+// AC-PL-1：同一份回應裡有三列，過去只用了「融資金額」。券資比要用到另外兩列的張數：
+//   融資(交易單位) | 買進 | 賣出 | 現金償還 | 前日餘額 | 今日餘額   ← row[5] = 融資張數
+//   融券(交易單位) | ...                                    ← row[5] = 融券張數
+//   融資金額(仟元) | ...                                    ← row[5] = 融資金額
+// 回傳 { amount 億元, marginShare 張, shortShare 張 }；任一欄缺失為 null，不影響其餘欄位
+async function fetchMarginData(dateYYYYMMDD) {
   const url = `https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?response=json&date=${dateYYYYMMDD}&selectType=MS`
+  const num = v => {
+    const n = parseFloat(String(v).replace(/,/g, ''))
+    return isNaN(n) ? null : n
+  }
   try {
     const d = await fetchJSON(url)
     if (d?.stat !== 'OK') return null
+    const out = { amount: null, marginShare: null, shortShare: null }
     for (const t of d.tables ?? []) {
       for (const row of t.data ?? []) {
-        if (String(row[0]).includes('融資金額')) {
-          const val = parseFloat(String(row[5]).replace(/,/g, ''))
-          return isNaN(val) ? null : Math.round(val / 100_000 * 100) / 100
-        }
+        const label = String(row[0])
+        const today = num(row[5])   // 今日餘額
+        if (today == null) continue
+        // 「融資金額」要先判，否則會被「融資」前綴誤配
+        if (label.includes('融資金額')) out.amount = Math.round(today / 100_000 * 100) / 100  // 仟元 → 億元
+        else if (label.includes('融資')) out.marginShare = today
+        else if (label.includes('融券')) out.shortShare = today
       }
     }
-    return null
+    return out.amount == null && out.marginShare == null ? null : out
   } catch { return null }
 }
 
+// 舊介面（只要融資金額）——沿用既有呼叫端
+async function fetchMarginAmount(dateYYYYMMDD) {
+  return (await fetchMarginData(dateYYYYMMDD))?.amount ?? null
+}
+
 // ── 籌碼：組裝 ChipsData（Phase1 JSON + 融資） ──────────────────────────
-function buildChipsEntry(phase1, marginAmount, prevMarginAmount) {
+function buildChipsEntry(phase1, marginAmount, prevMarginAmount, marginShares = null) {
   // phase1 可為 null（N8N chips 尚未寫入）；只要 marginAmount 有值就允許建立 partial entry
   if (!phase1 && marginAmount == null) return null
   const det = (phase1?.detail) || {}
@@ -343,6 +361,10 @@ function buildChipsEntry(phase1, marginAmount, prevMarginAmount) {
     margin_change:  (marginAmount != null && prevMarginAmount != null)
                       ? Math.round((marginAmount - prevMarginAmount) * 100) / 100
                       : null,
+    // AC-PL-1：融資/融券張數（MI_MARGN 同一份回應的另外兩列），券資比與高點反轉條件③用。
+    // 舊 chips 檔沒有這兩欄 → null，前端與訊號計算都要容許缺值
+    margin_share:   marginShares?.marginShare ?? null,
+    short_share:    marginShares?.shortShare  ?? null,
     tx_close:       phase1?.tx_close  ?? null,
     tx_change:      phase1?.tx_change ?? null,
     basis:          phase1?.basis     ?? null,
@@ -861,11 +883,11 @@ async function main() {
     if (newEntries.length > 0) {
       // 僅為「目標日期」（today）嘗試讀取籌碼；其他補漏日期不帶籌碼
       const prevMarginAmount = indexHistory[0]?.chips?.margin_amount ?? null
-      const [chipsJson, marginAmount] = await Promise.all([
+      const [chipsJson, marginData] = await Promise.all([
         fetchChipsFromSupabase(todayYYYYMMDD),
-        fetchMarginAmount(todayYYYYMMDD),
+        fetchMarginData(todayYYYYMMDD),
       ])
-      const chips = buildChipsEntry(chipsJson, marginAmount, prevMarginAmount)
+      const chips = buildChipsEntry(chipsJson, marginData?.amount ?? null, prevMarginAmount, marginData)
       if (chips) console.log('[daily] 籌碼資料已合併')
       else console.log('[daily] 今日籌碼尚未就緒，跳過')
 
@@ -897,13 +919,22 @@ async function main() {
       const existingChips = indexHistory[todayIdx].chips ?? null
       const needMargin = existingChips?.margin_amount == null
       const needPhase1 = existingChips?.inst_total == null
-      if (needMargin || needPhase1) {
+      const needMarginShares = existingChips?.margin_share == null || existingChips?.short_share == null
+      if (needMargin || needPhase1 || needMarginShares) {
         const prevMarginAmount = indexHistory[todayIdx + 1]?.chips?.margin_amount ?? null
-        const [chipsJson, marginAmount] = await Promise.all([
+        // 券資比要用到張數，舊 chips 只有金額 → 張數缺也視為需要重抓
+        const needShares = existingChips?.margin_share == null || existingChips?.short_share == null
+        const [chipsJson, marginData] = await Promise.all([
           needPhase1 ? fetchChipsFromSupabase(fillYYYYMMDD) : Promise.resolve(null),
-          needMargin ? fetchMarginAmount(fillYYYYMMDD) : Promise.resolve(existingChips?.margin_amount ?? null),
+          (needMargin || needShares) ? fetchMarginData(fillYYYYMMDD)
+            : Promise.resolve({ amount: existingChips?.margin_amount ?? null, marginShare: null, shortShare: null }),
         ])
-        const fresh = buildChipsEntry(chipsJson, marginAmount, prevMarginAmount)
+        const fresh = buildChipsEntry(
+          chipsJson,
+          marginData?.amount ?? existingChips?.margin_amount ?? null,
+          prevMarginAmount,
+          marginData,
+        )
         if (fresh) {
           const merged = { ...(existingChips ?? {}) }
           for (const k of Object.keys(fresh)) { if (fresh[k] != null) merged[k] = fresh[k] }

@@ -87,6 +87,8 @@ export interface ChipsData {
 
   // 融資（億元）
   margin_amount: number | null
+  margin_share?: number | null   // 融資張數（MI_MARGN 交易單位），券資比用
+  short_share?: number | null    // 融券張數，券資比 = short_share / margin_share
   margin_change: number | null   // 今日 - 昨日
 
   // 台指期
