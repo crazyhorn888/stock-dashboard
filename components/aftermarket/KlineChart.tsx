@@ -1,7 +1,8 @@
 'use client'
 import { useState, useMemo } from 'react'
 import type { IndexOHLC, ChipsData, ChipsOptionParty } from '@/lib/types'
-import { calcMA, resampleWeekly } from '@/lib/calcMA'
+import { calcMA, resampleWeekly, resampleMonthly } from '@/lib/calcMA'
+import { rollingZScore } from '@/lib/reversalSignals'
 
 interface Props {
   data: IndexOHLC[]  // newest first
@@ -296,16 +297,22 @@ const PRICE_TOP = 10
 const PRICE_BOT = 118
 const VOL_TOP = 124
 const VOL_BOT = 168
+const VOL_ZERO = (VOL_TOP + VOL_BOT) / 2   // AC-KL-2：融資增速有正負，零軸走中線
 const VH = 172
 const L_PAD = 4
 const R_PAD = 36  // space for Y-axis labels on right
 
 export default function KlineChart({ data, n, title = '大盤 K 線走勢' }: Props) {
   const [selected, setSelected] = useState<IndexOHLC | null>(null)
-  const [period, setPeriod] = useState<'D' | 'W'>('D')
+  const [period, setPeriod] = useState<'D' | 'W' | 'M'>('D')
+  // AC-KL-2：副圖在「成交量」與「融資增速」之間切換
+  const [subChart, setSubChart] = useState<'volume' | 'margin'>('volume')
 
   // P2-3：週線用 ISO 週重採樣；MA 計算來源（maSource）與顯示切片（bars）用同一顆粒度
-  const maSource = useMemo(() => period === 'D' ? data : resampleWeekly(data), [data, period])
+  const maSource = useMemo(
+    () => period === 'D' ? data : period === 'W' ? resampleWeekly(data) : resampleMonthly(data),
+    [data, period],
+  )
   const displayCount = Math.min(n, maSource.length)
 
   // Take n most-recent days/weeks and reverse so oldest=left, newest=right
@@ -314,7 +321,7 @@ export default function KlineChart({ data, n, title = '大盤 K 線走勢' }: Pr
   // P2-3：MA10/20/60（週線再加 120 天資料不足，只在日線顯示 MA120），對齊 bars 順序
   const maLines = useMemo(() => (
     MA_LINES
-      .filter(l => period === 'D' || !l.dailyOnly)
+      .filter(l => (period === 'D' || !l.dailyOnly) && l.period < maSource.length)
       .map(l => ({ ...l, values: calcMA(maSource, l.period).slice(0, displayCount).reverse() }))
   ), [maSource, displayCount, period])
 
@@ -342,6 +349,50 @@ export default function KlineChart({ data, n, title = '大盤 K 線走勢' }: Pr
   }, [bars, maLines])
 
   const maxVol = useMemo(() => Math.max(...bars.map(d => d.volume), 1), [bars])
+
+  /**
+   * AC-KL-2：融資增速 = 當期融資餘額相對前一期的變動 %。
+   *
+   * 重採樣後的 bar 不帶 chips，這裡從原始日資料回查「該期最後一個交易日」的融資餘額
+   * ——data 是新→舊排序，所以每個期別鍵第一次出現時就是該期收盤日。
+   */
+  const marginSeries = useMemo(() => {
+    const keyOf = (date: string) => {
+      if (period === 'M') return date.slice(0, 7)
+      if (period === 'D') return date
+      const d = new Date(date + 'T00:00:00Z')
+      const dayIdx = (d.getUTCDay() + 6) % 7
+      const monday = new Date(d)
+      monday.setUTCDate(d.getUTCDate() - dayIdx)
+      return monday.toISOString().slice(0, 10)
+    }
+
+    const lastOfPeriod = new Map<string, number>()
+    for (const d of data) {
+      const k = keyOf(d.date)
+      const amt = d.chips?.margin_amount
+      if (amt != null && !lastOfPeriod.has(k)) lastOfPeriod.set(k, amt)
+    }
+
+    const amounts = bars.map(b => lastOfPeriod.get(keyOf(b.date)) ?? null)
+    const pct = amounts.map((cur, i) => {
+      const prev = i > 0 ? amounts[i - 1] : null
+      return cur != null && prev != null && prev !== 0 ? ((cur - prev) / prev) * 100 : null
+    })
+    // Z-Score 用 20 期窗，與反轉訊號的「統計極端」同一把尺（rollingZScore 吃新→舊）
+    const z = pct.map((_, i) => rollingZScore(pct.slice(Math.max(0, i - 19), i + 1).reverse(), 20))
+    return { pct, z, has: pct.some(v => v != null) }
+  }, [data, bars, period])
+
+  const maxAbsPct = useMemo(
+    () => Math.max(...marginSeries.pct.map(v => (v != null ? Math.abs(v) : 0)), 0.01),
+    [marginSeries],
+  )
+
+  // 融資增速的柱高（以零軸為基準，正往上、負往下）
+  function marginH(pct: number) {
+    return (Math.abs(pct) / maxAbsPct) * (VOL_BOT - VOL_ZERO) * 0.92
+  }
 
   // Helpers
   function xOf(i: number) {
@@ -383,9 +434,9 @@ export default function KlineChart({ data, n, title = '大盤 K 線走勢' }: Pr
       <div className="flex items-center justify-between mb-2 flex-wrap gap-y-1">
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold text-slate-700">{title}</span>
-          {/* P2-3：日/週切換 */}
+          {/* P2-3：日/週切換；AC-KL-1 加月線 */}
           <div className="flex gap-1">
-            {(['D', 'W'] as const).map(p => (
+            {(['D', 'W', 'M'] as const).map(p => (
               <button
                 key={p}
                 onClick={() => setPeriod(p)}
@@ -396,10 +447,29 @@ export default function KlineChart({ data, n, title = '大盤 K 線走勢' }: Pr
                     : 'bg-white text-slate-400 border-slate-200 hover:border-blue-300',
                 ].join(' ')}
               >
-                {p === 'D' ? '日' : '週'}
+                {p === 'D' ? '日' : p === 'W' ? '週' : '月'}
               </button>
             ))}
           </div>
+          {/* AC-KL-2：副圖切換；沒有融資資料時整組不顯示 */}
+          {marginSeries.has && (
+            <div className="flex gap-1 ml-1 pl-2 border-l border-slate-200">
+              {([['volume', '量'], ['margin', '融資']] as const).map(([v, lbl]) => (
+                <button
+                  key={v}
+                  onClick={() => setSubChart(v)}
+                  className={[
+                    'px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-colors',
+                    subChart === v
+                      ? 'bg-slate-600 text-white border-slate-600'
+                      : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400',
+                  ].join(' ')}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 text-[10px] text-slate-400 flex-wrap">
           <span><span className="inline-block w-2 h-2 rounded-sm bg-red-500 mr-0.5 align-middle" />漲</span>
@@ -410,6 +480,15 @@ export default function KlineChart({ data, n, title = '大盤 K 線走勢' }: Pr
             <span key={l.period} style={{ color: l.color }}>— MA{l.period}</span>
           ))}
         </div>
+        {/* AC-KL-2：融資增速的紅綠語意跟 K 棒不同（紅＝融資增加，不是上漲），另外標註 */}
+        {subChart === 'margin' && (
+          <div className="w-full text-[10px] text-slate-400 mt-1">
+            下方柱狀：
+            <span className="text-red-500 font-semibold"> 紅＝融資增加</span>
+            <span className="text-green-600 font-semibold"> 綠＝減少</span>
+            ，深色為 20 期 Z-Score |Z|≥2 的極端變動
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -440,7 +519,14 @@ export default function KlineChart({ data, n, title = '大盤 K 線走勢' }: Pr
 
           {/* Volume area separator */}
           <line x1={L_PAD} y1={VOL_TOP - 2} x2={VW - R_PAD} y2={VOL_TOP - 2} stroke="#f1f5f9" strokeWidth="1"/>
-          <text x={L_PAD + 2} y={VOL_TOP + 7} fontSize="5.5" fill="#cbd5e1">量</text>
+          <text x={L_PAD + 2} y={VOL_TOP + 7} fontSize="5.5" fill="#cbd5e1">
+            {subChart === 'volume' ? '量' : '融資%'}
+          </text>
+          {/* 融資增速的零軸 */}
+          {subChart === 'margin' && (
+            <line x1={L_PAD} y1={VOL_ZERO} x2={VW - R_PAD} y2={VOL_ZERO}
+              stroke="#e2e8f0" strokeWidth="0.6" strokeDasharray="2,2"/>
+          )}
 
           {/* Candles */}
           {bars.map((d, i) => {
@@ -453,6 +539,8 @@ export default function KlineChart({ data, n, title = '大盤 K 線走勢' }: Pr
             const wickT   = yOf(d.high)
             const wickB   = yOf(d.low)
             const vH      = volH(d.volume)
+            const mPct    = marginSeries.pct[i]
+            const mZ      = marginSeries.z[i]
             const isSel   = selected?.date === d.date
             const isToday = d === todayBar
 
@@ -475,9 +563,21 @@ export default function KlineChart({ data, n, title = '大盤 K 線走勢' }: Pr
                 <line x1={cx} y1={wickT} x2={cx} y2={wickB} stroke={color} strokeWidth="1"/>
                 {/* Body */}
                 <rect x={cx - barW / 2} y={bodyTop} width={barW} height={bodyH} fill={color} rx="0.5"/>
-                {/* Volume bar */}
-                <rect x={cx - barW / 2} y={VOL_BOT - vH} width={barW} height={vH}
-                  fill={color} opacity="0.4" rx="0.5"/>
+                {/* 副圖：成交量 or 融資增速（AC-KL-2） */}
+                {subChart === 'volume' ? (
+                  <rect x={cx - barW / 2} y={VOL_BOT - vH} width={barW} height={vH}
+                    fill={color} opacity="0.4" rx="0.5"/>
+                ) : mPct != null ? (
+                  <rect
+                    x={cx - barW / 2}
+                    y={mPct >= 0 ? VOL_ZERO - marginH(mPct) : VOL_ZERO}
+                    width={barW}
+                    height={Math.max(marginH(mPct), 0.4)}
+                    // 融資增加＝紅（散戶加槓桿）、減少＝綠；|Z|≥2 的極端值加深
+                    fill={mPct >= 0 ? '#ef4444' : '#22c55e'}
+                    opacity={mZ != null && Math.abs(mZ) >= 2 ? 0.9 : 0.32}
+                    rx="0.5"/>
+                ) : null}
                 {/* Today ring */}
                 {isToday && (
                   <circle cx={cx} cy={(bodyTop + bodyTop + bodyH) / 2}
@@ -577,6 +677,28 @@ export default function KlineChart({ data, n, title = '大盤 K 線走勢' }: Pr
               <span className="text-slate-400">成交金額</span>
               <span className="font-bold text-slate-700">{selected.volume.toLocaleString('zh-TW', { maximumFractionDigits: 0 })} 億</span>
             </div>
+            {/* AC-KL-2：融資增速與它的 20 期 Z-Score */}
+            {(() => {
+              const i = bars.findIndex(b => b.date === selected.date)
+              const pct = i >= 0 ? marginSeries.pct[i] : null
+              const z   = i >= 0 ? marginSeries.z[i] : null
+              if (pct == null) return null
+              return (
+                <div className="mt-1 pt-1 border-t border-slate-100 flex justify-between items-baseline text-xs">
+                  <span className="text-slate-400">融資增速</span>
+                  <span className={`font-bold ${pct >= 0 ? 'text-red-500' : 'text-green-600'}`}>
+                    {pct >= 0 ? '+' : ''}{pct.toFixed(2)}%
+                    {z != null && (
+                      <span className={`ml-1.5 text-[10px] font-semibold ${
+                        Math.abs(z) >= 2 ? 'text-amber-600' : 'text-slate-300'
+                      }`}>
+                        Z={z >= 0 ? '+' : ''}{z.toFixed(1)}{Math.abs(z) >= 2 ? ' 極端' : ''}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )
+            })()}
             {selected.chips && <ChipsPanel chips={selected.chips} />}
             <button
               onClick={() => setSelected(null)}
