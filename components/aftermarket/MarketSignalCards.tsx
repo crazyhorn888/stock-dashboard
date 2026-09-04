@@ -141,8 +141,8 @@ export default function MarketSignalCards({ signals: s, indexHistory }: Props) {
           </span>
         </button>
         {/* 第二列：反轉訊號 */}
-        {highRev ? <ReversalCard kind="high" signal={highRev} compact /> : <div />}
-        {lowRev  ? <ReversalCard kind="low"  signal={lowRev}  compact /> : <div />}
+        {highRev ? <ReversalCard kind="high" signal={highRev} compact nDays={n} /> : <div />}
+        {lowRev  ? <ReversalCard kind="low"  signal={lowRev}  compact nDays={n} /> : <div />}
       </div>
 
       {showHelp && <SignalHelpModal nDays={n} onClose={() => setShowHelp(false)} />}
@@ -165,6 +165,20 @@ export default function MarketSignalCards({ signals: s, indexHistory }: Props) {
                   : `增幅指標（過去 ${n} 天，以最低點為基準）`}
               </span>
               <button onClick={() => setModal(null)} className="text-slate-400 text-lg leading-none">✕</button>
+            </div>
+
+            {/* 公式（AC-PB-6：說明跟著卡走，不再集中在問號 Modal） */}
+            <div className="rounded-lg bg-slate-50 px-2.5 py-2 mb-3">
+              <code className="block text-[10px] text-slate-400 leading-relaxed whitespace-pre overflow-x-auto">
+                {modal === 'pos'
+                  ? `大盤減幅 = (${n}日最高點 − 今日) ÷ ${n}日最高點\n融資減幅 = (高點當日融資 − 今日融資) ÷ 高點當日融資\n觸發：融資減幅 − 大盤減幅 ≥ 5%`
+                  : `大盤增幅 = (今日 − ${n}日最低點) ÷ ${n}日最低點\n融資增幅 = (今日融資 − 低點當日融資) ÷ 低點當日融資\n觸發：融資增幅 − 大盤增幅 ≥ 7%`}
+              </code>
+              <div className="text-[10px] text-slate-500 mt-1.5 leading-relaxed">
+                {modal === 'pos'
+                  ? '指數只跌一點、融資卻大幅退場，代表散戶浮額洗得比指數兇，籌碼變乾淨。'
+                  : '指數漲一段、融資追得更兇，籌碼往散戶手上集中。單獨看鑑別度不高（647 天中成立 128 天），它同時也是高點反轉的條件①，要搭配其他訊號一起看。'}
+              </div>
             </div>
 
             {/* Modal detail rows */}

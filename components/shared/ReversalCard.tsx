@@ -13,6 +13,22 @@ interface Props {
   kind: 'low' | 'high'
   signal: ReversalSignal
   compact?: boolean   // 盤後行情頁的小方塊版
+  nDays?: number      // 「融資追價過頭」的起算區間，用來把 N 代進公式字串
+}
+
+/**
+ * 各條件的算式。AC-PB-6：說明跟著它所屬的卡走，不再集中在問號 Modal——
+ * 看哪張卡就讀哪張卡的公式，問號只留四張卡共用的基礎知識。
+ */
+const FORMULA: Record<string, string | ((n: number) => string)> = {
+  大盤有感下跌: '當日跌幅 > 0.5%',
+  融資恐慌殺出: '|融資變動%| ÷ |大盤跌幅%| > 1.5',
+  統計極端恐慌: '融資變動 20 日 Z ≤ −2',
+  法人低檔接手: '外資 + 投信現貨合計買超',
+  融資追價過頭: (n: number) => `融資增幅 − 大盤增幅 ≥ 7%（從 ${n} 日低點起算）`,
+  價跌資增背離: '大盤下跌，但融資反而增加',
+  軋空燃料枯竭: '券資比 60 日 Z ≤ −1',
+  外資調節出貨: '外資買賣超 60 日 Z ≤ −1.5',
 }
 
 const META = {
@@ -24,6 +40,8 @@ const META = {
     alert: '恐慌 + 法人接手，反轉訊號',
     idle: '尚無恐慌訊號',
     desc: '散戶融資恐慌殺出、法人低檔接手時亮燈。四項條件成立三項即進入觀察。',
+    note: '散戶砍在低點、法人接手，是統計上勝率較高的落底型態。最常缺的是「法人低檔接手」——大跌當天法人通常也在賣，要隔一兩天才進場承接。',
+    backtest: '647 天回測：3 分出現 10 次，之後 5 個交易日平均 +4.30%（同期大盤平均 +0.82%）。',
   },
   high: {
     title: '高點反轉',
@@ -34,6 +52,8 @@ const META = {
     alert: '多項警訊同時成立，慎追高',
     idle: '尚無過熱訊號',
     desc: '融資追價過頭、外資同步調節時亮燈。屬風險警示，命中率約五成，但命中時回檔幅度通常不小。',
+    note: '散戶用融資接外資倒出來的貨，且沒有空頭回補的力道可以推升。這是風險警示不是放空訊號。',
+    backtest: '647 天回測：3 分 21 次、後 5 日 −1.22%，4 分 3 次、−1.43%。命中時通常回檔 5~15%，誤報時也只是少賺 1~4%。',
   },
 }
 
@@ -42,7 +62,7 @@ const TONE = {
   green: { on: 'border-green-300 bg-green-50 hover:bg-green-100', card: 'border-green-300 bg-green-50', text: 'text-green-600', dot: 'bg-green-500' },
 }
 
-export default function ReversalCard({ kind, signal, compact = false }: Props) {
+export default function ReversalCard({ kind, signal, compact = false, nDays = 100 }: Props) {
   const [open, setOpen] = useState(false)
   const m = META[kind]
   const t = TONE[m.tone]
@@ -131,14 +151,28 @@ export default function ReversalCard({ kind, signal, compact = false }: Props) {
                       {c.label}
                     </span>
                   </div>
-                  <div className="text-[10px] text-slate-500 mt-0.5 ml-5">{c.detail}</div>
+                  {FORMULA[c.label] && (
+                    <code className="block text-[10px] text-slate-400 mt-0.5 ml-5 whitespace-pre overflow-x-auto">
+                      {typeof FORMULA[c.label] === 'function'
+                        ? (FORMULA[c.label] as (n: number) => string)(nDays)
+                        : (FORMULA[c.label] as string)}
+                    </code>
+                  )}
+                  <div className="text-[10px] text-slate-600 mt-1 ml-5">{c.detail}</div>
                 </div>
               ))}
             </div>
 
-            <p className="text-[10px] text-slate-400 leading-relaxed">
-              亮燈規則：3 項成立＝觀察、4 項成立＝強訊號。
-              門檻採 Z-Score 等統計相對值，會隨市場規模自動調整，不用絕對金額。
+            <div className="rounded-lg bg-slate-50 px-2.5 py-2 mb-2">
+              <div className="text-[11px] font-semibold text-slate-600 mb-1">怎麼解讀</div>
+              <p className="text-[10px] text-slate-500 leading-relaxed">{m.note}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 px-2.5 py-2">
+              <div className="text-[11px] font-semibold text-slate-600 mb-1">實測表現</div>
+              <p className="text-[10px] text-slate-500 leading-relaxed">{m.backtest}</p>
+            </div>
+            <p className="text-[10px] text-slate-400 leading-relaxed mt-2">
+              亮燈規則：3 項成立＝觀察、4 項成立＝強訊號。四項各 1 分、不加權。
             </p>
           </div>
         </div>

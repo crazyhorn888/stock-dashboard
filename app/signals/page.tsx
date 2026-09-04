@@ -184,12 +184,12 @@ export default function SignalsPage() {
             <CardGroup
               title="正向條件（看多）"
               items={pos}
-              extra={lowRev ? <ReversalCard kind="low" signal={lowRev} /> : undefined}
+              extra={lowRev ? <ReversalCard kind="low" signal={lowRev} nDays={n} /> : undefined}
             />
             <CardGroup
               title="負向條件（看空）"
               items={neg}
-              extra={highRev ? <ReversalCard kind="high" signal={highRev} /> : undefined}
+              extra={highRev ? <ReversalCard kind="high" signal={highRev} nDays={n} /> : undefined}
             />
           </>
         )}
