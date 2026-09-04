@@ -4,6 +4,8 @@ import type { MarketSignals, IndexOHLC } from '@/lib/types'
 import ReversalCard from '@/components/shared/ReversalCard'
 import { calcLowReversal, calcHighReversal } from '@/lib/reversalSignals'
 import SignalHelpModal from '@/components/aftermarket/SignalHelpModal'
+import MarginThermometer from '@/components/aftermarket/MarginThermometer'
+import { estimateMarginMaintenance } from '@/lib/marginMaintenance'
 
 interface Props {
   signals: MarketSignals
@@ -28,6 +30,8 @@ export default function MarketSignalCards({ signals: s, indexHistory }: Props) {
   // AC-PB-2：反轉訊號與原本的乖離卡並列（四張卡各自獨立亮燈）
   const lowRev  = indexHistory?.length ? calcLowReversal(indexHistory)  : null
   const highRev = indexHistory?.length ? calcHighReversal(indexHistory) : null
+  // AC-PB-3：融資維持率（估算），資料不足時回 null → 不顯示溫度計
+  const maintenance = indexHistory?.length ? estimateMarginMaintenance(indexHistory) : null
   const posTriggered = s.posTriggered
   const negTriggered = s.negTriggered
   const hasMargin    = s.todayMargin != null
@@ -82,6 +86,8 @@ export default function MarketSignalCards({ signals: s, indexHistory }: Props) {
           )}
         </div>
       </div>
+
+      {maintenance && <MarginThermometer data={maintenance} />}
 
       {/* AC-PB-1：左右分欄——左＝負向（看空）、右＝正向（看多）。
           同一列是同一組指標的正負版本（融資增幅↔減幅、高點↔低點反轉），左右對稱 */}
