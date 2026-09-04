@@ -24,6 +24,7 @@ export type MaintenanceLevel = 'safe' | 'watch' | 'danger' | 'critical'
 export interface MarginMaintenance {
   ratio: number          // 估算維持率 %
   costIndex: number      // 融資部位平均成本指數
+  lookback: number       // 實際採用的回看天數（夾在 20~120 後的結果）
   todayIndex: number
   level: MaintenanceLevel
   /** 大盤還要再跌幾 % 才會觸及個別帳戶的追繳線 130% */
@@ -34,11 +35,18 @@ export const MAINTENANCE_THRESHOLDS = { safe: 175, watch: 165, danger: 155 } as 
 const INITIAL_RATIO = 166.7   // 融資六成 → 建倉維持率
 const MARGIN_CALL = 130       // 券商追繳線（個別帳戶）
 
+/**
+ * @param lookback 回看天數。呼叫端請傳頁面的 N——2026-09-04 原本寫死 60，
+ *   使用者改 N 時成本指數完全不動，與頁面其他指標的行為不一致。
+ *   夾在 20~120：低於 20 天樣本太少、成本指數會被單日大額融資帶偏；
+ *   超過 120 天則早就平倉的舊部位還被算進來。
+ */
 export function estimateMarginMaintenance(
   history: IndexOHLC[],
   lookback = 60,
 ): MarginMaintenance | null {
-  const win = history.slice(0, lookback).filter(r => r.chips?.margin_amount != null)
+  const days = Math.max(20, Math.min(120, Math.round(lookback) || 60))
+  const win = history.slice(0, days).filter(r => r.chips?.margin_amount != null)
   if (win.length < 10) return null   // 樣本太少不估，寧可不顯示也不要給錯數字
 
   let weight = 0, weighted = 0
@@ -55,6 +63,7 @@ export function estimateMarginMaintenance(
   return {
     ratio,
     costIndex,
+    lookback: days,
     todayIndex,
     level:
       ratio >= MAINTENANCE_THRESHOLDS.safe   ? 'safe'   :

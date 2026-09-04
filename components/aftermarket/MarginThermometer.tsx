@@ -62,7 +62,7 @@ export default function MarginThermometer({ data }: Props) {
         <div className="text-[10px] text-slate-500 mt-0.5 leading-snug">{L.desc}</div>
         <div className="text-[10px] text-slate-400 mt-1 leading-snug">
           大盤再跌 <b className="text-slate-600">{data.dropToCall.toFixed(0)}%</b> 觸及追繳線 130%
-          <span className="text-slate-300">（成本指數 {data.costIndex.toFixed(0)}）</span>
+          <span className="text-slate-300">（{data.lookback} 日成本指數 {data.costIndex.toFixed(0)}）</span>
         </div>
       </div>
     </div>

@@ -105,7 +105,9 @@ export default function SignalsPage() {
   const pos = conditions.filter(c => c.type === 'positive')
   const neg = conditions.filter(c => c.type === 'negative')
 
-  function CardGroup({ title, items }: { title: string; items: Condition[] }) {
+  // AC-PB-5：反轉卡不再自成一個 Section，改插進所屬的正向／負向組——
+  // 低點反轉是看多、高點反轉是看空，本來就該跟乖離卡放在同一區。
+  function CardGroup({ title, items, extra }: { title: string; items: Condition[]; extra?: React.ReactNode }) {
     return (
       <section className="mb-7">
         <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">{title}</h2>
@@ -131,7 +133,8 @@ export default function SignalsPage() {
               <div className="text-[10px] text-slate-400 mt-2">點擊查看計算說明 →</div>
             </button>
           ))}
-          {[1, 2].map(i => (
+          {extra}
+          {[1].map(i => (
             <div key={i} className="rounded-xl border border-dashed border-slate-200 bg-white flex items-center justify-center min-h-[120px] text-slate-300 text-sm">
               ＋ 未來新增
             </div>
@@ -178,18 +181,16 @@ export default function SignalsPage() {
         ) : (
           <>
             {/* AC-RV-7：四張卡各自獨立亮燈——乖離卡（原有）+ 反轉卡（新） */}
-            {lowRev && (
-              <section className="mb-5">
-                <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">反轉訊號</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <ReversalCard kind="low" signal={lowRev} />
-                  {highRev && <ReversalCard kind="high" signal={highRev} />}
-                </div>
-              </section>
-            )}
-
-            <CardGroup title="正向條件（看多）" items={pos} />
-            <CardGroup title="負向條件（看空）" items={neg} />
+            <CardGroup
+              title="正向條件（看多）"
+              items={pos}
+              extra={lowRev ? <ReversalCard kind="low" signal={lowRev} /> : undefined}
+            />
+            <CardGroup
+              title="負向條件（看空）"
+              items={neg}
+              extra={highRev ? <ReversalCard kind="high" signal={highRev} /> : undefined}
+            />
           </>
         )}
       </main>

@@ -14,7 +14,11 @@ function Block({ title, formula, children }: { title: string; formula?: string; 
   return (
     <div className="rounded-lg bg-slate-50 px-2.5 py-2 mb-2">
       <div className="text-[11px] font-semibold text-slate-600">{title}</div>
-      {formula && <code className="block text-[10px] text-slate-400 mt-1 whitespace-pre-wrap leading-relaxed">{formula}</code>}
+      {formula && (
+        <code className="block text-[10px] text-slate-400 mt-1 leading-relaxed whitespace-pre overflow-x-auto">
+          {formula}
+        </code>
+      )}
       <div className="text-[10px] text-slate-500 mt-1 leading-relaxed">{children}</div>
     </div>
   )
@@ -33,6 +37,9 @@ function Cond({ n, label, formula }: { n: string; label: string; formula: string
 }
 
 export default function SignalHelpModal({ nDays, onClose }: Props) {
+  // 與 marginMaintenance.ts 的 clamp 同步：低於 20 天樣本太少、高於 120 天含太多已平倉部位
+  const maintLookback = Math.max(20, Math.min(120, nDays))
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/40" onClick={onClose}>
       <div
@@ -99,13 +106,18 @@ Z = (X − 近20日平均) ÷ 近20日標準差`}
         <div className="text-[11px] font-bold text-slate-500 mb-1.5 mt-3">融資維持率（估算）</div>
         <Block
           title="怎麼推出來的"
-          formula={`建倉維持率 = 1 ÷ 融資成數 ≈ 166.7%（融資六成）
-成本指數 C = Σ(當日融資淨增加 × 當日指數) ÷ Σ(當日融資淨增加)
-              （回看 60 日，只計融資淨增加的交易日）
-估算維持率 ≈ 166.7% × (今日指數 ÷ C)`}
+          formula={`建倉維持率 = 1 ÷ 融資成數 ≈ 166.7%
+成本指數 C = Σ(融資淨增加 × 當日指數) ÷ Σ(融資淨增加)
+估算維持率 = 166.7% × 今日指數 ÷ C`}
         >
+          <div className="mb-1.5">
+            成本指數只計「融資淨增加」的交易日——那些天才是新部位建倉，融資減少的日子是平倉，
+            不影響剩餘部位的成本。回看期<b>跟著上方的 N 走</b>（目前 <b>{maintLookback} 日</b>
+            {maintLookback !== nDays && `，N=${nDays} 已夾到 20~120 的範圍內`}）。
+          </div>
           <b>這是市場整體的估算，不是你在券商看到的個人帳戶維持率。</b>
           官方不公布整體維持率（要逐戶計算），所以用「融資部位平均建倉指數」回推。
+          <br />
           <br />
           分級門檻 <b>175／165／155</b> 是依 130 天實測分布訂的（實測範圍 149~197%、中位 173%）。
           個別帳戶的 130%（追繳）、140%（危險）是另一回事——整體加權平均天然落在 155~175%，

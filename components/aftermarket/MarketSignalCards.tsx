@@ -27,17 +27,17 @@ const fmtPct = (v: number | null, prefix = '') =>
   v != null ? `${prefix}${v.toFixed(2)}%` : '—'
 
 export default function MarketSignalCards({ signals: s, indexHistory }: Props) {
+  const n = s.nDays
   // AC-PB-2：反轉訊號與原本的乖離卡並列（四張卡各自獨立亮燈）
   const lowRev  = indexHistory?.length ? calcLowReversal(indexHistory)  : null
   const highRev = indexHistory?.length ? calcHighReversal(indexHistory) : null
   // AC-PB-3：融資維持率（估算），資料不足時回 null → 不顯示溫度計
-  const maintenance = indexHistory?.length ? estimateMarginMaintenance(indexHistory) : null
+  const maintenance = indexHistory?.length ? estimateMarginMaintenance(indexHistory, n) : null
   const posTriggered = s.posTriggered
   const negTriggered = s.negTriggered
   const hasMargin    = s.todayMargin != null
   const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' })
   const marginIsStale = hasMargin && !!s.todayMarginDate && s.todayMarginDate !== todayStr
-  const n = s.nDays
   const [modal, setModal] = useState<'pos' | 'neg' | null>(null)
   const [showHelp, setShowHelp] = useState(false)   // AC-PB-4：公式集中說明
 
