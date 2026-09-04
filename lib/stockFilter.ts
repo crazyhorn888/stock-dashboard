@@ -1,14 +1,15 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import type { StockRow, OHLCSnapshot } from '@/lib/types'
+import type { StockRow, OHLCSnapshot, InstCostSnapshot } from '@/lib/types'
 import { matchConsolidation, CONSOLIDATION_DEFAULTS, type ConsolidationParams } from '@/lib/consolidationPattern'
+import { costOf, gapToCost, windowForN } from '@/lib/fetchInstCost'
 
 // F1｜個股選股器（2026-07-16）——localStorage 持久化，個股清單與 SectorPanel 共用同一份設定
 // 比照 lib/watchlist.ts 的 CustomEvent 同步模式
 const KEY = 'stockFilter'
 const EVENT = 'stockFilter-change'
 
-export type FilterId = 'highDrop' | 'changeUp' | 'lowRise' | 'peRange' | 'instTotal' | 'volume' | 'consolidation'
+export type FilterId = 'highDrop' | 'changeUp' | 'lowRise' | 'peRange' | 'instTotal' | 'volume' | 'consolidation' | 'belowInstCost'
 
 // 需要 K 線/量能資料（ohlc.json）的條件，勾選任一才會 lazy fetch（AC-CS-1、AC-VOL-2）
 export const BARS_FILTER_IDS: FilterId[] = ['volume', 'consolidation']
@@ -58,7 +59,17 @@ interface PatternDef {
   kind: 'pattern'
 }
 
-type ConditionDef = ThresholdDef | RangeDef | LowRiseDef | BarsGtDef | PatternDef
+// AC-IC-3：低於法人成本。資料來自 inst-cost.json 不是 StockRow 欄位；
+// 窗口跟著頁面 N 走（windowForN），門檻是「距成本 ≤ X%」，預設 0 = 只要低於成本
+interface InstCostDef {
+  id: 'belowInstCost'
+  label: string
+  kind: 'inst-cost-lt'
+  unit: string
+  defaultValue: number
+}
+
+type ConditionDef = ThresholdDef | RangeDef | LowRiseDef | BarsGtDef | PatternDef | InstCostDef
 
 export const CONDITION_DEFS: ConditionDef[] = [
   { id: 'highDrop', label: '距N高', kind: 'lt', field: 'highDropPct', unit: '%', defaultValue: -30 },
@@ -68,6 +79,7 @@ export const CONDITION_DEFS: ConditionDef[] = [
   { id: 'instTotal', label: '三大法人合計', kind: 'gt', field: 'instTotal', unit: '億', defaultValue: 0 },
   { id: 'volume', label: '當日量能', kind: 'bars-gt', unit: '張', defaultValue: 1000 },
   { id: 'consolidation', label: '整理平台', kind: 'pattern' },
+  { id: 'belowInstCost', label: '低於法人成本', kind: 'inst-cost-lt', unit: '%', defaultValue: 0 },
 ]
 
 // 整理平台的可調參數（基本常駐、進階收合，AC-CS-6）
@@ -135,7 +147,15 @@ function matches(
   row: StockRow,
   state: FilterState,
   bars?: OHLCSnapshot['bars'],
+  instCost?: InstCostSnapshot | null,
+  nDays = 100,
 ): boolean {
+  // AC-IC-3：距成本 ≤ 門檻。窗口跟著頁面 N；成本缺值視為不符合，不當 0
+  if (def.kind === 'inst-cost-lt') {
+    const c = costOf(instCost ?? null, row.code, windowForN(nDays))
+    const gap = gapToCost(row.close, c)
+    return gap != null && gap <= state.value[def.id]
+  }
   // 需要 K 線的兩個條件：資料沒到齊就視為不符合（缺值不當 0）
   if (def.kind === 'pattern') {
     return !!matchConsolidation(row.closes, bars?.[row.code], row.close, state.consolidation)
@@ -206,12 +226,19 @@ export function useStockFilter() {
   // 有勾選需要 ohlc.json 的條件 → 外層要先把 bars 抓下來再傳進 filterRows
   const needsBars = BARS_FILTER_IDS.some(id => state.enabled[id])
 
-  const filterRows = useCallback((rows: StockRow[], bars?: OHLCSnapshot['bars']) => {
+  const filterRows = useCallback((
+    rows: StockRow[],
+    bars?: OHLCSnapshot['bars'],
+    instCost?: InstCostSnapshot | null,
+    nDays = 100,
+  ) => {
     const activeDefs = CONDITION_DEFS.filter(d => state.enabled[d.id])
     if (activeDefs.length === 0) return rows
     // AC-CS-1：K 線資料還沒到齊就先不套用，避免整張表瞬間清空
     if (BARS_FILTER_IDS.some(id => state.enabled[id]) && !bars) return rows
-    return rows.filter(r => activeDefs.every(def => matches(def, r, state, bars)))
+    // AC-IC-3：同理，法人成本還沒載入前不套用
+    if (state.enabled.belowInstCost && !instCost) return rows
+    return rows.filter(r => activeDefs.every(def => matches(def, r, state, bars, instCost, nDays)))
   }, [state])
 
   return {

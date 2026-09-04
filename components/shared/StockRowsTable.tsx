@@ -4,6 +4,9 @@ import type { StockRow, StockData } from '@/lib/types'
 import ConceptTags from '@/components/shared/ConceptTags'
 import { useWatchlist } from '@/lib/watchlist'
 import { useStockFilter, CONSOLIDATION_FIELDS, BARS_FILTER_IDS, type FilterId } from '@/lib/stockFilter'
+import { fetchInstCost, costOf, gapToCost, windowForN } from '@/lib/fetchInstCost'
+import { useNDays } from '@/lib/nDays'
+import type { InstCostSnapshot } from '@/lib/types'
 import { fetchOHLCSnapshot } from '@/lib/fetchStockOHLC'
 import type { OHLCSnapshot } from '@/lib/types'
 
@@ -12,7 +15,7 @@ import type { OHLCSnapshot } from '@/lib/types'
  * 共用同一個元件：同欄位、同排序規則、同顯示格式，資料 refer 同一份 StockRow
  * （page.tsx 統一產生，法人欄位來自 day0 T86，見 lib/instNet）。
  *
- * 欄位：⭐ 代號 名稱 收盤 漲跌% 距N高▼% 距N低▲% P/E EPS 外資 投信 自營 合計 產業 概念
+ * 欄位：⭐ 代號 名稱 收盤 漲跌% 距N高▼% 距N低▲% P/E EPS 外資 投信 自營 合計 成本 距成本% 產業 概念
  * （2026-09-04 移除「視覺」欄——它只是把「距N高%」再畫一次長條，佔一整欄不划算）
  * （產業欄 2026-07-12 曾短暫移除後加回——當時整欄「—」是資料 bug 不是欄位沒用，資料修復後保留）
  * 法人四欄（外資/投信/自營/合計）排序用絕對值——大動作在前（2026-07-12 Franky 確認）。
@@ -80,14 +83,22 @@ export default function StockRowsTable({
       .finally(() => setBarsLoading(false))
   }, [filter, bars, barsLoading])
 
+  // AC-IC-1/2：法人成本。檔案 ~12KB 且兩欄常駐顯示，掛載就抓（不像 ohlc.json 要等勾選）
+  const { n: nDays } = useNDays()
+  const [instCost, setInstCost] = useState<InstCostSnapshot | null>(null)
+  useEffect(() => { fetchInstCost().then(setInstCost) }, [])
+  const costWindow = windowForN(nDays)
+  // 序列還沒累積到該窗口天數（起步期的 60/120 日）→ 標示累積中而不是當成沒資料
+  const costAccruing = !!instCost && instCost.days < costWindow
+
   // 兩組資料日期不一致 = 法人那組還停在前一個交易日
   const stale = !!stocksDate && !!instNetDate && instNetDate < stocksDate
   // 資料格用比標題更淡的琥珀底：捲到下面也看得出這四欄不是今天的數字，但不搶掉數字本身的紅綠
   const instBg = stale ? 'bg-amber-50/40' : ''
 
   const filteredRows = useMemo(
-    () => filter.filterRows(rows, bars ?? undefined),
-    [filter, rows, bars],
+    () => filter.filterRows(rows, bars ?? undefined, instCost, nDays),
+    [filter, rows, bars, instCost, nDays],
   )
 
   const sorted = useMemo(() => {
@@ -137,6 +148,10 @@ export default function StockRowsTable({
               }`}>
                 法人買賣超{instNetDate && <span className={`font-normal ${stale ? 'text-amber-500' : 'text-slate-400'}`}>　{fmtDate(instNetDate)}</span>}
               </th>
+              <th colSpan={2} className="px-2 py-1 text-[10px] font-semibold text-slate-500 text-center border-b border-l border-slate-200 bg-violet-50/50">
+                法人成本
+                <span className="font-normal text-slate-400">　{costAccruing ? '累積中' : `${costWindow} 日`}</span>
+              </th>
               <th colSpan={2} className="border-b border-l border-slate-200" />
             </tr>
           )}
@@ -154,17 +169,21 @@ export default function StockRowsTable({
             <th className={thCls('trustNet')} onClick={() => handleSort('trustNet')}>投信(億) {arrow('trustNet')}</th>
             <th className={thCls('dealerNet')} onClick={() => handleSort('dealerNet')}>自營(億) {arrow('dealerNet')}</th>
             <th className={thCls('instTotal')} onClick={() => handleSort('instTotal')}>合計(億) {arrow('instTotal')}</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 whitespace-nowrap">成本</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 whitespace-nowrap">距成本%</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400">產業</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400">概念</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
-            <tr><td colSpan={15} className="py-8 text-center text-slate-400">無個股資料</td></tr>
+            <tr><td colSpan={17} className="py-8 text-center text-slate-400">無個股資料</td></tr>
           ) : sorted.length === 0 ? (
-            <tr><td colSpan={15} className="py-8 text-center text-slate-400">無符合條件的個股（{filter.activeCount} 個條件啟用中）</td></tr>
+            <tr><td colSpan={17} className="py-8 text-center text-slate-400">無符合條件的個股（{filter.activeCount} 個條件啟用中）</td></tr>
           ) : sorted.map(r => {
             const chgUp = r.changePercent >= 0
+            const cost = costOf(instCost, r.code, costWindow)
+            const costGap = gapToCost(r.close, cost)
             const highBad = r.highDropPct <= -15
             const highGood = r.highDropPct >= -5
             return (
@@ -199,6 +218,16 @@ export default function StockRowsTable({
                 <td className={`px-3 py-2 ${instBg}`}>{instCell(r.trustNet)}</td>
                 <td className={`px-3 py-2 ${instBg}`}>{instCell(r.dealerNet)}</td>
                 <td className={`px-3 py-2 ${instBg}`}>{instCell(r.instTotal)}</td>
+                <td className="px-3 py-2 text-slate-600 tabular-nums">
+                  {cost != null ? cost.toLocaleString('zh-TW', { maximumFractionDigits: 2 }) : '—'}
+                </td>
+                <td className="px-3 py-2 tabular-nums">
+                  {costGap != null ? (
+                    <span className={costGap >= 0 ? 'text-red-500 font-medium' : 'text-green-600 font-medium'}>
+                      {costGap >= 0 ? '+' : ''}{costGap.toFixed(2)}%
+                    </span>
+                  ) : <span className="text-slate-300">—</span>}
+                </td>
                 <td className="px-3 py-2">
                   <span className="bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-slate-500 text-[10px] whitespace-nowrap">
                     {r.industry}
@@ -233,7 +262,10 @@ function StockFilterPanel({ open, onToggleOpen, filter, matchedCount, barsLoadin
 
   function symbol(id: FilterId) {
     const def = defs.find(d => d.id === id)!
-    return def.kind === 'lt' ? '<' : def.kind === 'range' ? '~' : '>'
+    if (def.kind === 'lt') return '<'
+    if (def.kind === 'range') return '~'
+    if (def.kind === 'inst-cost-lt') return '≤'   // AC-IC-3：距成本 ≤ 門檻
+    return '>'
   }
 
   return (

@@ -238,6 +238,16 @@ export interface SectorDayData {
   rows: SectorDayRow[]
 }
 
+// ── AC-IC-1：法人成本（inst-cost.json）────────────────────────────────────
+// key 形如 t5/t10/t20/t60/t120（三大法人合計）與 f5/…/f120（外資）。
+// 窗口天數不足時該 key 不存在——起步期 60/120 會缺，前端顯示「累積中」。
+export interface InstCostSnapshot {
+  updatedAt: string
+  date: string | null      // 序列最新一天
+  days: number             // 序列已累積天數，判斷 60/120 是否還在累積用
+  cost: Record<string, Record<string, number>>
+}
+
 // ── P2-5：個股歷史（stock-history.json，lazy-load，不進 market.json）───────
 export interface StockHistoryEntry {
   code: string; name: string

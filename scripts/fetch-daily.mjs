@@ -7,6 +7,7 @@ import { writeFileSync, mkdirSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { calcSectors, calcConcepts } from './calc-sectors.mjs'
+import { updateSeries, calcCosts, seedFromStockHistory } from './calc-inst-cost.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -327,7 +328,8 @@ async function fetchT86Sectors(dateYYYYMMDD, dateISO, stockMap, conceptMap = {})
         conceptGroups[conceptName].stocks.push(stockEntry)
       }
 
-      stockRows.push({ ...stockEntry, buySell })
+      // close：AC-IC-1 法人成本要用它把買超金額換算成股數
+      stockRows.push({ ...stockEntry, buySell, close })
     }
 
     const toRows = groupMap => Object.entries(groupMap).map(([name, v]) => ({
@@ -509,6 +511,20 @@ async function downloadSnapshot() {
   const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
   if (!res.ok) throw new Error(`無法下載現有快照：HTTP ${res.status}（請先執行 seed-history.mjs → write-firebase.mjs）`)
   return res.json()
+}
+
+// AC-IC-1：法人成本的逐日序列（只有 pipeline 讀，前端拿的是算好的 inst-cost.json）
+async function downloadInstCostSeries() {
+  const supabaseUrl = process.env.SUPABASE_URL
+  try {
+    const res = await fetch(`${supabaseUrl}/storage/v1/object/public/snapshots/inst-cost-series.json`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    })
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null   // 首次執行，檔案還不存在
+  }
 }
 
 // P2-5：獨立 lazy-load 檔（不進 market.json，避免首屏變大），只在使用者開「自選股模式」時才被前端下載
@@ -1105,6 +1121,27 @@ async function main() {
     conceptHistory = [{ date: today, unit: 'yi', rows: t86Today.conceptRows }, ...filteredC].slice(0, 25)
     const filteredS = stockHistory.filter(d => d.date !== today)
     stockHistory   = [{ date: today, unit: 'yi', stocks: t86Today.stockRows }, ...filteredS].slice(0, 25)
+
+    // AC-IC-1：法人成本序列（120 天滾動）。stock-history 只留 25 天，
+    // 60/120 日成本要靠這個獨立序列累積。首次執行用現有 stockHistory 回補起步。
+    let series = await downloadInstCostSeries()
+    if (!series) {
+      // 舊的 stockHistory 沒有 close，從個股歷史查當日收盤價回補，
+      // 否則這 25 天會整批跳過，20 日成本要等一個月才出得來
+      const priceAt = (code, dateISO) => {
+        const st = stockMap[code]
+        if (!st) return null
+        const di = st.dates?.indexOf(dateISO) ?? -1
+        return (di >= 0 ? st.closes?.[di] : null) ?? null
+      }
+      series = seedFromStockHistory(stockHistory, priceAt)
+      console.log(`[daily] inst-cost 首次建立，用 stockHistory 回補 ${series?.dates?.length ?? 0} 天`)
+    }
+    series = updateSeries(series, t86Today.stockRows, today)
+    snapshot.instCostSeries = series
+    snapshot.instCost = calcCosts(series)
+    const cnt = w => Object.values(snapshot.instCost).filter(v => v[`t${w}`] != null).length
+    console.log(`[daily] 法人成本更新：序列 ${series.dates.length} 天，可算出 5日 ${cnt(5)} 檔／20日 ${cnt(20)} 檔／60日 ${cnt(60)} 檔／120日 ${cnt(120)} 檔`)
     console.log(`[daily] sectorHistory/conceptHistory/stockHistory 更新今日 ${today}`)
     changed = true
   } else {

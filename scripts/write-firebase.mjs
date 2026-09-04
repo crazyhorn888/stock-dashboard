@@ -284,6 +284,24 @@ async function main() {
   await uploadToSupabase('stock-history.json', stockHistoryPayload)
   console.log(`[write] stock-history.json 上傳完成（${(snapshot.stockHistory ?? []).length} 天）`)
 
+  // AC-IC-1：法人成本。兩個檔分開的理由——
+  //   inst-cost-series.json  逐日序列（~250KB 壓縮），只有 pipeline 自己讀，前端永遠不下載
+  //   inst-cost.json         算好的成本值（~10KB 壓縮），前端在勾選相關條件時才 lazy fetch
+  // 併成一檔的話前端會被迫拖 250KB 只為了拿 10KB 的結果。
+  if (snapshot.instCostSeries) {
+    await uploadToSupabase('inst-cost-series.json', JSON.stringify(snapshot.instCostSeries))
+    console.log(`[write] inst-cost-series.json 上傳完成（${snapshot.instCostSeries.dates?.length ?? 0} 天）`)
+  }
+  if (snapshot.instCost) {
+    await uploadToSupabase('inst-cost.json', JSON.stringify({
+      updatedAt: snapshot.updatedAt,
+      date: snapshot.instCostSeries?.dates?.[0] ?? null,
+      days: snapshot.instCostSeries?.dates?.length ?? 0,   // 前端據此判斷 60/120 是否還在累積
+      cost: snapshot.instCost,
+    }))
+    console.log(`[write] inst-cost.json 上傳完成（${Object.keys(snapshot.instCost).length} 支）`)
+  }
+
   // 1e. stocks-lite.json（~300KB）：個股清單欄位，不含任何歷史陣列
   const stocksLite = snapshot.stocks.map(({ closes, dates, opens, highs, lows, volumes, ...rest }) => rest)
   await uploadToSupabase('stocks-lite.json', JSON.stringify({ updatedAt: snapshot.updatedAt, stocks: stocksLite }))
