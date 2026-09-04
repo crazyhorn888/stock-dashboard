@@ -66,10 +66,74 @@ function rocToISO(rocStr) {
 
 // TWSE OpenAPI 快取（同 process 內只抓一次）
 let _twseAllCache = null
-async function fetchTWSEAll() {
+
+/**
+ * 個股收盤行情。AC-SD-1~4（2026-09-04）：主來源改 MI_INDEX，STOCK_DAY_ALL 降為備援。
+ *
+ * 為什麼要換：openapi 的 STOCK_DAY_ALL 沒有日期參數，只能拿「TWSE 目前彙整到哪天」，
+ * 更新時間不定——2026-09-03 的股價拖到隔天上午才出現，整個晚上看到的都是前天的價。
+ * MI_INDEX 可以指定日期，收盤後就抓得到，且多附成交金額（真實均價要用）與本益比。
+ *
+ * 兩者輸出統一成 STOCK_DAY_ALL 的欄位格式，呼叫端不用改。
+ */
+async function fetchMIIndex(yyyymmdd) {
+  const url = `https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date=${yyyymmdd}&type=ALLBUT0999&response=json`
+  const d = await fetchJSON(url)
+  // 收盤前查當日會回「很抱歉，沒有符合條件的資料!」——視為尚未發布（AC-SD-4）
+  if (d?.stat !== 'OK') return null
+  const tbl = (d.tables ?? []).find(t => (t.fields ?? []).some(f => String(f).includes('證券代號')))
+  if (!tbl?.data?.length) return null
+
+  const num = v => {
+    const n = parseFloat(String(v).replace(/,/g, ''))
+    return Number.isFinite(n) ? n : 0
+  }
+  // 回應的 date 欄位才是資料實際代表的日期，不用請求參數猜（AC-SD-1）
+  const rocDate = d.date ? `${Number(d.date.slice(0, 4)) - 1911}${d.date.slice(4)}` : yyyymmdd
+  return tbl.data
+    .filter(r => /^\d{4}$/.test(String(r[0]).trim()))
+    .map(r => ({
+      Date:          rocDate,
+      Code:          String(r[0]).trim(),
+      Name:          String(r[1]).trim(),
+      TradeVolume:   String(num(r[2])),
+      TradeValue:    String(num(r[4])),
+      OpeningPrice:  String(num(r[5])),
+      HighestPrice:  String(num(r[6])),
+      LowestPrice:   String(num(r[7])),
+      ClosingPrice:  String(num(r[8])),
+      // 漲跌：MI_INDEX 把方向放在 r[9]（HTML，紅+綠-），價差絕對值放 r[10]。
+      // 沒有這欄的話 changePercent 會全部變成 0——呼叫端是用 Change 反推前一日收盤的
+      Change:        String((/color:\s*green|>\s*-\s*</.test(String(r[9] ?? '')) ? -1 : 1) * num(r[10])),
+      PERatio:       String(num(r[15])),
+    }))
+    .filter(x => num(x.ClosingPrice) > 0)
+}
+
+async function fetchTWSEAll(yyyymmdd = null) {
   if (_twseAllCache) return _twseAllCache
+
+  // 主來源：MI_INDEX（可指定日期，收盤後即有）
+  if (yyyymmdd) {
+    try {
+      const rows = await fetchMIIndex(yyyymmdd)
+      if (rows?.length) {
+        console.log(`[daily] 個股股價來源：MI_INDEX（${rows.length} 支，資料日 ${rows[0].Date}）`)
+        _twseAllCache = rows
+        return rows
+      }
+      console.log('[daily] MI_INDEX 當日尚未發布，改用 STOCK_DAY_ALL')
+    } catch (e) {
+      console.warn(`[daily] MI_INDEX 失敗（${e.message}），改用 STOCK_DAY_ALL`)
+    }
+  }
+
+  // 備援：STOCK_DAY_ALL（AC-SD-2，MI_INDEX 掛掉時不減少可用性）
   const data = await fetchJSON('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL')
   _twseAllCache = Array.isArray(data) ? data : []
+  if (_twseAllCache.length) {
+    console.log(`[daily] 個股股價來源：STOCK_DAY_ALL 備援（${_twseAllCache.length} 支，資料日 ${_twseAllCache[0]?.Date}）`)
+  }
   return _twseAllCache
 }
 
@@ -425,16 +489,16 @@ async function downloadOHLCBars() {
 }
 
 // ── TWSE 今日股價（全市場，用 OpenAPI，Guard 2 已確認今日資料存在）──────
-async function fetchTWSEPrices() {
+async function fetchTWSEPrices(yyyymmdd = null) {
   // 2026-07-12：TWSE openapi 有上午維護窗（實測台北 ~11:30-12:00 回 HTML 維護頁而非 JSON，
   // FMTQIK/外資/STOCK_DAY_ALL 整站同時掛）。這裡原本是 Promise.all 裡唯一沒有 graceful catch
   // 的呼叫——SyntaxError 直接炸掉整個 run（連兩天 08:07 補課班被 GitHub 延遲到該窗口而標紅）。
   // 比照外資的處理：失敗回空陣列，sdaIsToday 自然判 false，股價沿用快照、pipeline 其餘照常
   let data
   try {
-    data = await fetchTWSEAll()
+    data = await fetchTWSEAll(yyyymmdd)
   } catch (e) {
-    console.warn(`[daily] TWSE 股價（STOCK_DAY_ALL）抓取失敗，本次跳過（沿用快照值）：${e.message}`)
+    console.warn(`[daily] TWSE 股價抓取失敗（MI_INDEX 與 STOCK_DAY_ALL 皆不可用），本次跳過（沿用快照值）：${e.message}`)
     return []
   }
   return data
@@ -615,7 +679,8 @@ async function main() {
   // T86 需要 stockMap 完成後才能執行，所以移到 Step 5 再呼叫
   const todayYYYYMMDD = today.replace(/-/g, '')
   const [prices, foreignMap, todayOHLCMonth, industryList] = await Promise.all([
-    fetchTWSEPrices(),
+    // AC-SD-1：帶today進去，MI_INDEX 才能指定日期（收盤後即可取得當日行情）
+    fetchTWSEPrices(todayYYYYMMDD),
     fetchStockForeign(dateTW),
     fetchIndexOHLCForMonth(todayYYYYMMDD),
     // t187ap03_L: 上市公司基本資料，取得個股 → 產業類別（= T86 板塊名）
