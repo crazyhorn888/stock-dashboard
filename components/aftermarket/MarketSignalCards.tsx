@@ -81,33 +81,15 @@ export default function MarketSignalCards({ signals: s, indexHistory }: Props) {
         </div>
       </div>
 
-      {/* AC-PB-1：改為「正向指標／負向指標」純文字標題，其下每個條件各自為獨立亮燈方塊 */}
-      <div className="text-[11px] font-bold text-slate-500 mb-1.5">正向指標（看多）</div>
-      <div className="grid grid-cols-2 gap-2 mb-3">
-        {/* 融資減幅 > 大盤減幅 5% */}
-        <button
-          onClick={() => setModal('pos')}
-          className={`flex flex-col items-start px-3 py-2.5 rounded-xl border text-left transition-colors ${
-            posTriggered
-              ? 'border-red-300 bg-red-50 hover:bg-red-100'
-              : 'border-slate-200 bg-white hover:bg-slate-50'
-          }`}
-        >
-          <div className="flex items-center justify-between w-full mb-1">
-            <span className="text-xs text-slate-500 font-medium">融資減幅</span>
-            <span className="text-[10px] text-slate-300">›</span>
-          </div>
-          <span className={`text-[11px] font-bold leading-snug ${posTriggered ? 'text-red-600' : 'text-slate-400'}`}>
-            {!hasMargin ? '融資累積中' : '融資減幅>大盤減幅5%'}
-          </span>
-        </button>
-
-        {lowRev && <ReversalCard kind="low" signal={lowRev} compact />}
+      {/* AC-PB-1：左右分欄——左＝負向（看空）、右＝正向（看多）。
+          同一列是同一組指標的正負版本（融資增幅↔減幅、高點↔低點反轉），左右對稱 */}
+      <div className="grid grid-cols-2 gap-2 mb-1.5">
+        <div className="text-[11px] font-bold text-green-700">負向指標（看空）</div>
+        <div className="text-[11px] font-bold text-red-600">正向指標（看多）</div>
       </div>
-
-      <div className="text-[11px] font-bold text-slate-500 mb-1.5">負向指標（看空）</div>
       <div className="grid grid-cols-2 gap-2 mb-4">
-        {/* 融資增幅 > 大盤增幅 7% */}
+        {/* 第一列：融資乖離 */}
+{/* 融資增幅 > 大盤增幅 7% */}
         <button
           onClick={() => setModal('neg')}
           className={`flex flex-col items-start px-3 py-2.5 rounded-xl border text-left transition-colors ${
@@ -124,8 +106,26 @@ export default function MarketSignalCards({ signals: s, indexHistory }: Props) {
             {!hasMargin ? '融資累積中' : '融資增幅>大盤增幅7%'}
           </span>
         </button>
-
-        {highRev && <ReversalCard kind="high" signal={highRev} compact />}
+{/* 融資減幅 > 大盤減幅 5% */}
+        <button
+          onClick={() => setModal('pos')}
+          className={`flex flex-col items-start px-3 py-2.5 rounded-xl border text-left transition-colors ${
+            posTriggered
+              ? 'border-red-300 bg-red-50 hover:bg-red-100'
+              : 'border-slate-200 bg-white hover:bg-slate-50'
+          }`}
+        >
+          <div className="flex items-center justify-between w-full mb-1">
+            <span className="text-xs text-slate-500 font-medium">融資減幅</span>
+            <span className="text-[10px] text-slate-300">›</span>
+          </div>
+          <span className={`text-[11px] font-bold leading-snug ${posTriggered ? 'text-red-600' : 'text-slate-400'}`}>
+            {!hasMargin ? '融資累積中' : '融資減幅>大盤減幅5%'}
+          </span>
+        </button>
+        {/* 第二列：反轉訊號 */}
+        {highRev ? <ReversalCard kind="high" signal={highRev} compact /> : <div />}
+        {lowRev  ? <ReversalCard kind="low"  signal={lowRev}  compact /> : <div />}
       </div>
 
       {/* Modal */}

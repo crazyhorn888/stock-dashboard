@@ -66,7 +66,7 @@ export default function FreshnessBar({ data, holiday }: { data: SnapshotData; ho
     // 2026-09-04：正常寬度一行放得下（縮 gap + 短日期格式，實測 344px vs 手機可用 366px），
     // 極窄螢幕才需要滑動、不折行。overflow-x-auto 的容器捲到底時 padding-right 不生效，
     // 所以右側留白改用尾端 spacer 補，初始狀態左右對稱
-    <div className="flex items-center gap-x-1.5 mb-3 pl-2 py-1.5 rounded-lg bg-white shadow-sm overflow-x-auto scrollbar-none">
+    <div className="flex items-center gap-x-1.5 mb-3 pl-3 py-1.5 rounded-lg bg-white shadow-sm overflow-x-auto scrollbar-none">
       <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
         {info.closed
           ? `${info.holidayName ? `今日休市（${info.holidayName}）` : '最近交易日'} ${fmt(info.refDate)}`
@@ -90,8 +90,8 @@ export default function FreshnessBar({ data, holiday }: { data: SnapshotData; ho
           </span>
         )
       })}
-      {/* 對稱右側留白（等同 pl-2） */}
-      <span className="w-2 shrink-0" aria-hidden />
+      {/* 對稱右側留白（等同 pl-3，與盤後總結卡的 px-3 同起點） */}
+      <span className="w-3 shrink-0" aria-hidden />
     </div>
   )
 }
