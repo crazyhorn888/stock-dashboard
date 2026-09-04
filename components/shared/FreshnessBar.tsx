@@ -61,7 +61,9 @@ export default function FreshnessBar({ data, holiday }: { data: SnapshotData; ho
   const fmt = (d: string | null) => (d ? d.slice(5).replace('-', '/') : '—')
 
   return (
-    <div className="flex items-center gap-2 mb-3 px-3 py-1.5 rounded-lg bg-white shadow-sm overflow-x-auto scrollbar-none">
+    // 尾端補一個 shrink-0 的 spacer：overflow-x-auto 的容器捲到底時 padding-right 不會生效，
+    // 最後一欄（股價）會貼齊右緣，與左側「今日」的留白不對稱（2026-09-04 Franky 指正）
+    <div className="flex items-center gap-2 mb-3 pl-3 py-1.5 rounded-lg bg-white shadow-sm overflow-x-auto scrollbar-none">
       <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
         {info.closed
           ? `${info.holidayName ? `今日休市（${info.holidayName}）` : '最近交易日'} ${fmt(info.refDate)}`
@@ -85,6 +87,7 @@ export default function FreshnessBar({ data, holiday }: { data: SnapshotData; ho
           </span>
         )
       })}
+      <span className="w-3 shrink-0" aria-hidden />
     </div>
   )
 }

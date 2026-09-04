@@ -117,6 +117,17 @@ export default function BubbleHelpModal({ onClose }: Props) {
           ))}
         </div>
 
+        {/* 篩選按鈕 */}
+        <div className="text-[11px] font-bold text-slate-500 mb-1.5">篩選按鈕</div>
+        <ul className="space-y-1.5 text-[12px] text-slate-600 mb-4">
+          <li>· <b>四個象限</b>（上方統計卡）：點一下只看該象限的板塊，再點一下取消</li>
+          <li>
+            · <b>🔥 熱門 15</b>：依<b>泡泡大小</b>排序取前 15 名，也就是
+            <b>近 20 日買賣總額最大</b>的 15 個板塊。看的是「法人交投最熱絡」的地方，
+            跟買超或賣超的方向無關——大買大賣都算熱門
+          </li>
+        </ul>
+
         {/* 回放 */}
         <div className="text-[11px] font-bold text-slate-500 mb-1.5">回放</div>
         <ul className="space-y-1.5 text-[12px] text-slate-600 mb-3">
