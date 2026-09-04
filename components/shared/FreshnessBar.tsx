@@ -59,11 +59,14 @@ export default function FreshnessBar({ data, holiday }: { data: SnapshotData; ho
   }, [data, holiday])
 
   const fmt = (d: string | null) => (d ? d.slice(5).replace('-', '/') : '—')
+  // 資料項用短格式（9/03 而非 09/03）：手機單行剛好塞得下六欄，不必折行也不必橫捲
+  const fmtShort = (d: string | null) => (d ? fmt(d).replace(/^0/, '') : '—')
 
   return (
-    // 尾端補一個 shrink-0 的 spacer：overflow-x-auto 的容器捲到底時 padding-right 不會生效，
-    // 最後一欄（股價）會貼齊右緣，與左側「今日」的留白不對稱（2026-09-04 Franky 指正）
-    <div className="flex items-center gap-2 mb-3 pl-3 py-1.5 rounded-lg bg-white shadow-sm overflow-x-auto scrollbar-none">
+    // 2026-09-04：拿掉橫向捲動（overflow-x-auto）——整列本來就該一眼看完，不該用拖的。
+    // 改法：縮小 gap 與左右 padding、允許換行（塞不下就折行，不會被裁掉），
+    // 「今日」與各資料項之間用 gap 對齊，兩側留白對稱
+    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 mb-3 px-2 py-1.5 rounded-lg bg-white shadow-sm">
       <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
         {info.closed
           ? `${info.holidayName ? `今日休市（${info.holidayName}）` : '最近交易日'} ${fmt(info.refDate)}`
@@ -81,13 +84,12 @@ export default function FreshnessBar({ data, holiday }: { data: SnapshotData; ho
               <span className="text-slate-300 font-semibold">—</span>
             ) : (
               <span className={`font-semibold ${fresh ? 'text-green-600' : 'text-amber-500'}`}>
-                {fmt(date)}
+                {fmtShort(date)}
               </span>
             )}
           </span>
         )
       })}
-      <span className="w-3 shrink-0" aria-hidden />
     </div>
   )
 }
