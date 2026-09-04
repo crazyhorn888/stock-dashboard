@@ -292,6 +292,8 @@ export default function SectorBubbleSection({ fullHeight = false, onDataStatus }
       )}
 
       <SectorPanel
+        stocksDate={data.stocksDate}
+        instNetDate={instNetData.date}
         sector={activeSector}
         onClose={() => setActiveSector(null)}
         rowsByCode={rowsByCode}

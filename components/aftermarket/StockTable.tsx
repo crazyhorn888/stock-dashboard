@@ -11,9 +11,11 @@ interface Props {
   rows: StockRow[]
   onStockClick?: (stock: StockData) => void
   onConceptClick?: (concept: string) => void
+  stocksDate?: string | null
+  instNetDate?: string | null
 }
 
-export default function StockTable({ rows, onStockClick, onConceptClick }: Props) {
+export default function StockTable({ rows, onStockClick, onConceptClick, stocksDate, instNetDate }: Props) {
   const [query, setQuery] = useState('')
   const [industry, setIndustry] = useState('全部')
 
@@ -54,6 +56,8 @@ export default function StockTable({ rows, onStockClick, onConceptClick }: Props
       </div>
 
       <StockRowsTable
+        stocksDate={stocksDate}
+        instNetDate={instNetDate}
         rows={filtered}
         onStockClick={onStockClick}
         onConceptClick={onConceptClick}

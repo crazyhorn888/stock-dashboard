@@ -31,6 +31,10 @@ interface Props {
   defaultAsc?: boolean
   wrapperClassName?: string
   wrapperStyle?: React.CSSProperties
+  // 分組表頭的資料日期：股價與法人買賣超的發布時間差 4 小時，
+  // 14:05~18:00 之間同一列會混到兩天的資料，用分組表頭標清楚（AC-DT-1）
+  stocksDate?: string | null
+  instNetDate?: string | null
 }
 
 function instCell(v: number | undefined | null) {
@@ -42,11 +46,13 @@ function instCell(v: number | undefined | null) {
   )
 }
 
+const fmtDate = (d: string) => d.slice(5).replace('-', '/').replace(/^0/, '')
+
 export default function StockRowsTable({
   rows, onStockClick, onConceptClick,
   defaultSortKey = 'highDropPct', defaultAsc = true,
   wrapperClassName = 'overflow-x-auto rounded-xl border border-slate-200',
-  wrapperStyle,
+  wrapperStyle, stocksDate, instNetDate,
 }: Props) {
   const { isWatched, toggle: toggleWatch } = useWatchlist()
   const [sortKey, setSortKey] = useState<SortKey>(defaultSortKey)
@@ -72,6 +78,9 @@ export default function StockRowsTable({
       })
       .finally(() => setBarsLoading(false))
   }, [filter, bars, barsLoading])
+
+  // 兩組資料日期不一致 = 法人那組還停在前一個交易日
+  const stale = !!stocksDate && !!instNetDate && instNetDate < stocksDate
 
   const filteredRows = useMemo(
     () => filter.filterRows(rows, bars ?? undefined),
@@ -108,6 +117,26 @@ export default function StockRowsTable({
       />
       <table className="w-full text-xs border-collapse" style={{ minWidth: 760 }}>
         <thead>
+          {/* AC-DT-1 分組表頭：把欄位分成「股價」與「法人買賣超」兩組，各自標資料日期。
+              兩者發布時間差約 4 小時（股價 13:57、T86 18:00），下午看盤時同一列必然
+              混到兩天的資料——與其每格加日期，不如在組層級標一次 */}
+          {(stocksDate || instNetDate) && (
+            <tr className="bg-slate-50 sticky top-0 z-10">
+              <th colSpan={3} className="border-b border-slate-200" />
+              <th colSpan={5} className="px-2 py-1 text-[10px] font-semibold text-slate-500 text-center border-b border-l border-slate-200 bg-blue-50/50">
+                股價{stocksDate && <span className="text-slate-400 font-normal">　{fmtDate(stocksDate)}</span>}
+              </th>
+              <th colSpan={2} className="px-2 py-1 text-[10px] font-semibold text-slate-400 text-center border-b border-l border-slate-200">
+                基本面
+              </th>
+              <th colSpan={4} className={`px-2 py-1 text-[10px] font-semibold text-center border-b border-l border-slate-200 ${
+                stale ? 'text-amber-600 bg-amber-50/60' : 'text-slate-500 bg-slate-100/60'
+              }`}>
+                法人買賣超{instNetDate && <span className={`font-normal ${stale ? 'text-amber-500' : 'text-slate-400'}`}>　{fmtDate(instNetDate)}</span>}
+              </th>
+              <th colSpan={2} className="border-b border-l border-slate-200" />
+            </tr>
+          )}
           <tr className="border-b border-slate-200 bg-slate-50 sticky top-0">
             <th className="px-2 py-2 text-left text-xs font-semibold text-slate-400 whitespace-nowrap">⭐</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 whitespace-nowrap">代號</th>

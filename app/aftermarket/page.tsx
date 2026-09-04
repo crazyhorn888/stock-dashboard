@@ -231,7 +231,13 @@ export default function AftermarketPage() {
             )}
 
             {activeTab === '個股清單' && (
-              <StockTable rows={rows} onStockClick={setActiveStock} onConceptClick={handleConceptClick} />
+              <StockTable
+                rows={rows}
+                onStockClick={setActiveStock}
+                onConceptClick={handleConceptClick}
+                stocksDate={data.stocksDate}
+                instNetDate={instNetData.date}
+              />
             )}
 
             {activeTab === '基本面' && (

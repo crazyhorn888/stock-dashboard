@@ -26,13 +26,15 @@ interface Props {
   sector: SectorBubble | null
   onClose: () => void
   rowsByCode: Record<string, StockRow>
+  stocksDate?: string | null
+  instNetDate?: string | null
   onStockClick?: (stock: StockData) => void
   onConceptClick?: (concept: string) => void
 }
 
 function sign(v: number) { return v > 0 ? '+' : '' }
 
-export default function SectorPanel({ sector, onClose, rowsByCode, onStockClick, onConceptClick }: Props) {
+export default function SectorPanel({ sector, onClose, rowsByCode, onStockClick, onConceptClick, stocksDate, instNetDate }: Props) {
   // iOS 15+ Safari compact bottom toolbar (~49px) 蓋在 position:fixed 內容上，
   // 最後一列被遮住且內容沒超過容器高度時「無法捲動」（2026-07-12 Franky 回報）。
   // 與 StockDetailSheet 同一套解法：UA 偵測 iOS → 整個 sheet 上抬固定位移
@@ -96,6 +98,8 @@ export default function SectorPanel({ sector, onClose, rowsByCode, onStockClick,
 
         {/* 共用表格：預設按合計(億)絕對值降冪（大動作在前）；overscroll-contain 阻止捲動外溢到背景 */}
         <StockRowsTable
+          stocksDate={stocksDate}
+          instNetDate={instNetDate}
           rows={rows}
           onStockClick={onStockClick}
           onConceptClick={onConceptClick}
