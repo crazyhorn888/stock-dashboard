@@ -92,10 +92,21 @@ function laggingDatasets(m) {
   return lag
 }
 
-// Guard 2：FMTQIK 是否已有今日 K 棒（非交易日 / 15:30 前 → false）
+// Guard 2：今日 K 棒是否已就緒（非交易日 / 收盤前 → false）
 // 回傳 false = 確定不用跑；true / null = 放行
+//
+// 2026-09-04：加入 MI_5MINS_INDEX。fetch-daily 已改用它取得真實 OHLC 並提早建立
+// 當日 K 棒，但這裡若還只認 FMTQIK（~15:30），14:05 那班仍會被擋在門外，
+// 提早的效果拿不到——兩邊的判斷必須一致。
 async function hasTodayBar(today) {
   const yyyymmdd = today.replace(/-/g, '')
+
+  // 先問 MI_5MINS_INDEX：收盤後就有，比 FMTQIK 早
+  try {
+    const d0 = await fetchJSON(`https://www.twse.com.tw/exchangeReport/MI_5MINS_INDEX?response=json&date=${yyyymmdd}`)
+    if (d0?.stat === 'OK' && Array.isArray(d0.data) && d0.data.length >= 10) return true
+  } catch { /* 往下試 FMTQIK */ }
+
   try {
     const d = await fetchJSON(`https://www.twse.com.tw/rwd/zh/historicalData/FMTQIK?response=json&date=${yyyymmdd}`)
     if (d?.stat === 'OK' && Array.isArray(d.data)) {
@@ -107,7 +118,7 @@ async function hasTodayBar(today) {
     if (d2?.stat === 'OK' && Array.isArray(d2.data)) {
       return d2.data.some(row => rocToISO(row[0]) === today)
     }
-  } catch { /* 兩端點都失敗 */ }
+  } catch { /* 三個端點都失敗 */ }
   return null   // TWSE 異常 → 放行，讓 pipeline 自行判斷
 }
 
