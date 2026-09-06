@@ -432,5 +432,14 @@
   ],
   "app/signals/page.tsx": [
     "市場條件頁。反轉卡併在正向／負向 CardGroup 的 extra slot（AC-PB-5），calcHighReversal 必須傳頁面 n。CardGroup 的 grid 是 3 欄，加卡片時要同步調整『＋未來新增』佔位數。"
+  ],
+  "scripts/calc-heat.mjs::extractFeatures": [
+    "從 indexHistory 取 6 項熱度特徵。f2/f3 依賴 chips.opt_tr[party].*_amt 與 chips.opt_oi.dealer.call_oi_net_amt——這些是 Phase1 於 2026-09-06 新增的欄位，stock-chips-daily 那邊未上線前，新追加的日期這兩項會是 null（有效項數<5 → heat 為 null）。兩專案必須一起上線，否則熱度會停在回補的最後一天"
+  ],
+  "scripts/calc-heat.mjs::compute": [
+    "Z 視窗 250 日、百分位視窗 250 日——實測縮短會直接失效（180日→無效果、120日→比基準還差），不可為了省資料而調小。有效項數<5 時 score 回 null（AC-HT-C2）。所有統計只用當日之前的資料，不得引入未來函數（AC-HT-C1）"
+  ],
+  "scripts/calc-heat.mjs::main::upload": [
+    "只在 added>0 時才回傳 heat-history.json，避免每個 run 都寫 Supabase。heat-history.json 不進 git（/data/* 為 CI 產物區），一次性回補由本機 backfill-heat-history.py 產生後上傳"
   ]
 }

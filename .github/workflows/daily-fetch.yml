@@ -140,6 +140,18 @@ jobs:
         if: steps.fetch.outputs.PIPELINE_RAN == 'true'
         run: node scripts/calc-signals.mjs 100
 
+      # 市場熱度（AC-HT-C3）：讀 Supabase 的 heat-history.json、追加當日特徵、
+      # 算 heat/warn/entry 三個數字寫進 indexHistory。歷史檔不存在時只印警告不中斷
+      #（需先在本機跑 scripts/backfill-heat-history.py 完成一次性回補）。
+      # 放在 write-firebase 之前，讓三個值跟著 indexHistory 一起進 market.json
+      - name: 計算市場熱度
+        if: steps.fetch.outputs.PIPELINE_RAN == 'true'
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node scripts/calc-heat.mjs
+
       - name: 上傳 Supabase + Firestore
         if: steps.fetch.outputs.PIPELINE_RAN == 'true'
         env:
