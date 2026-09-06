@@ -4,8 +4,7 @@ import { MOCK_DATA } from '@/lib/mockData'
 import { calcMarketSignals } from '@/lib/calcMarketSignals'
 import { useNDays, N_DEFAULT } from '@/lib/nDays'
 import UpdateStamp from '@/components/shared/UpdateStamp'
-import ReversalCard from '@/components/shared/ReversalCard'
-import { calcLowReversal, calcHighReversal } from '@/lib/reversalSignals'
+import MarketHeatCard from '@/components/aftermarket/MarketHeatCard'
 import { fetchSnapshot } from '@/lib/fetchSnapshot'
 import type { MarketSignals, IndexOHLC } from '@/lib/types'
 
@@ -97,9 +96,8 @@ export default function SignalsPage() {
     setNDraft(String(v))
   }
 
-  // 反轉訊號（AC-RV-1/2）：需要逐日籌碼序列，與乖離卡各自獨立
-  const lowRev  = useMemo(() => (indexHistory.length ? calcLowReversal(indexHistory)  : null), [indexHistory])
-  const highRev = useMemo(() => (indexHistory.length ? calcHighReversal(indexHistory, n) : null), [indexHistory, n])
+  // AC-HT-F2/F4（2026-09-06）：高低點反轉卡下架，改由市場熱度卡涵蓋。
+  // 兩頁組成必須一致，/aftermarket 的 MarketSignalCards 同步移除
 
   const conditions = buildConditions(signals)
   const pos = conditions.filter(c => c.type === 'positive')
@@ -180,17 +178,11 @@ export default function SignalsPage() {
           </div>
         ) : (
           <>
-            {/* AC-RV-7：四張卡各自獨立亮燈——乖離卡（原有）+ 反轉卡（新） */}
-            <CardGroup
-              title="正向條件（看多）"
-              items={pos}
-              extra={lowRev ? <ReversalCard kind="low" signal={lowRev} nDays={n} /> : undefined}
-            />
-            <CardGroup
-              title="負向條件（看空）"
-              items={neg}
-              extra={highRev ? <ReversalCard kind="high" signal={highRev} nDays={n} /> : undefined}
-            />
+            {/* AC-HT-F1：市場熱度置於條件卡之上（總覽在前、細節在後） */}
+            <MarketHeatCard indexHistory={indexHistory} />
+            {/* AC-HT-F1：正向卡與負向卡維持原狀，公式、門檻、亮燈邏輯皆未更動 */}
+            <CardGroup title="正向條件（看多）" items={pos} />
+            <CardGroup title="負向條件（看空）" items={neg} />
           </>
         )}
       </main>

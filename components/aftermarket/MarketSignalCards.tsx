@@ -1,10 +1,9 @@
 'use client'
 import { useState } from 'react'
 import type { MarketSignals, IndexOHLC } from '@/lib/types'
-import ReversalCard from '@/components/shared/ReversalCard'
-import { calcLowReversal, calcHighReversal } from '@/lib/reversalSignals'
 import SignalHelpModal from '@/components/aftermarket/SignalHelpModal'
 import MarginThermometer from '@/components/aftermarket/MarginThermometer'
+import MarketHeatCard from '@/components/aftermarket/MarketHeatCard'
 import { estimateMarginMaintenance } from '@/lib/marginMaintenance'
 
 interface Props {
@@ -28,9 +27,9 @@ const fmtPct = (v: number | null, prefix = '') =>
 
 export default function MarketSignalCards({ signals: s, indexHistory }: Props) {
   const n = s.nDays
-  // AC-PB-2：反轉訊號與原本的乖離卡並列（四張卡各自獨立亮燈）
-  const lowRev  = indexHistory?.length ? calcLowReversal(indexHistory)  : null
-  const highRev = indexHistory?.length ? calcHighReversal(indexHistory, n) : null
+  // AC-HT-F2（2026-09-06）：高低點反轉卡下架——高點反轉的四項條件已被市場熱度的
+  // 警示計分制涵蓋（留著會同一邏輯兩處亮燈）；低點反轉卡 1130 天只觸發 9 次形同虛設。
+  // lib/reversalSignals.ts 保留檔案不引用，便於日後回溯
   // AC-PB-3：融資維持率（估算），資料不足時回 null → 不顯示溫度計
   const maintenance = indexHistory?.length ? estimateMarginMaintenance(indexHistory, n) : null
   const posTriggered = s.posTriggered
@@ -87,6 +86,9 @@ export default function MarketSignalCards({ signals: s, indexHistory }: Props) {
         </div>
       </div>
 
+      {/* AC-HT-F1：熱度卡置於融資維持率之上——熱度是總覽與行動導向，
+          融資維持率是單一風險指標；警示區塊長出時卡片變高，放最上不會擠亂下方左右分欄 */}
+      <MarketHeatCard indexHistory={indexHistory} />
       {maintenance && <MarginThermometer data={maintenance} />}
 
       {/* AC-PB-1：左右分欄——左＝負向（看空）、右＝正向（看多）。
@@ -141,8 +143,6 @@ export default function MarketSignalCards({ signals: s, indexHistory }: Props) {
           </span>
         </button>
         {/* 第二列：反轉訊號 */}
-        {highRev ? <ReversalCard kind="high" signal={highRev} compact nDays={n} /> : <div />}
-        {lowRev  ? <ReversalCard kind="low"  signal={lowRev}  compact nDays={n} /> : <div />}
       </div>
 
       {showHelp && <SignalHelpModal nDays={n} onClose={() => setShowHelp(false)} />}

@@ -441,5 +441,14 @@
   ],
   "scripts/calc-heat.mjs::main::upload": [
     "只在 added>0 時才回傳 heat-history.json，避免每個 run 都寫 Supabase。heat-history.json 不進 git（/data/* 為 CI 產物區），一次性回補由本機 backfill-heat-history.py 產生後上傳"
+  ],
+  "lib/marketHeat.ts::getHeatState": [
+    "前端只讀 pipeline 算好的 heat/warn/entry，不重算統計——瀏覽器只有 250 筆快照，算不出 250日Z + 250日百分位（需 500 天）。heat 為 null 時整張卡不顯示（回補未完成／當日籌碼缺選擇權金額欄位）。狀態判定順序：entry 優先於熱度分級"
+  ],
+  "components/aftermarket/MarketHeatCard.tsx": [
+    "AC-HT-D1 分層顯示：熱度數字/溫度條/兩格固定機率永遠在；🔴頂部警示與🔵進場訊號平常不出現且互斥。實測 250 筆快照紅燈只亮 11 天（4.4%）——若改成「熱度高就變紅」會一年亮 200 天且方向錯誤（過熱後 60 日平均 +12.05%，高於基準 +8.79%）"
+  ],
+  "components/aftermarket/MarketSignalCards.tsx::layout": [
+    "AC-HT-F1 順序：MarketHeatCard → MarginThermometer → 負向卡/正向卡左右分欄。正向卡與負向卡維持原狀不得更動（Franky 2026-09-06 定案，另有參考用途）。AC-HT-F2：反轉卡已下架，但 lib/reversalSignals.ts 必須保留——KlineChart.tsx 仍 import 其 rollingZScore"
   ]
 }

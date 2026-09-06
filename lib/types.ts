@@ -62,6 +62,14 @@ export interface ChipsOptionParty {
   sc: number   // 賣出Call/口
   bp: number   // 買進Put/口
   sp: number   // 賣出Put/口
+  // Phase1 2026-09-06 新增：金額（千元），市場熱度用。缺漏為 null，不可視為 0。
+  // opt_tr 只有 *_amt 四項、opt_oi 只有 *_oi_net_amt 兩項，各自不會同時出現
+  bc_amt?: number | null
+  sc_amt?: number | null
+  bp_amt?: number | null
+  sp_amt?: number | null
+  call_oi_net_amt?: number | null
+  put_oi_net_amt?: number | null
 }
 
 export interface ChipsRetailNet {
@@ -139,6 +147,11 @@ export interface IndexOHLC {
   close: number
   volume: number  // 成交金額（億）
   chips?: ChipsData
+  // 市場熱度（AC-HT-C3）：由 scripts/calc-heat.mjs 在 pipeline 端算好寫入，
+  // 前端只讀不算。資料不足或 heat-history.json 尚未回補時為 null/undefined
+  heat?:  number | null   // 0~100 滾動百分位
+  warn?:  number | null   // 0~6 六項條件中成立的數量
+  entry?: boolean | null  // 進場訊號
 }
 
 // ── P2-3：全球指數（Yahoo Finance chart API，各市場自己的交易日曆）───────
