@@ -11,8 +11,9 @@
     CHIPS_SPREADSHEET_ID=<sheet_id> python3 backfill-heat-history.py [--out heat-history.json]
 
 輸出格式（AC-HT-B2，只存原始值不存完整籌碼）：
-    {"2022-01-03": {"bias60": 1.23, "dCallOI": 6.07, "dSC": 16.5,
-                    "fCP": 1.835, "tFut5": null, "vol5": -0.21}, ...}
+    {"2022-01-03": {"bias60": 1.23, "dCallOI": 6.07, "dSC": 16.5, "fCP": 1.835,
+                    "tFut5": null, "vol5": -0.21, "fSpot": 4.69}, ...}
+熱度分數只用前 6 項；fSpot 是第 7 個欄位，僅供外資反轉條件（AC-HT-E1）使用。
 
 後續每日由 pipeline 從 chips/{date}.json 追加一筆（AC-HT-B4）。
 """
@@ -72,6 +73,7 @@ def num(v):
 
 # ── 欄位索引（0-based，對應試算表 A=0）─────────────────────────────────
 M = {'date': 0, 'close': 3, 'pct': 6, 'vol': 7,
+     'fx_spot': 13,                      # N 欄 外資現貨買賣超（億），AC-HT-E1 反轉條件用
      'fx_call_oi_amt': 18, 'fx_put_oi_amt': 21, 'fx_bcbp': 23,
      'dl_call_oi_amt': 29, 'dl_put_oi_amt': 32}
 O = {'date': 0, 'fx_bc_amt': 7, 'fx_sc_amt': 9, 'fx_bp_amt': 13, 'fx_sp_amt': 15,
@@ -148,8 +150,13 @@ def build(md, od):
         # f6 成交量 5 日變動%
         vol5 = ((vol[i] / vol[i-5] - 1) * 100
                 if (i >= 5 and vol[i] is not None and vol[i-5]) else None)
+        # fSpot 外資現貨買賣超佔成交量%——不計入熱度分數（那是校準過的 6 項），
+        # 只供 AC-HT-E1 的「押多但現貨倒貨」背離條件使用
+        fsp = num(mr[M['fx_spot']])
+        fSpot = fsp / vol[i] * 100 if (fsp is not None and vol[i]) else None
         out[str(d)] = {'bias60': _r(bias60), 'dCallOI': _r(dCallOI), 'dSC': _r(dSC),
-                       'fCP': _r(fCP), 'tFut5': None, 'vol5': _r(vol5)}
+                       'fCP': _r(fCP), 'tFut5': None, 'vol5': _r(vol5),
+                       'fSpot': _r(fSpot)}
     return out, dates
 
 def _r(v, n=4):
@@ -222,7 +229,7 @@ def main():
     json.dump(data, open(a.out, 'w'), ensure_ascii=False, separators=(',', ':'))
     size = os.path.getsize(a.out)
     cov = {k: sum(1 for v in data.values() if v[k] is not None) for k in
-           ('bias60', 'dCallOI', 'dSC', 'fCP', 'tFut5', 'vol5')}
+           ('bias60', 'dCallOI', 'dSC', 'fCP', 'tFut5', 'vol5', 'fSpot')}
     print(f'\n✅ {a.out}：{len(data)} 天（{dates[0]} ~ {dates[-1]}），'
           f'{size:,} bytes = {size/1024:.0f} KB', file=sys.stderr)
     print('   欄位覆蓋率：' + '  '.join(

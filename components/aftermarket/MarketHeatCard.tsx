@@ -74,9 +74,21 @@ export default function MarketHeatCard({ indexHistory }: Props) {
 
         {/* 警示層：平常不出現（AC-HT-D1），兩者互斥 */}
         {st.alertTop && (
-          <Flag tone="red" title={`🔴 頂部風險警示　${st.warn} / 6`}
-                foot="36 天樣本、命中 36%（平時 12%）、平均提前 4.5 個交易日。64% 是誤報。">
-            <li>六項條件中已成立 {st.warn} 項，詳見「?」說明</li>
+          <Flag
+            tone="red"
+            title={st.alertBy === 'reversal' ? '🔴 頂部風險警示　外資背離'
+                 : st.alertBy === 'both'     ? `🔴 頂部風險警示　計分 ${st.warn}/6 ＋ 外資背離`
+                 :                             `🔴 頂部風險警示　${st.warn} / 6`}
+            foot={st.alertBy === 'reversal'
+              ? '24 天樣本、命中 33%（平時 12%）、平均提前 8.0 個交易日。67% 是誤報。'
+              : '36 天樣本、命中 36%（平時 12%）、平均提前 4.5 個交易日。64% 是誤報。'}
+          >
+            {(st.alertBy === 'score' || st.alertBy === 'both') && (
+              <li>六項條件中已成立 {st.warn} 項，詳見「?」說明</li>
+            )}
+            {(st.alertBy === 'reversal' || st.alertBy === 'both') && (
+              <li>外資近 10 日曾在選擇權押多，今日現貨轉為大賣</li>
+            )}
           </Flag>
         )}
         {!st.alertTop && st.entry && (

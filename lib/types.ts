@@ -152,6 +152,7 @@ export interface IndexOHLC {
   heat?:  number | null   // 0~100 滾動百分位
   warn?:  number | null   // 0~6 六項條件中成立的數量
   entry?: boolean | null  // 進場訊號
+  rev?:   boolean | null  // 外資反轉（AC-HT-E1：押多但現貨倒貨）
 }
 
 // ── P2-3：全球指數（Yahoo Finance chart API，各市場自己的交易日曆）───────

@@ -34,8 +34,10 @@ export interface HeatState {
   downOdds: number
   /** 該狀態的歷史樣本天數 */
   sample: number
-  /** 頂部風險警示是否成立（AC-HT-D4） */
+  /** 頂部風險警示是否成立（AC-HT-D4 / E2） */
   alertTop: boolean
+  /** 警示由哪一條觸發（AC-HT-E3）——兩者的提前量與意義不同 */
+  alertBy: 'score' | 'reversal' | 'both' | null
 }
 
 /** 各狀態的歷史條件機率（1130 天回測；upOdds = 60 日報酬 ≥+10% 且 20 日內未跌破 −5%） */
@@ -80,6 +82,7 @@ export function getHeatState(indexHistory: IndexOHLC[] | undefined): HeatState |
   const heat = today.heat
   const warn = today.warn ?? 0
   const entry = today.entry === true
+  const rev = today.rev === true      // AC-HT-E1 外資反轉
 
   // 進場訊號優先於熱度分級——它本身就落在 P50 以上，但意義完全不同
   const level: HeatLevel =
@@ -97,7 +100,9 @@ export function getHeatState(indexHistory: IndexOHLC[] | undefined): HeatState |
     upOdds: st.up,
     downOdds: st.down,
     sample: st.n,
-    alertTop: warn >= 4,          // AC-HT-D4
+    // AC-HT-E2：計分 ≥4 或外資反轉，任一成立即亮紅燈
+    alertTop: warn >= 4 || rev,
+    alertBy: warn >= 4 && rev ? 'both' : warn >= 4 ? 'score' : rev ? 'reversal' : null,
   }
 }
 

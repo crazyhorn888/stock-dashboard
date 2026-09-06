@@ -16,6 +16,9 @@
  *   f6 vol5     成交量 5 日變動%                                            （正向）
  * 規模 = 外資與自營 8 類選擇權交易金額（bc/sc/bp/sp）絕對值總和
  *
+ * 第 7 個欄位 fSpot（外資現貨買賣超佔成交量%）**不計入熱度分數**——那是校準過的 6 項，
+ * 動了驗收數字就不成立。它只供 AC-HT-E1 的外資反轉條件使用。
+ *
  * 執行：node scripts/calc-heat.mjs
  * 需要：SUPABASE_URL、SUPABASE_SERVICE_KEY
  */
@@ -104,9 +107,14 @@ function extractFeatures(indexHistory) {
       if (typeof a === 'number' && b) vol5 = (a / b - 1) * 100
     }
 
+    // fSpot 外資現貨買賣超佔成交量%（AC-HT-E1 用，不計入熱度分數）
+    const fs = chips.foreign_spot
+    const fSpot = (typeof fs === 'number' && r.volume) ? fs / r.volume * 100 : null
+
     out[r.date] = {
       bias60: round(bias60), dCallOI: round(dCallOI), dSC: round(dSC),
       fCP: round(fCP), tFut5: null, vol5: round(vol5),
+      fSpot: round(fSpot),
     }
   }
   return out
@@ -124,12 +132,13 @@ function zscore(series, i, w) {
   return sd ? (series[i] - mu) / sd : null
 }
 
-/** 回傳 { dates, heat[], warn[] } —— dates 為 oldest first */
+/** 回傳 { dates, heat[], warn[], rev[] } —— dates 為 oldest first */
 function compute(history) {
   const dates = Object.keys(history).sort()
-  const cols = Object.fromEntries(KEYS.map(([k]) => [k, dates.map(d => history[d]?.[k] ?? null)]))
+  const ALL = [...KEYS.map(([k]) => k), 'fSpot']
+  const cols = Object.fromEntries(ALL.map(k => [k, dates.map(d => history[d]?.[k] ?? null)]))
   const zs = Object.fromEntries(
-    KEYS.map(([k]) => [k, dates.map((_, i) => zscore(cols[k], i, Z_WINDOW))]))
+    ALL.map(k => [k, dates.map((_, i) => zscore(cols[k], i, Z_WINDOW))]))
 
   const score = dates.map((_, i) => {
     const vals = KEYS.map(([k, s]) => zs[k][i] == null ? null : s * zs[k][i]).filter(v => v != null)
@@ -144,7 +153,16 @@ function compute(history) {
     if (seg.length < P_WINDOW * 0.8) return null
     return Math.round(seg.filter(v => v <= score[i]).length / seg.length * 100)
   })
-  return { dates, heat, warn, zs }
+  // AC-HT-E1 外資反轉：過去 10 個交易日內曾出現外資買方 C/P 比 Z ≥ 1.0
+  // （押多），且當日外資現貨買賣超佔量 Z ≤ −1.0（實際在倒貨）。
+  // 兩者相關僅 +0.166，是獨立的兩件事，所以這個背離才有意義
+  const rev = dates.map((_, i) => {
+    const priorLong = zs.fCP.slice(Math.max(0, i - 10), i).some(z => z != null && z >= 1.0)
+    const nowSell = zs.fSpot[i] != null && zs.fSpot[i] <= -1.0
+    return priorLong && nowSell
+  })
+
+  return { dates, heat, warn, rev, zs }
 }
 
 /** AC-HT-D5：自 60 日高點回落 ≥8%，且熱度曾 ≤P30、現已回升至 ≥P50 */
@@ -189,7 +207,7 @@ async function main() {
   }
   console.log(`[calc-heat] 歷史 ${Object.keys(history).length} 天（本次新增 ${added} 天）`)
 
-  const { dates, heat, warn, zs } = compute(history)
+  const { dates, heat, warn, rev, zs } = compute(history)
   const closeByDate = Object.fromEntries(indexHistory.map(r => [r.date, r.close]))
   const entry = entrySignal(dates, heat, closeByDate)
 
@@ -201,13 +219,14 @@ async function main() {
     r.heat = heat[i]
     r.warn = warn[i]
     r.entry = entry[i]
+    r.rev = rev[i]          // AC-HT-E2：警示 = warn>=4 或 rev
     written++
   }
 
   const last = dates.length - 1
   const on = KEYS.filter(([k, s]) => zs[k][last] != null && s * zs[k][last] >= 1.0).map(([k]) => k)
   console.log(`[calc-heat] ${dates[last]}　熱度 ${heat[last]}/100　警示 ${warn[last]}/6` +
-              `　進場 ${entry[last]}　成立項目：${on.join(', ') || '無'}`)
+              `　外資反轉 ${rev[last]}　進場 ${entry[last]}　成立項目：${on.join(', ') || '無'}`)
   console.log(`[calc-heat] 已寫入 ${written} 筆 indexHistory`)
 
   writeFileSync(DATA_FILE, JSON.stringify(snapshot))

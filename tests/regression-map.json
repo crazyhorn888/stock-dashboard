@@ -450,5 +450,11 @@
   ],
   "components/aftermarket/MarketSignalCards.tsx::layout": [
     "AC-HT-F1 順序：MarketHeatCard → MarginThermometer → 負向卡/正向卡左右分欄。正向卡與負向卡維持原狀不得更動（Franky 2026-09-06 定案，另有參考用途）。AC-HT-F2：反轉卡已下架，但 lib/reversalSignals.ts 必須保留——KlineChart.tsx 仍 import 其 rollingZScore"
+  ],
+  "scripts/calc-heat.mjs::compute::rev": [
+    "AC-HT-E1 外資反轉：過去 10 個交易日內曾 fCP Z≥1.0（選擇權押多），且當日 fSpot Z≤-1.0（現貨倒貨）。兩者相關僅 +0.166 是獨立的事，背離才有意義。fSpot 是第 7 個欄位，**不計入熱度分數**——熱度是校準過的 6 項，動了驗收數字就不成立"
+  ],
+  "lib/marketHeat.ts::alertBy": [
+    "AC-HT-E2/E3：警示 = warn>=4 或 rev，且須標明由哪條觸發。實測 248 筆快照兩者完全不重疊（計分 11 天、背離 12 天、重疊 0），紅燈從 4.4% 升到 9.3%，換來提前量 4.5 日 → 8.0 日"
   ]
 }
