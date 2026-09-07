@@ -71,10 +71,16 @@ const STATS: Record<HeatLevel, { up: number; down: number; n: number }> = {
 /** 全樣本基準，卡片用來對照 */
 export const HEAT_BASELINE = { up: 33, down: 20, n: 1602 }
 
+/**
+ * AC-HT-B11：外資反轉要在熱度 ≥30 時才算數。低於這條線的反轉是雜訊——
+ * 58 天、跌 5% 26%，對 21% 的基準幾乎沒有增量。
+ */
+export const REV_HEAT_GATE = 30
+
 /** 常駐旗標列要顯示的機率——即使進場訊號沒成立也要秀，所以不能靠 st.upOdds */
 export const FLAG_STATS = {
-  /** 外資反轉亮燈日，20 日內跌 5% 的比例 */
-  rev: { hit: 33, base: HEAT_BASELINE.down, n: 123 },
+  /** 外資倒貨亮燈日（已含熱度 ≥30 閘門），20 日內跌 5% 的比例 */
+  rev: { hit: 38, base: HEAT_BASELINE.down, n: 65 },
   entry: { hit: STATS.entry.up, base: HEAT_BASELINE.up, n: STATS.entry.n },
 }
 
@@ -154,8 +160,14 @@ export function getHeatState(indexHistory: IndexOHLC[] | undefined): HeatState |
     // 是反指標——64 天、跌 5% 機率 13%，低於 21% 的基準，三段期間都沒贏過
     // （7%/26%、9%/16%、22%/21%），隨機重排 p = 0.92。先前看起來有效（36%、2.1x）
     // 是 Sheet 選擇權欄位定義變更造成的假象。計分改為純資訊，不再亮燈。
-    alertTop: rev,
-    alertBy: rev ? 'reversal' : null,
+    //
+    // AC-HT-B11 熱度閘門：rev 本身不看熱度，74% 的亮燈落在熱度 <30 的低溫區，
+    // 而那些天只有 26%、對 21% 的基準幾乎沒有增量，卻把整體精確率稀釋掉。
+    // 加上「熱度 ≥30」後 123 天 → 65 天、33% → 38%，且三段互不重疊的期間
+    // 全部勝過同期基準（54/26、20/16、38/21；未加閘門時 B 段是 13/16 落敗）。
+    // 名稱也從「頂部警示」改為「外資倒貨」——它偵測的是外資出貨，不是位置高低。
+    alertTop: rev && heat >= REV_HEAT_GATE,
+    alertBy: rev && heat >= REV_HEAT_GATE ? 'reversal' : null,
   }
 }
 

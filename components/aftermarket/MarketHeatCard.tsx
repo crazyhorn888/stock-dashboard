@@ -93,7 +93,7 @@ export default function MarketHeatCard({ indexHistory }: Props) {
         <div className="border-t border-slate-100 pt-2.5 flex flex-col gap-1.5">
           <FlagRow
             on={st.alertTop} tone="red" name="外資倒貨"
-            cond="外資近 10 日押多選擇權，今天現貨卻轉為大賣"
+            cond="熱度 ≥P30，且外資近 10 日押多選擇權、今天現貨轉為大賣"
             stat={`亮燈日有 ${FLAG_STATS.rev.hit}% 在 20 日內跌 5%（平常 ${FLAG_STATS.rev.base}%）`}
           />
           <FlagRow
@@ -185,9 +185,9 @@ export default function MarketHeatCard({ indexHistory }: Props) {
 
             <Section>兩個旗標</Section>
             <p className="text-xs text-slate-600 leading-relaxed mb-2">
-              <b>🔴 頂部警示</b>　外資近 10 日在選擇權押多，今天現貨卻轉為大賣。
-              歷史 123 天，其中 <b className="text-slate-700">33%</b> 在 20 日內跌 5%（平常 21%）——
-              換句話說，<b className="text-slate-700">三次裡有兩次是誤報</b>，它提高警覺、不代表該賣。
+              <b>🔴 外資倒貨</b>　熱度 ≥P30，且外資近 10 日在選擇權押多、今天現貨卻轉為大賣。
+              歷史 65 天，其中 <b className="text-slate-700">38%</b> 在 20 日內跌 5%（平常 20%）——
+              換句話說，<b className="text-slate-700">三次裡有將近兩次是誤報</b>，它提高警覺、不代表該賣。
             </p>
             <p className="text-xs text-slate-600 leading-relaxed">
               <b>🔵 進場訊號</b>　指數自 60 日高點回落 ≥8%，且熱度曾跌破 P30、現已回升至 ≥P50。
