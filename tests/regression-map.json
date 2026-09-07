@@ -478,5 +478,10 @@
   ],
   "components/aftermarket/MarketHeatCard.tsx::stale": [
     "當 st.stale 非 null 時要顯示琥珀色「待更新」橫幅，說明目前顯示的是哪一天的熱度"
+  ],
+  "components/aftermarket/MarketHeatCard.tsx::Modal 文案": [
+    "Modal 裡的數字全部來自 lib/marketHeat.ts 的 STATS 與 HEAT_BASELINE——改校準時這裡的硬編碼數字要一起改，2026-09-08 就出過「限制欄寫 21 次進場樣本、正上方寫 79 次」的自相矛盾",
+    "誤報率要與命中率一致（命中 33% → 三次裡有兩次是誤報），不可各自寫死",
+    "不要把版本紀錄（某條規則何時退出、為什麼）寫進 Modal——那屬於 Notion Spec 與程式註解"
   ]
 }

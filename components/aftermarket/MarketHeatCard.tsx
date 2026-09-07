@@ -126,7 +126,7 @@ export default function MarketHeatCard({ indexHistory }: Props) {
               <button onClick={() => setOpen(false)} className="text-slate-400 text-lg leading-none px-1">✕</button>
             </div>
             <p className="text-[11px] text-slate-400 mb-3">
-              資料回溯 2022-01-03（1130 個交易日）
+              回測 2019-11 ~ 2026-06（1602 個交易日）
               {st.stale ? `　·　資料日 ${st.stale.asOf}` : today?.date ? `　·　目前顯示 ${today.date}` : ''}
             </p>
 
@@ -141,7 +141,7 @@ export default function MarketHeatCard({ indexHistory }: Props) {
               {HEAT_CONDITIONS.map(c => <li key={c}>{c}</li>)}
             </ul>
             <p className="text-[11px] text-slate-400 mb-1">
-              今日成立 <b className="text-slate-600">{st.warn} / 6</b> 項（僅供參考，不再作為警示條件）。
+              今日成立 <b className="text-slate-600">{st.warn} / 6</b> 項。這只是熱度的組成，不是警示。
             </p>
 
             <Section>熱度分級的歷史表現</Section>
@@ -186,27 +186,22 @@ export default function MarketHeatCard({ indexHistory }: Props) {
               </p>
             )}
 
-            <Section>警示與進場的觸發條件</Section>
-            <p className="text-xs text-slate-600 leading-relaxed mb-1.5">
-              <b>🔴 頂部警示</b>：外資近 10 日曾在選擇權押多、今日現貨轉為大賣。
-              123 天樣本、命中 33%（基準 21%）。
-            </p>
-            <p className="text-[11px] text-slate-400 leading-relaxed mb-1.5">
-              「六項成立 ≥4 項」已於 2026-09-07 退出警示條件——在期交所官方序列上它是反指標
-              （64 天、13%，低於 21% 的基準，三段期間都沒贏過）。計分保留為資訊，不再亮燈。
+            <Section>兩個旗標</Section>
+            <p className="text-xs text-slate-600 leading-relaxed mb-2">
+              <b>🔴 頂部警示</b>　外資近 10 日在選擇權押多，今天現貨卻轉為大賣。
+              歷史 123 天，其中 <b className="text-slate-700">33%</b> 在 20 日內跌 5%（平常 21%）——
+              換句話說，<b className="text-slate-700">三次裡有兩次是誤報</b>，它提高警覺、不代表該賣。
             </p>
             <p className="text-xs text-slate-600 leading-relaxed">
-              <b>🔵 進場訊號</b>：指數自 60 日高點回落 ≥8%，且熱度曾跌破 P30、現已回升至 ≥P50。
-              歷史 79 次、成功率 56%（基準 33%）、20 日回落 5% 僅 13%。
+              <b>🔵 進場訊號</b>　指數自 60 日高點回落 ≥8%，且熱度曾跌破 P30、現已回升至 ≥P50。
+              歷史 79 次，其中 <b className="text-slate-700">56%</b> 在 60 日內賺 10%（平常 33%）。
             </p>
 
-            <Section>必須知道的限制</Section>
+            <Section>這張卡做不到的事</Section>
             <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[11.5px] text-amber-800 leading-relaxed">
-              ① 頂部警示 <b>64% 是誤報</b>，且會漏掉約 3/7 的下跌。<br />
-              ② 只有 11 次起跌事件、21 次進場樣本，統計基礎薄弱。<br />
-              ③ <b>不涵蓋突發的地緣或政策衝擊</b>——2024-04 伊朗攻以、2024-08 選擇權結算日、
-              2025-02 關稅與油價這三次，籌碼面事前完全沒有徵兆。<br />
-              ④ 籌碼結構會隨時間漂移，建議每年重跑一次回測。
+              <b>抓不到突發衝擊。</b>地緣、政策、結算日這類事件，籌碼面事前不會有徵兆——
+              2024-04 伊朗攻以、2025-02 關稅就是這樣跌下來的。<br />
+              <b>機率不是保證。</b>籌碼結構每隔幾年會漂移，表上的數字每年要重跑一次。
             </div>
           </div>
         </div>
