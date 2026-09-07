@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import type { IndexOHLC } from '@/lib/types'
 import {
-  getHeatState, HEAT_BAR, HEAT_TONE, HEAT_BASELINE, HEAT_CONDITIONS,
+  getHeatState, HEAT_BAR, HEAT_TONE, HEAT_BASELINE, HEAT_CONDITIONS, FLAG_STATS,
 } from '@/lib/marketHeat'
 
 /**
@@ -88,23 +88,20 @@ export default function MarketHeatCard({ indexHistory }: Props) {
           <Stat label="20 日內回落 5%" value={`${st.downOdds}%`} base={`基準 ${HEAT_BASELINE.down}%`} />
         </div>
 
-        {/* 警示層：平常不出現（AC-HT-D1），兩者互斥 */}
-        {st.alertTop && (
-          <Flag
-            tone="red"
-            title="🔴 頂部風險警示　外資背離"
-            foot="123 天樣本、命中 33%（基準 21%）。三段期間中有一段低於基準，67% 是誤報。"
-          >
-            <li>外資近 10 日曾在選擇權押多，今日現貨轉為大賣</li>
-          </Flag>
-        )}
-        {!st.alertTop && st.entry && (
-          <Flag tone="blue" title="🔵 進場訊號成立"
-                foot={`歷史僅 ${st.sample} 次、成功率 ${st.upOdds}%（基準 ${HEAT_BASELINE.up}%）。樣本少，僅供參考。`}>
-            <li>指數自 60 日高點回落 ≥8%</li>
-            <li>熱度曾跌破 P30，現已回升至 P{st.heat}</li>
-          </Flag>
-        )}
+        {/* AC-HT-D9 兩個旗標常駐：平常灰著把條件寫出來，成立時整列變色並補上機率。
+            先前只在成立時才出現，等於一年裡有 220 天使用者不知道系統在看什麼 */}
+        <div className="border-t border-slate-100 pt-2.5 flex flex-col gap-1.5">
+          <FlagRow
+            on={st.alertTop} tone="red" name="外資倒貨"
+            cond="外資近 10 日押多選擇權，今天現貨卻轉為大賣"
+            stat={`亮燈日有 ${FLAG_STATS.rev.hit}% 在 20 日內跌 5%（平常 ${FLAG_STATS.rev.base}%）`}
+          />
+          <FlagRow
+            on={st.entry} tone="blue" name="跌深轉強"
+            cond="自 60 日高點回落 ≥8%，熱度由 P30 以下翻上 P50"
+            stat={`亮燈日有 ${FLAG_STATS.entry.hit}% 在 60 日內賺 10%（平常 ${FLAG_STATS.entry.base}%）`}
+          />
+        </div>
 
         {/* 一句話建議 */}
         <div className={`text-xs leading-relaxed px-3 py-2 rounded-lg ${tone.msg}`}>
@@ -222,17 +219,24 @@ function Stat({ label, value, base }: { label: string; value: string; base: stri
   )
 }
 
-function Flag({ tone, title, foot, children }: {
-  tone: 'red' | 'blue'; title: string; foot: string; children: React.ReactNode
+/** 常駐的旗標列：未成立時是灰底一行條件，成立時上色並長出機率那一行 */
+function FlagRow({ on, tone, name, cond, stat }: {
+  on: boolean; tone: 'red' | 'blue'; name: string; cond: string; stat: string
 }) {
-  const c = tone === 'red'
-    ? { box: 'bg-red-50 border-red-200', head: 'text-red-700', line: 'border-red-200' }
-    : { box: 'bg-blue-50 border-blue-200', head: 'text-blue-700', line: 'border-blue-200' }
+  const c = on
+    ? (tone === 'red'
+        ? { box: 'bg-red-50 border-red-200', dot: 'bg-red-500', name: 'text-red-700', cond: 'text-slate-700' }
+        : { box: 'bg-blue-50 border-blue-200', dot: 'bg-blue-500', name: 'text-blue-700', cond: 'text-slate-700' })
+    : { box: 'bg-slate-50 border-slate-100', dot: 'bg-slate-300', name: 'text-slate-500', cond: 'text-slate-400' }
   return (
-    <div className={`rounded-lg border px-3 py-2.5 flex flex-col gap-1.5 ${c.box}`}>
-      <div className={`text-[12.5px] font-bold ${c.head}`}>{title}</div>
-      <ul className="text-[12px] text-slate-700 list-disc pl-4 leading-relaxed">{children}</ul>
-      <div className={`text-[10.5px] text-slate-500 border-t pt-1.5 leading-relaxed ${c.line}`}>{foot}</div>
+    <div className={`rounded-lg border px-2.5 py-1.5 ${c.box}`}>
+      <div className="flex items-center gap-1.5">
+        <span className={`w-[7px] h-[7px] rounded-full shrink-0 ${c.dot}`} />
+        <span className={`text-[11.5px] font-bold shrink-0 ${c.name}`}>{name}</span>
+        <span className="text-[10px] text-slate-400 ml-auto shrink-0">{on ? '成立' : '未成立'}</span>
+      </div>
+      <p className={`text-[11px] leading-snug mt-0.5 pl-[13px] ${c.cond}`}>{cond}</p>
+      {on && <p className="text-[10px] text-slate-500 leading-snug mt-1 pl-[13px]">{stat}</p>}
     </div>
   )
 }

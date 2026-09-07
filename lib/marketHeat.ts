@@ -71,6 +71,13 @@ const STATS: Record<HeatLevel, { up: number; down: number; n: number }> = {
 /** 全樣本基準，卡片用來對照 */
 export const HEAT_BASELINE = { up: 33, down: 20, n: 1602 }
 
+/** 常駐旗標列要顯示的機率——即使進場訊號沒成立也要秀，所以不能靠 st.upOdds */
+export const FLAG_STATS = {
+  /** 外資反轉亮燈日，20 日內跌 5% 的比例 */
+  rev: { hit: 33, base: HEAT_BASELINE.down, n: 123 },
+  entry: { hit: STATS.entry.up, base: HEAT_BASELINE.up, n: STATS.entry.n },
+}
+
 /**
  * 機率跨期間不穩定的狀態——Modal 要標明可信度低於其他狀態。
  * 弱勢區三段期間的跌 5% 機率是 32% / 4% / 29%（同期基準 26% / 16% / 17%），
