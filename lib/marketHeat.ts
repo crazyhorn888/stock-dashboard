@@ -15,7 +15,7 @@ import type { IndexOHLC } from '@/lib/types'
  * 風險呈 U 型：太冷與太熱都危險，最安全的是 P50–80。
  */
 
-export type HeatLevel = 'weak' | 'mid' | 'good' | 'hot' | 'entry'
+export type HeatLevel = 'weak' | 'mid' | 'good' | 'over' | 'hot' | 'entry'
 
 export interface HeatState {
   /** 0~100 的滾動百分位 */
@@ -34,29 +34,50 @@ export interface HeatState {
   downOdds: number
   /** 該狀態的歷史樣本天數 */
   sample: number
+  /** 若該狀態的機率跨期間不穩定，這裡是說明文字（AC-HT-D6） */
+  unstable: string | null
   /** 頂部風險警示是否成立（AC-HT-D4 / E2） */
   alertTop: boolean
   /** 警示由哪一條觸發（AC-HT-E3）——兩者的提前量與意義不同 */
   alertBy: 'score' | 'reversal' | 'both' | null
 }
 
-/** 各狀態的歷史條件機率（1130 天回測；upOdds = 60 日報酬 ≥+10% 且 20 日內未跌破 −5%） */
+/**
+ * 各狀態的歷史條件機率。
+ * upOdds   = 未來 60 日報酬 ≥ +10% 且 20 日內未跌破 −5%
+ * downOdds = 未來 20 日內回落 ≥ 5%
+ *
+ * 2026-09-07 重算：分界加了 P80 這一刀（原本 50–95 全歸「健康」，
+ * 把 80–95 那段 21% 的風險稀釋成 10%）。切開後風險區分度從 19 提升到 24 個百分點。
+ * 全部數字以同一套樣本（715 天）與同一組定義重算，進場訊號亦然。
+ */
 const STATS: Record<HeatLevel, { up: number; down: number; n: number }> = {
-  weak:  { up: 25, down: 24, n: 212 },
-  mid:   { up: 34, down: 10, n: 117 },
-  good:  { up: 61, down: 8,  n: 213 },
-  hot:   { up: 49, down: 26, n: 57  },
-  entry: { up: 88, down: 0,  n: 16  },
+  weak:  { up: 25, down: 22, n: 208 },
+  mid:   { up: 40, down: 14, n: 114 },
+  good:  { up: 61, down: 5,  n: 210 },
+  over:  { up: 50, down: 21, n: 100 },
+  hot:   { up: 45, down: 29, n: 62  },
+  entry: { up: 76, down: 5,  n: 21  },
 }
 
 /** 全樣本基準，卡片用來對照 */
-export const HEAT_BASELINE = { up: 42, down: 15, n: 770 }
+export const HEAT_BASELINE = { up: 45, down: 16, n: 715 }
+
+/**
+ * 機率跨期間不穩定的狀態——Modal 要標明可信度低於其他狀態。
+ * 弱勢區在 2023-24 的跌 5% 機率是 8%、2025-26 卻是 50%（同期基準 12% → 20%），
+ * 兩段差六倍；健康區則相對穩定（8% → 3%）。低溫在高波動體制下特別危險。
+ */
+export const UNSTABLE: Partial<Record<HeatLevel, string>> = {
+  weak: '此區間的機率跨期間極不穩定（2023-24 為 8%、2025-26 為 50%），可信度低於其他狀態',
+}
 
 const COPY: Record<HeatLevel, { label: string; advice: string }> = {
   weak:  { label: '弱勢',     advice: '低溫不是便宜。等熱度回到 P50 以上再進場。' },
   mid:   { label: '轉溫',     advice: '方向未明。等待往上進健康區，或往下轉為觀望。' },
   good:  { label: '健康偏強', advice: '風險報酬最佳區間，續抱。' },
-  hot:   { label: '極熱',     advice: '續漲仍是主劇本，但尾部變厚。可停利部分、降槓桿。' },
+  over:  { label: '偏熱',     advice: '續漲仍是主劇本，但回落機率已升至 21%（健康區 5%）。' },
+  hot:   { label: '極熱',     advice: '尾部最厚的區間。可停利部分、降槓桿。' },
   entry: { label: '洗盤轉強', advice: '跌深轉強，歷史最佳進場點。' },
 }
 
@@ -85,9 +106,11 @@ export function getHeatState(indexHistory: IndexOHLC[] | undefined): HeatState |
   const rev = today.rev === true      // AC-HT-E1 外資反轉
 
   // 進場訊號優先於熱度分級——它本身就落在 P50 以上，但意義完全不同
+  // 分界依 2026-09-07 的區分度評比（方案 A：30 / 50 / 80 / 95）
   const level: HeatLevel =
     entry ? 'entry'
     : heat >= 95 ? 'hot'
+    : heat >= 80 ? 'over'
     : heat >= 50 ? 'good'
     : heat >= 30 ? 'mid'
     : 'weak'
@@ -100,6 +123,7 @@ export function getHeatState(indexHistory: IndexOHLC[] | undefined): HeatState |
     upOdds: st.up,
     downOdds: st.down,
     sample: st.n,
+    unstable: UNSTABLE[level] ?? null,
     // AC-HT-E2：計分 ≥4 或外資反轉，任一成立即亮紅燈
     alertTop: warn >= 4 || rev,
     alertBy: warn >= 4 && rev ? 'both' : warn >= 4 ? 'score' : rev ? 'reversal' : null,
@@ -108,7 +132,8 @@ export function getHeatState(indexHistory: IndexOHLC[] | undefined): HeatState |
 
 /** 溫度條的顏色，與狀態一致 */
 export const HEAT_BAR: Record<HeatLevel, string> = {
-  weak: '#d97706', mid: '#94a3b8', good: '#16a34a', hot: '#ef4444', entry: '#2563eb',
+  weak: '#d97706', mid: '#94a3b8', good: '#16a34a',
+  over: '#f97316', hot: '#ef4444', entry: '#2563eb',
 }
 
 /** 卡片配色（Tailwind class），比照 MarginThermometer 的寫法 */
@@ -116,6 +141,7 @@ export const HEAT_TONE: Record<HeatLevel, { pill: string; num: string; msg: stri
   weak:  { pill: 'bg-amber-50 text-amber-700',  num: 'text-amber-600',  msg: 'bg-amber-50 text-amber-800' },
   mid:   { pill: 'bg-slate-100 text-slate-500', num: 'text-slate-700',  msg: 'bg-slate-100 text-slate-600' },
   good:  { pill: 'bg-green-50 text-green-700',  num: 'text-green-600',  msg: 'bg-green-50 text-green-700' },
+  over:  { pill: 'bg-orange-50 text-orange-700', num: 'text-orange-500', msg: 'bg-orange-50 text-orange-700' },
   hot:   { pill: 'bg-red-50 text-red-700',      num: 'text-red-500',    msg: 'bg-red-50 text-red-700' },
   entry: { pill: 'bg-blue-50 text-blue-700',    num: 'text-blue-600',   msg: 'bg-blue-50 text-blue-700' },
 }

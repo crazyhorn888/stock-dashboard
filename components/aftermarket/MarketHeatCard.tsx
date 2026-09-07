@@ -93,7 +93,7 @@ export default function MarketHeatCard({ indexHistory }: Props) {
         )}
         {!st.alertTop && st.entry && (
           <Flag tone="blue" title="🔵 進場訊號成立"
-                foot="歷史僅 16 次、成功率 88%、無一次再跌破 5%。樣本少，僅供參考。">
+                foot={`歷史僅 ${st.sample} 次、成功率 ${st.upOdds}%（基準 ${HEAT_BASELINE.up}%）。樣本少，僅供參考。`}>
             <li>指數自 60 日高點回落 ≥8%</li>
             <li>熱度曾跌破 P30，現已回升至 P{st.heat}</li>
           </Flag>
@@ -150,12 +150,12 @@ export default function MarketHeatCard({ indexHistory }: Props) {
                 </thead>
                 <tbody className="text-slate-600 tabular-nums">
                   {[
-                    ['≤P30　弱勢', 212, 25, 24],
-                    ['P30–50　轉溫', 117, 34, 10],
-                    ['P50–80　健康', 213, 61, 8],
-                    ['P80–95　過熱', 118, 58, 14],
-                    ['≥P95　極熱', 57, 49, 26],
-                    ['基準（隨便挑一天）', 770, 42, 15],
+                    ['≤P30　弱勢', 208, 25, 22],
+                    ['P30–50　轉溫', 114, 40, 14],
+                    ['P50–80　健康', 210, 61, 5],
+                    ['P80–95　偏熱', 100, 50, 21],
+                    ['≥P95　極熱', 62, 45, 29],
+                    ['基準（隨便挑一天）', 715, 45, 16],
                   ].map(([l, n, u, d]) => (
                     <tr key={String(l)} className="border-b border-slate-100 last:border-0">
                       <td className="px-2 py-1">{l}</td>
@@ -168,9 +168,15 @@ export default function MarketHeatCard({ indexHistory }: Props) {
               </table>
             </div>
             <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
-              風險呈 U 型：太冷與太熱都危險，最安全的是 P50–80。
+              風險呈 U 型：太冷與太熱都危險，最安全的是 P50–80（跌 5% 機率僅 5%）。
+              P80 是最乾淨的斷點——P75–79 只有 2%，P80–84 直接跳到 19%。
               「60 日賺 10%」指未來 60 個交易日報酬 ≥ +10% 且 20 日內未跌破 −5%。
             </p>
+            {st.unstable && (
+              <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2 leading-relaxed">
+                ⚠️ 目前所在的「{st.label}」區間：{st.unstable}。
+              </p>
+            )}
 
             <Section>警示與進場的觸發條件</Section>
             <p className="text-xs text-slate-600 leading-relaxed mb-1.5">
@@ -185,7 +191,7 @@ export default function MarketHeatCard({ indexHistory }: Props) {
             <Section>必須知道的限制</Section>
             <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[11.5px] text-amber-800 leading-relaxed">
               ① 頂部警示 <b>64% 是誤報</b>，且會漏掉約 3/7 的下跌。<br />
-              ② 只有 11 次起跌事件、16 次進場樣本，統計基礎薄弱。<br />
+              ② 只有 11 次起跌事件、21 次進場樣本，統計基礎薄弱。<br />
               ③ <b>不涵蓋突發的地緣或政策衝擊</b>——2024-04 伊朗攻以、2024-08 選擇權結算日、
               2025-02 關稅與油價這三次，籌碼面事前完全沒有徵兆。<br />
               ④ 籌碼結構會隨時間漂移，建議每年重跑一次回測。
