@@ -145,7 +145,7 @@ export interface IndexOHLC {
   high: number
   low: number
   close: number
-  volume: number  // 成交金額（億）
+  volume: number  // 成交金額（十萬元）——fetch-daily.mjs 由 TWSE 的元除以 1e5
   chips?: ChipsData
   // 市場熱度（AC-HT-C3）：由 scripts/calc-heat.mjs 在 pipeline 端算好寫入，
   // 前端只讀不算。資料不足或 heat-history.json 尚未回補時為 null/undefined

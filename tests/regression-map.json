@@ -434,7 +434,9 @@
     "市場條件頁。反轉卡併在正向／負向 CardGroup 的 extra slot（AC-PB-5），calcHighReversal 必須傳頁面 n。CardGroup 的 grid 是 3 欄，加卡片時要同步調整『＋未來新增』佔位數。"
   ],
   "scripts/calc-heat.mjs::extractFeatures": [
-    "從 indexHistory 取 6 項熱度特徵。f2/f3 依賴 chips.opt_tr[party].*_amt 與 chips.opt_oi.dealer.call_oi_net_amt——這些是 Phase1 於 2026-09-06 新增的欄位，stock-chips-daily 那邊未上線前，新追加的日期這兩項會是 null（有效項數<5 → heat 為 null）。兩專案必須一起上線，否則熱度會停在回補的最後一天"
+    "從 indexHistory 取 6 項熱度特徵。f2/f3 依賴 chips.opt_tr[party].*_amt 與 chips.opt_oi.dealer.call_oi_net_amt（Phase1 2026-09-06 新增）；f5 tFut5 依賴 chips.fut_oi.tx.trust=[多,空,淨]。兩專案必須一起上線，否則熱度會停在回補的最後一天",
+    "AC-HT-B9 單位陷阱：chips.foreign_spot 是「億元」，indexHistory.volume 是「十萬元」（fetch-daily.mjs 除以 1e5）。fSpot 必須先把 volume 換算成億，直接相除會小 1000 倍，與 heat-history 的舊資料混在同一 Z 視窗會讓外資反轉訊號整條失效",
+    "vol5 與 fSpot 都要求 volume > 0——盤中班次 volume 是 0，typeof 檢查會放行並算出 −100% 這種假值"
   ],
   "scripts/calc-heat.mjs::compute": [
     "Z 視窗 250 日、百分位視窗 250 日——實測縮短會直接失效（180日→無效果、120日→比基準還差），不可為了省資料而調小。有效項數<5 時 score 回 null（AC-HT-C2）。所有統計只用當日之前的資料，不得引入未來函數（AC-HT-C1）"
@@ -443,7 +445,7 @@
     "只在 added>0 時才回傳 heat-history.json，避免每個 run 都寫 Supabase。heat-history.json 不進 git（/data/* 為 CI 產物區），一次性回補由本機 backfill-heat-history.py 產生後上傳"
   ],
   "lib/marketHeat.ts::getHeatState": [
-    "前端只讀 pipeline 算好的 heat/warn/entry，不重算統計——瀏覽器只有 250 筆快照，算不出 250日Z + 250日百分位（需 500 天）。heat 為 null 時整張卡不顯示（回補未完成／當日籌碼缺選擇權金額欄位）。狀態判定順序：entry 優先於熱度分級"
+    "AC-HT-B6：往回找第一個 heat 非 null 的交易日並回傳 stale={asOf, latest}，不是拿 indexHistory[0] 就 return null。整段歷史都沒有熱度才回傳 null"
   ],
   "components/aftermarket/MarketHeatCard.tsx": [
     "AC-HT-D1 分層顯示：熱度數字/溫度條/兩格固定機率永遠在；🔴頂部警示與🔵進場訊號平常不出現且互斥。實測 250 筆快照紅燈只亮 11 天（4.4%）——若改成「熱度高就變紅」會一年亮 200 天且方向錯誤（過熱後 60 日平均 +12.05%，高於基準 +8.79%）"
@@ -458,9 +460,23 @@
     "AC-HT-E2/E3：警示 = warn>=4 或 rev，且須標明由哪條觸發。實測 248 筆快照兩者完全不重疊（計分 11 天、背離 12 天、重疊 0），紅燈從 4.4% 升到 9.3%，換來提前量 4.5 日 → 8.0 日"
   ],
   "lib/marketHeat.ts::STATS": [
-    "2026-09-07 重算：分界加 P80 一刀（原 50-95 全歸健康，把 80-95 那段 21% 風險稀釋成 10%）。區分度評比：現行 53 → 方案A 61（風險區分度 19→24 個百分點）。5 點細分證實 P80 是最乾淨斷點：P75-79 僅 2%、P80-84 跳到 19%。下緣不動——低溫端 0-14 呈鋸齒（18/29/36%）且每格僅 33-44 天，多為雜訊。所有數字用同一套 715 天樣本重算，含進場訊號（21 天/76%/5%，非舊版的 16 天/88%）"
+    "2026-09-07 以期交所官方序列 1602 天重算。strong(P80–95) 是風險最低的一段（11%），不是警示區——三段期間都低於 50–80"
   ],
   "lib/marketHeat.ts::UNSTABLE": [
     "弱勢區的機率跨期間極不穩定：2023-24 跌5% 為 8%、2025-26 為 50%（同期基準 12%→20%），兩段差六倍；健康區相對穩（8%→3%）。推測與波動體制有關（日報酬標準差 1.10%→1.74%）。Modal 必須揭露此不確定性，不得只顯示全期平均"
+  ],
+  "scripts/calc-heat.mjs::main::追加完整性": [
+    "AC-HT-B5：六項特徵必須全部非 null 才寫進 heat-history（不混用不同交易日的資料）。歷史檔裡既有的殘缺列，等資料齊了要覆蓋修復，否則「只追加不重算」會讓該日熱度永遠是 null",
+    "上傳條件為 added > 0 || repaired > 0"
+  ],
+  "scripts/rebuild-heat-history.py": [
+    "AC-HT-B8：heat-history 的權威來源是期交所官方序列（FinMind），不是 Phase2 Google Sheet——Sheet 的 OP Detail BC/SC/BP/SP 在 2025-05-08 從「未平倉」換成「交易」，dSC 與 fCP 會建在錯的量上",
+    "欄位定義必須與 calc-heat.mjs 的 extractFeatures 逐項對應；改任一邊都要對齊另一邊，並用重疊日期比對 r ≈ 1.000"
+  ],
+  "lib/marketHeat.ts::alertTop": [
+    "AC-HT-B10：紅燈只由外資反轉(rev)觸發。「計分≥4」已退出——在官方序列上是反指標（64 天 13% vs 基準 21%，p=0.92）"
+  ],
+  "components/aftermarket/MarketHeatCard.tsx::stale": [
+    "當 st.stale 非 null 時要顯示琥珀色「待更新」橫幅，說明目前顯示的是哪一天的熱度"
   ]
 }

@@ -17,11 +17,15 @@ interface Props {
   indexHistory?: IndexOHLC[]
 }
 
+/** 2026-09-07 → 09/07 */
+const fmtDate = (d: string) => d.slice(5).replace('-', '/')
+
 export default function MarketHeatCard({ indexHistory }: Props) {
   const [open, setOpen] = useState(false)
   const st = getHeatState(indexHistory)
 
-  // pipeline 尚未產出熱度（heat-history 未回補／當日籌碼缺金額欄位）→ 整張卡不顯示
+  // 整段歷史都沒有熱度（heat-history 未回補）→ 整張卡不顯示。
+  // 只是「今天籌碼還沒進來」不會走到這裡，而是走 AC-HT-B6 的待更新提示
   if (!st) return null
 
   const tone = HEAT_TONE[st.level]
@@ -44,6 +48,18 @@ export default function MarketHeatCard({ indexHistory }: Props) {
             {st.label}
           </span>
         </div>
+
+        {/* AC-HT-B6 待更新提示：六項條件必須同一天，寧可標示落後也不混用兩天的資料 */}
+        {st.stale && (
+          <div className="flex items-start gap-1.5 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1.5">
+            <span className="text-[12px] leading-[18px]">🕘</span>
+            <span className="text-[11.5px] leading-[18px] text-amber-800">
+              {fmtDate(st.stale.latest)} 的籌碼尚未更新，以下為
+              <span className="font-semibold">{fmtDate(st.stale.asOf)}</span>
+              收盤的熱度。籌碼約在盤後陸續進來，屆時自動更新。
+            </span>
+          </div>
+        )}
 
         {/* 數值 */}
         <div className="flex items-baseline gap-1.5">
@@ -76,19 +92,10 @@ export default function MarketHeatCard({ indexHistory }: Props) {
         {st.alertTop && (
           <Flag
             tone="red"
-            title={st.alertBy === 'reversal' ? '🔴 頂部風險警示　外資背離'
-                 : st.alertBy === 'both'     ? `🔴 頂部風險警示　計分 ${st.warn}/6 ＋ 外資背離`
-                 :                             `🔴 頂部風險警示　${st.warn} / 6`}
-            foot={st.alertBy === 'reversal'
-              ? '24 天樣本、命中 33%（平時 12%）、平均提前 8.0 個交易日。67% 是誤報。'
-              : '36 天樣本、命中 36%（平時 12%）、平均提前 4.5 個交易日。64% 是誤報。'}
+            title="🔴 頂部風險警示　外資背離"
+            foot="123 天樣本、命中 33%（基準 21%）。三段期間中有一段低於基準，67% 是誤報。"
           >
-            {(st.alertBy === 'score' || st.alertBy === 'both') && (
-              <li>六項條件中已成立 {st.warn} 項，詳見「?」說明</li>
-            )}
-            {(st.alertBy === 'reversal' || st.alertBy === 'both') && (
-              <li>外資近 10 日曾在選擇權押多，今日現貨轉為大賣</li>
-            )}
+            <li>外資近 10 日曾在選擇權押多，今日現貨轉為大賣</li>
           </Flag>
         )}
         {!st.alertTop && st.entry && (
@@ -120,7 +127,7 @@ export default function MarketHeatCard({ indexHistory }: Props) {
             </div>
             <p className="text-[11px] text-slate-400 mb-3">
               資料回溯 2022-01-03（1130 個交易日）
-              {today?.date ? `　·　目前顯示 ${today.date}` : ''}
+              {st.stale ? `　·　資料日 ${st.stale.asOf}` : today?.date ? `　·　目前顯示 ${today.date}` : ''}
             </p>
 
             <p className="text-xs text-slate-600 leading-relaxed mb-2">
@@ -134,7 +141,7 @@ export default function MarketHeatCard({ indexHistory }: Props) {
               {HEAT_CONDITIONS.map(c => <li key={c}>{c}</li>)}
             </ul>
             <p className="text-[11px] text-slate-400 mb-1">
-              今日成立 <b className="text-slate-600">{st.warn} / 6</b> 項，≥4 項即亮頂部風險警示。
+              今日成立 <b className="text-slate-600">{st.warn} / 6</b> 項（僅供參考，不再作為警示條件）。
             </p>
 
             <Section>熱度分級的歷史表現</Section>
@@ -150,12 +157,12 @@ export default function MarketHeatCard({ indexHistory }: Props) {
                 </thead>
                 <tbody className="text-slate-600 tabular-nums">
                   {[
-                    ['≤P30　弱勢', 208, 25, 22],
-                    ['P30–50　轉溫', 114, 40, 14],
-                    ['P50–80　健康', 210, 61, 5],
-                    ['P80–95　偏熱', 100, 50, 21],
-                    ['≥P95　極熱', 62, 45, 29],
-                    ['基準（隨便挑一天）', 715, 45, 16],
+                    ['≤P30　弱勢', 474, 26, 24],
+                    ['P30–50　轉溫', 306, 32, 21],
+                    ['P50–80　健康', 472, 36, 18],
+                    ['P80–95　強勢', 231, 45, 11],
+                    ['≥P95　極熱', 119, 29, 28],
+                    ['基準（隨便挑一天）', 1602, 33, 20],
                   ].map(([l, n, u, d]) => (
                     <tr key={String(l)} className="border-b border-slate-100 last:border-0">
                       <td className="px-2 py-1">{l}</td>
@@ -168,8 +175,9 @@ export default function MarketHeatCard({ indexHistory }: Props) {
               </table>
             </div>
             <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
-              風險呈 U 型：太冷與太熱都危險，最安全的是 P50–80（跌 5% 機率僅 5%）。
-              P80 是最乾淨的斷點——P75–79 只有 2%，P80–84 直接跳到 19%。
+              風險呈 U 型：太冷與太熱都危險，最安全的是 P80–95（跌 5% 僅 11%），
+              真正該警戒的只有 ≥P95（28%）與低溫區（24%）。
+              樣本 1602 天（2019-11 ~ 2026-06），資料源為期交所官方序列。
               「60 日賺 10%」指未來 60 個交易日報酬 ≥ +10% 且 20 日內未跌破 −5%。
             </p>
             {st.unstable && (
@@ -180,12 +188,16 @@ export default function MarketHeatCard({ indexHistory }: Props) {
 
             <Section>警示與進場的觸發條件</Section>
             <p className="text-xs text-slate-600 leading-relaxed mb-1.5">
-              <b>🔴 頂部警示</b>：六項中 ≥4 項成立，或「外資近 10 日曾在選擇權押多、今日現貨轉為大賣」。
-              歷史 36 天樣本、命中 36%（平時 12%）、平均提前 4.5 個交易日。
+              <b>🔴 頂部警示</b>：外資近 10 日曾在選擇權押多、今日現貨轉為大賣。
+              123 天樣本、命中 33%（基準 21%）。
+            </p>
+            <p className="text-[11px] text-slate-400 leading-relaxed mb-1.5">
+              「六項成立 ≥4 項」已於 2026-09-07 退出警示條件——在期交所官方序列上它是反指標
+              （64 天、13%，低於 21% 的基準，三段期間都沒贏過）。計分保留為資訊，不再亮燈。
             </p>
             <p className="text-xs text-slate-600 leading-relaxed">
               <b>🔵 進場訊號</b>：指數自 60 日高點回落 ≥8%，且熱度曾跌破 P30、現已回升至 ≥P50。
-              歷史 16 次、成功率 88%、期間最大回落僅 −0.62%。
+              歷史 79 次、成功率 56%（基準 33%）、20 日回落 5% 僅 13%。
             </p>
 
             <Section>必須知道的限制</Section>

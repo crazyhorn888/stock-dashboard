@@ -101,19 +101,39 @@ function extractFeatures(indexHistory) {
     const fCP = (typeof fbc === 'number' && fbp) ? fbc / fbp : null
 
     // f6 成交量 5 日變動%
+    // a > 0 而不是 typeof a === 'number'：盤中班次的 volume 是 0，
+    // 算出來會是 −100% 這種假值，反而通過完整性檢查（AC-HT-B5）
     let vol5 = null
     if (i >= 5) {
       const a = r.volume, b = rows[i - 5].volume
-      if (typeof a === 'number' && b) vol5 = (a / b - 1) * 100
+      if (a > 0 && b > 0) vol5 = (a / b - 1) * 100
     }
 
-    // fSpot 外資現貨買賣超佔成交量%（AC-HT-E1 用，不計入熱度分數）
+    // f5 投信台指期淨 OI 的 5 日變動，佔投信總部位%
+    // AC-HT-B7：先前這裡固定寫 null，等於當日只用 5 項、歷史卻是 6 項，
+    // 兩種分數混在同一個百分位視窗裡比。快照本來就有 fut_oi.tx.trust
+    // （[多, 空, 淨]），照回補腳本的算法補上，六項才是同一套。
+    let tFut5 = null
+    if (i >= 5) {
+      const c = chips.fut_oi?.tx?.trust
+      const p5 = rows[i - 5].chips?.fut_oi?.tx?.trust
+      if (Array.isArray(c) && Array.isArray(p5) && c.length === 3 && p5.length === 3) {
+        const scale5 = c[0] + c[1]
+        if (scale5 > 0) tFut5 = (c[2] - p5[2]) / scale5 * 100
+      }
+    }
+
+    // fSpot 外資現貨買賣超佔成交金額%（AC-HT-E1 用，不計入熱度分數）
+    // AC-HT-B9 單位：chips.foreign_spot 是「億元」，但 indexHistory.volume 是
+    // 「十萬元」（fetch-daily.mjs 把 TWSE 的元除以 1e5）。直接相除會小 1000 倍，
+    // 跟 heat-history 裡「億 ÷ 億」的舊資料混在同一個 Z 視窗會整條炸掉。
     const fs = chips.foreign_spot
-    const fSpot = (typeof fs === 'number' && r.volume) ? fs / r.volume * 100 : null
+    const volYi = r.volume > 0 ? r.volume / 1000 : null     // 十萬元 → 億元
+    const fSpot = (typeof fs === 'number' && volYi) ? fs / volYi * 100 : null
 
     out[r.date] = {
       bias60: round(bias60), dCallOI: round(dCallOI), dSC: round(dSC),
-      fCP: round(fCP), tFut5: null, vol5: round(vol5),
+      fCP: round(fCP), tFut5: round(tFut5), vol5: round(vol5),
       fSpot: round(fSpot),
     }
   }
@@ -197,15 +217,22 @@ async function main() {
     return
   }
 
-  // AC-HT-B4：只追加快照裡有、歷史檔還沒有的日期，不重算歷史
+  // AC-HT-B4：只追加快照裡有、歷史檔還沒有的日期，不重算歷史。
+  // 例外（AC-HT-B5）：pipeline 一天會跑多班，盤中那幾班籌碼還沒進來，
+  // 特徵會是一整排 null。這種「殘缺列」不可以寫進歷史——寫進去之後
+  // 「只追加」規則會讓它永遠卡住，該日熱度變 null，整張卡片消失。
+  // 所以：六項要全部到齊才寫（不混用不同天的資料）；已經寫進去的殘缺列，
+  // 等收盤後有完整資料時覆蓋掉。當日還沒齊就是不寫，卡片會顯示「待更新」。
+  const complete = f => KEYS.every(([k]) => f[k] != null)
   const fresh = extractFeatures(indexHistory)
-  let added = 0
+  let added = 0, repaired = 0, skipped = 0
   for (const [d, f] of Object.entries(fresh)) {
-    if (history[d]) continue
-    history[d] = f
-    added++
+    if (!complete(f)) { if (!history[d]) skipped++; continue }
+    if (!history[d]) { history[d] = f; added++; continue }
+    if (!complete(history[d])) { history[d] = f; repaired++ }
   }
-  console.log(`[calc-heat] 歷史 ${Object.keys(history).length} 天（本次新增 ${added} 天）`)
+  console.log(`[calc-heat] 歷史 ${Object.keys(history).length} 天`
+    + `（新增 ${added} 天、修復殘缺 ${repaired} 天、略過未完成 ${skipped} 天）`)
 
   const { dates, heat, warn, rev, zs } = compute(history)
   const closeByDate = Object.fromEntries(indexHistory.map(r => [r.date, r.close]))
@@ -230,7 +257,7 @@ async function main() {
   console.log(`[calc-heat] 已寫入 ${written} 筆 indexHistory`)
 
   writeFileSync(DATA_FILE, JSON.stringify(snapshot))
-  if (added > 0) await uploadHistory(history)
+  if (added > 0 || repaired > 0) await uploadHistory(history)
   console.log('[calc-heat] 完成')
 }
 
