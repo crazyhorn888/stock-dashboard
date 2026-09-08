@@ -17,15 +17,23 @@ const ALL_PERIODS = [5, 10, 20, 60, 120] as const
 // 避免整理期一天上一天下、燈號天天跳動
 const BUFFER = 0.005
 
-// 資料日期的顏色：綠＝跟得上、橘＝落後 2 個交易日、紅＝落後 3 個以上
-function staleTone(date: string): string {
-  const lag = businessDaysBehind(date, taipeiToday())
+// 資料日期的顏色：綠＝跟得上、橘＝落後 2 個交易日、紅＝落後 3 個以上。
+// AC-GL-4：該市場休市的平日要扣掉——2026-09-07 美國勞動節，美股停在 09/04
+// 是完全正確的，不該亮橘燈。
+function staleTone(date: string, closedDays: string[]): string {
+  const lag = businessDaysBehind(date, taipeiToday(), closedDays)
   if (lag == null) return 'text-slate-300'
   if (lag <= 1) return 'text-green-600'
   return lag === 2 ? 'text-amber-500 font-semibold' : 'text-red-500 font-semibold'
 }
 
-type Row = { key: string; name: string; date: string; belowPeriod: number | null; trend: 'bull' | 'lean-bull' | null; nearBelowLongTerm: boolean }
+type Row = {
+  key: string; name: string; date: string
+  belowPeriod: number | null; trend: 'bull' | 'lean-bull' | null; nearBelowLongTerm: boolean
+  closedDays: string[]
+  /** 該指數最後一根 K 之後，市場有沒有放過假（有的話日期前面標「休」） */
+  resting: boolean
+}
 
 export default function GlobalIndexLights({ indices, onSelect }: Props) {
   if (!indices || Object.keys(indices).length === 0) return null
@@ -58,7 +66,13 @@ export default function GlobalIndexLights({ indices, onSelect }: Props) {
     const nearBelowLongTerm = belowPeriod === null && trend === null
       && ma[120] != null && close < ma[120]!
 
-    rows.push({ key, name: idx.name, date: idx.bars[0].date, belowPeriod, trend, nearBelowLongTerm })
+    const date = idx.bars[0].date
+    const closedDays = idx.closedDays ?? []
+    rows.push({
+      key, name: idx.name, date, belowPeriod, trend, nearBelowLongTerm, closedDays,
+      // 最後一根 K 之後還有休市日 → 現在顯示的就是「放假前的最後一個交易日」
+      resting: closedDays.some(d => d > date),
+    })
   }
 
   if (rows.length === 0) return null
@@ -91,8 +105,11 @@ export default function GlobalIndexLights({ indices, onSelect }: Props) {
             <span className="truncate">
               {r.name} {label(r)}
               {/* 資料日期：落後 1 個交易日內是正常時差（美股收盤時台北已隔天），
-                  2 個交易日轉橘、3 個以上轉紅——2026-09-03 日韓卡在兩天前沒人發現 */}
-              <span className={staleTone(r.date)}> ({r.date.slice(5).replace('-', '/')})</span>
+                  2 個交易日轉橘、3 個以上轉紅——2026-09-03 日韓卡在兩天前沒人發現。
+                  AC-GL-4：市場放假時標「休」並維持綠色，顯示的是放假前最後一個交易日 */}
+              <span className={staleTone(r.date, r.closedDays)}>
+                {' '}({r.resting ? '休 · ' : ''}{r.date.slice(5).replace('-', '/')})
+              </span>
             </span>
           </button>
         ))}

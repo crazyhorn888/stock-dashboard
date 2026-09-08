@@ -159,6 +159,13 @@ export interface IndexOHLC {
 export interface GlobalIndexData {
   name: string        // 顯示名稱，e.g. S&P500
   bars: IndexOHLC[]   // newest first，近 250 個交易日（chips 不適用，恆為 undefined）
+  /**
+   * AC-GL-4：近 14 天內該市場休市的平日（YYYY-MM-DD，市場當地日期）。
+   * 由 fetch-global.mjs 從 Yahoo 序列的缺口推出來——不必維護各國假日表。
+   * 前端算鮮度時要把這些天扣掉，否則「今天休市、顯示前一交易日」會被誤判成資料落後。
+   * 舊快照沒有這個欄位，故為 optional。
+   */
+  closedDays?: string[]
   updatedAt: string
 }
 

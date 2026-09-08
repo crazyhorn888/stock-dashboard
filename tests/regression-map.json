@@ -503,5 +503,14 @@
     "AC-HT-D11：兩個指標各自與 HEAT_BASELINE 並排成對比條，共用 0~60% 尺規（所以風險條與報酬條的絕對長度可以互相比）。不要改成各自縮放，那會讓兩者失去可比性",
     "回落機率是「越高越糟」→ worseIsHigher；顏色由 good 決定，不是由 above 決定。若把 worseIsHigher 拿掉，弱勢區的高風險會顯示成綠色",
     "差距 <2 個百分點時顯示「與平均相當」並用灰色，避免 1 個百分點的雜訊被讀成訊號"
+  ],
+  "scripts/fetch-global.mjs::closedDays": [
+    "AC-GL-4：休市日由 Yahoo 序列的缺口推出（已過去的平日沒有 bar = 該市場休市），不維護各國假日表。存進 GlobalIndexData.closedDays，前端算鮮度時扣掉",
+    "掃描起點必須看「市場當地時間」：過 17:00 才把 marketToday 本身納入（k 從 0 起）。若固定 k=1，美股勞動節那天 marketToday 就是假日本身，會永遠掃不到自己 —— 2026-09-08 實測就是踩這個洞（S&P500 仍顯示落後 2 天的橘燈）",
+    "17:00 這個門檻：六個指數最晚 16:00 收盤，且全球指數班次跑在 06:07 台北 = 18:07 ET，剛好過線"
+  ],
+  "components/aftermarket/GlobalIndexLights.tsx::休市顯示": [
+    "AC-GL-4：市場放假時日期要維持綠色並標「休 · MM/DD」，代表顯示的是放假前最後一個交易日，不是資料落後。resting 判斷 = closedDays 裡有比最新 K 更新的日期",
+    "businessDaysBehind 的第三個參數（closedDays）不可省略，否則 2026-09-07 美國勞動節會讓美股四個指數全部誤亮橘燈"
   ]
 }

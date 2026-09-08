@@ -109,7 +109,26 @@ async function fetchYahoo(symbol, attempt = 1) {
     }
   }
 
-  return bars.reverse().slice(0, KEEP_DAYS)  // newest first
+  // AC-GL-4：休市日自動判讀。Yahoo 的序列本身就是該市場的交易日曆——
+  // 已經過去的平日若沒有 bar，那天就是休市（美國勞動節、日本體育節…）。
+  // 這樣不必維護各國假日表，也不會把「今天休市所以顯示前一交易日」誤判成資料落後。
+  // 只往回看 14 天。起點要看市場當地時間：六個指數最晚 16:00 收盤，
+  // 過了 17:00 就能確定「今天有沒有開過」，此時 marketToday 本身也要納入掃描——
+  // 否則美股勞動節（marketToday 就是假日那天）永遠掃不到自己。
+  const marketHour = Number(new Date().toLocaleString('en-GB', {
+    timeZone: tz, hour: '2-digit', hour12: false,
+  }).slice(0, 2))
+  const barDates = new Set(bars.map(b => b.date))
+  const closedDays = []
+  for (let k = marketHour >= 17 ? 0 : 1; k <= 14; k++) {
+    const d = new Date(Date.parse(marketToday + 'T12:00:00Z') - k * 86400000)
+    const iso = d.toISOString().slice(0, 10)
+    const dow = d.getUTCDay()
+    if (dow === 0 || dow === 6) continue          // 週末本來就不開，不必記
+    if (!barDates.has(iso)) closedDays.push(iso)
+  }
+
+  return { bars: bars.reverse().slice(0, KEEP_DAYS), closedDays }  // bars newest first
 }
 
 async function main() {
@@ -131,9 +150,10 @@ async function main() {
   const failed = []
   for (const [key, { yahoo, name }] of Object.entries(SYMBOLS)) {
     try {
-      const bars = await fetchYahoo(yahoo)
-      indices[key] = { name, bars, updatedAt: new Date().toISOString() }
-      console.log(`[global] ${name}：${bars.length} 天，最新 ${bars[0]?.date}`)
+      const { bars, closedDays } = await fetchYahoo(yahoo)
+      indices[key] = { name, bars, closedDays, updatedAt: new Date().toISOString() }
+      console.log(`[global] ${name}：${bars.length} 天，最新 ${bars[0]?.date}`
+        + (closedDays.length ? `，近期休市 ${closedDays.join('、')}` : ''))
     } catch (e) {
       console.warn(`[global] ${name} 抓取失敗，保留舊值：`, e.message)
       failed.push(name)
