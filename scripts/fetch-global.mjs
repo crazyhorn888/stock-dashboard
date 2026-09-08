@@ -128,6 +128,24 @@ async function fetchYahoo(symbol, attempt = 1) {
     if (!barDates.has(iso)) closedDays.push(iso)
   }
 
+  // 「沒有 bar」有兩種可能：真的休市，或 Yahoo 漏資料。誤判成休市會讓卡片亮綠燈、
+  // 把真實的落後蓋掉，所以用 Yahoo 自己的 meta.regularMarketTime（最後一筆真實報價
+  // 的時間）當判別：真放假時它會停在放假前那天；資料漏掉時它會比我們最新的 bar 還新
+  // ——那代表 Yahoo 知道有那場交易，只是 quote 陣列沒給，這時所有「比最新 bar 還新的
+  // 休市日」都不可信，一律丟掉，讓鮮度回去照實算。
+  const newest = bars.length ? bars[bars.length - 1].date : null
+  if (newest && meta?.regularMarketTime) {
+    const metaDay = new Date(meta.regularMarketTime * 1000).toLocaleDateString('en-CA', { timeZone: tz })
+    if (metaDay > newest) {
+      const dropped = closedDays.filter(d => d > newest)
+      if (dropped.length) {
+        console.warn(`[global] ${symbol} meta 報價已到 ${metaDay} 但最新 bar 只有 ${newest}`
+          + `——${dropped.join('、')} 判定為資料缺漏而非休市，不列入 closedDays`)
+      }
+      for (const d of dropped) closedDays.splice(closedDays.indexOf(d), 1)
+    }
+  }
+
   return { bars: bars.reverse().slice(0, KEEP_DAYS), closedDays }  // bars newest first
 }
 
