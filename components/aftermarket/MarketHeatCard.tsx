@@ -93,12 +93,14 @@ export default function MarketHeatCard({ indexHistory }: Props) {
         <div className="border-t border-slate-100 pt-2.5 flex flex-col gap-1.5">
           <FlagRow
             on={st.alertTop} tone="red" name="外資倒貨"
-            cond="熱度 ≥P30，且外資近 10 日押多選擇權、今天現貨轉為大賣"
+            cond="熱度 ≥P30，且外資今天大賣現貨"
+            note="這根下跌比一般的更容易延續 —— 先別接刀，等藍燈"
             stat={`亮燈日有 ${FLAG_STATS.rev.hit}% 在 20 日內跌 5%（平常 ${FLAG_STATS.rev.base}%）`}
           />
           <FlagRow
             on={st.entry} tone="blue" name="跌深轉強"
             cond="自 60 日高點回落 ≥8%，熱度由 P30 以下翻上 P50"
+            note="跌夠了、動能翻上來，歷史上最好的承接點"
             stat={`亮燈日有 ${FLAG_STATS.entry.hit}% 在 60 日內賺 10%（平常 ${FLAG_STATS.entry.base}%）`}
           />
         </div>
@@ -184,14 +186,44 @@ export default function MarketHeatCard({ indexHistory }: Props) {
             )}
 
             <Section>兩個旗標</Section>
-            <p className="text-xs text-slate-600 leading-relaxed mb-2">
-              <b>🔴 外資倒貨</b>　熱度 ≥P30，且外資近 10 日在選擇權押多、今天現貨卻轉為大賣。
-              歷史 65 天，其中 <b className="text-slate-700">38%</b> 在 20 日內跌 5%（平常 20%）——
-              換句話說，<b className="text-slate-700">三次裡有將近兩次是誤報</b>，它提高警覺、不代表該賣。
+            <p className="text-xs text-slate-600 leading-relaxed mb-1">
+              <b>🔴 外資倒貨</b>　熱度 ≥P30，且外資今天大賣現貨（佔成交金額的 Z ≤ −1）。
             </p>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              <b>🔵 進場訊號</b>　指數自 60 日高點回落 ≥8%，且熱度曾跌破 P30、現已回升至 ≥P50。
-              歷史 79 次，其中 <b className="text-slate-700">56%</b> 在 60 日內賺 10%（平常 33%）。
+            <p className="text-xs text-slate-600 leading-relaxed mb-2.5">
+              <b>🔵 跌深轉強</b>　指數自 60 日高點回落 ≥8%，且熱度曾跌破 P30、現已回升至 ≥P50。
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[11.5px] border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-500">
+                    <th className="text-left px-2 py-1 font-semibold">亮燈後</th>
+                    <th className="text-right px-2 py-1 font-semibold">🔴 倒貨</th>
+                    <th className="text-right px-2 py-1 font-semibold">🔵 轉強</th>
+                    <th className="text-right px-2 py-1 font-semibold">隨便挑一天</th>
+                  </tr>
+                </thead>
+                <tbody className="text-slate-600 tabular-nums">
+                  {[
+                    ['樣本天數', '103', '79', '1602'],
+                    ['20 日內跌 5%', '44%', '13%', '20%'],
+                    ['持有 20 日報酬', '+0.5%', '+4.9%', '+1.9%'],
+                    ['持有 60 日報酬', '+6.9%', '+7.8%', '+5.7%'],
+                    ['60 日賺 10% 不被套', '—', '56%', '33%'],
+                  ].map(([l, a, b, c]) => (
+                    <tr key={l} className="border-b border-slate-100 last:border-0">
+                      <td className="px-2 py-1">{l}</td>
+                      <td className="px-2 py-1 text-right">{a}</td>
+                      <td className="px-2 py-1 text-right">{b}</td>
+                      <td className="px-2 py-1 text-right text-slate-400">{c}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+              <b className="text-slate-500">紅燈不是承接點。</b>亮燈當天有 92% 在跌（平常 45%），
+              但買進後持有 20 日只有 +0.5%，輸給隨便挑一天的 +1.9%；真的跌破 5% 的那 23 天，
+              60 日後只有 35% 回到正報酬。跌夠了要等藍燈——同樣持有 20 日是 +4.9%、勝率 82%。
             </p>
 
             <Section>這張卡做不到的事</Section>
@@ -219,9 +251,9 @@ function Stat({ label, value, base }: { label: string; value: string; base: stri
   )
 }
 
-/** 常駐的旗標列：未成立時是灰底一行條件，成立時上色並長出機率那一行 */
-function FlagRow({ on, tone, name, cond, stat }: {
-  on: boolean; tone: 'red' | 'blue'; name: string; cond: string; stat: string
+/** 常駐的旗標列：未成立時是灰底一行條件，成立時上色並長出機率與提醒 */
+function FlagRow({ on, tone, name, cond, stat, note }: {
+  on: boolean; tone: 'red' | 'blue'; name: string; cond: string; stat: string; note: string
 }) {
   const c = on
     ? (tone === 'red'
@@ -236,7 +268,12 @@ function FlagRow({ on, tone, name, cond, stat }: {
         <span className="text-[10px] text-slate-400 ml-auto shrink-0">{on ? '成立' : '未成立'}</span>
       </div>
       <p className={`text-[11px] leading-snug mt-0.5 pl-[13px] ${c.cond}`}>{cond}</p>
-      {on && <p className="text-[10px] text-slate-500 leading-snug mt-1 pl-[13px]">{stat}</p>}
+      {on && (
+        <>
+          <p className="text-[10px] text-slate-500 leading-snug mt-1 pl-[13px]">{stat}</p>
+          <p className={`text-[10.5px] font-medium leading-snug mt-0.5 pl-[13px] ${c.name}`}>{note}</p>
+        </>
+      )}
     </div>
   )
 }

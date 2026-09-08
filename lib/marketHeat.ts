@@ -79,9 +79,9 @@ export const REV_HEAT_GATE = 30
 
 /** 常駐旗標列要顯示的機率——即使進場訊號沒成立也要秀，所以不能靠 st.upOdds */
 export const FLAG_STATS = {
-  /** 外資倒貨亮燈日（已含熱度 ≥30 閘門），20 日內跌 5% 的比例 */
-  rev: { hit: 38, base: HEAT_BASELINE.down, n: 65 },
-  entry: { hit: STATS.entry.up, base: HEAT_BASELINE.up, n: STATS.entry.n },
+  /** 外資倒貨亮燈日（已含熱度 ≥30 閘門），20 日內跌 5% 的比例，及持有 20 日的平均報酬 */
+  rev: { hit: 44, base: HEAT_BASELINE.down, n: 103, hold20: 0.5, holdBase20: 1.9 },
+  entry: { hit: STATS.entry.up, base: HEAT_BASELINE.up, n: STATS.entry.n, hold20: 4.9, holdBase20: 1.9 },
 }
 
 /**

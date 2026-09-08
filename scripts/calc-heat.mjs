@@ -173,14 +173,16 @@ function compute(history) {
     if (seg.length < P_WINDOW * 0.8) return null
     return Math.round(seg.filter(v => v <= score[i]).length / seg.length * 100)
   })
-  // AC-HT-E1 外資反轉：過去 10 個交易日內曾出現外資買方 C/P 比 Z ≥ 1.0
-  // （押多），且當日外資現貨買賣超佔量 Z ≤ −1.0（實際在倒貨）。
-  // 兩者相關僅 +0.166，是獨立的兩件事，所以這個背離才有意義
-  const rev = dates.map((_, i) => {
-    const priorLong = zs.fCP.slice(Math.max(0, i - 10), i).some(z => z != null && z >= 1.0)
-    const nowSell = zs.fSpot[i] != null && zs.fSpot[i] <= -1.0
-    return priorLong && nowSell
-  })
+  // AC-HT-E1 外資倒貨：當日外資現貨買賣超佔成交金額 Z ≤ −1.0。
+  //
+  // AC-HT-B12（2026-09-08）：原本還要求「過去 10 日曾出現外資買方 C/P 比 Z ≥ 1.0」
+  // 才算數。那條腿是錯的——外資押多買權本身是偏多訊號（215 天、20 日 +2.65%、
+  // 跌 5% 僅 13%，低於 20% 的基準），把它當成空方警示的必要條件會互相抵銷：
+  // 實測「只要大賣現貨」43%，加上押多這條腿反而降到 37%。
+  // 它也不是底部訊號（熱度中位 87，58% 落在極熱區、弱勢區 493 天只出現 3 次），
+  // 所以兩邊都不留。拿掉後 65 天 → 103 天、38% → 44%，跌 8% 由 12% 升到 22%，
+  // 三段互不重疊的期間全部勝過同期基準（55/22、44/19、34/14），p < 0.0001。
+  const rev = dates.map((_, i) => zs.fSpot[i] != null && zs.fSpot[i] <= -1.0)
 
   return { dates, heat, warn, rev, zs }
 }
