@@ -247,6 +247,20 @@ export default function OptionsOICard() {
             <p className="text-xs text-slate-600 leading-relaxed">
               <b className="text-slate-800">SC，OI 最大量區</b>：市場的<b className="text-slate-800">壓力區</b>，因為賣方不希望指數漲過這裡。
             </p>
+
+            <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col gap-2">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                <b className="text-slate-800">日曆上的數字</b>：該日收盤的<b className="text-slate-800">未沖銷契約量（OI）</b>，
+                即當下尚未平倉的部位，非每日成交量累加。部位平掉 OI 即減少，結算日歸零。
+              </p>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                <b className="text-slate-800">今日新增未平倉</b>：今日 OI −昨日 OI 的正值，為<b className="text-slate-800">淨增加</b>
+                （＝新開倉 − 平倉），非當日新開倉口數。當沖來回會互相抵銷，留下的是實際押上去的部位。
+              </p>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                <b className="text-slate-800">前三大 vs 今日新增</b>：前者是整段累積的佈局，後者是當天的動作，兩者位置常不同。
+              </p>
+            </div>
           </div>
         </div>
       )}
