@@ -154,7 +154,10 @@ async function main() {
   }
 
   // 1b. 上傳不含 OHLC 的 latest.json（保持前端頁面 size 不變）
-  const snapshotStripped = { ...snapshot, stocks: stocksStripped }
+  // AC-IC-5b：instCostSeries（~250KB 逐日序列）只給 pipeline 讀，不進前端可下載的檔案；
+  // 它另外以 inst-cost-series.json 獨立上傳（見下方 1d）
+  const { instCostSeries: _series, ...snapshotForPublic } = snapshot
+  const snapshotStripped = { ...snapshotForPublic, stocks: stocksStripped }
   const publicUrl = await uploadToSupabase('latest.json', JSON.stringify(snapshotStripped))
   console.log(`[write] Supabase Storage 上傳完成：${publicUrl}`)
 

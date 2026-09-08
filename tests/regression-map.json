@@ -310,6 +310,16 @@
     "刻意繞過 React state 直接寫 DOM（transform / circle r / 尾線 x2,y2），否則 60fps 會重繪整張圖",
     "泡泡的 <g>/<circle> 絕對不能再帶 transform/cx/cy/r prop，否則每次 render 會把彈簧位置蓋回目標值；點擊縮放要放在內層 <g>（CSS transform 會與 attribute transform 相乘，放同一層會連座標一起放大）"
   ],
+  "scripts/fetch-daily.mjs::newSnapshot": [
+    "⚠️ newSnapshot 是欄位白名單，寫檔寫的是它不是 snapshot——任何新增的快照欄位都必須同時列進這裡，否則算完會被靜默丟掉",
+    "2026-09-08 事故（AC-IC-5）：instCostSeries/instCost 設在 snapshot 上但沒列進 newSnapshot，寫檔時被丟棄 → write-firebase 的 if 從未成立 → production 兩個 inst-cost 檔案自 2026-09-04 起一直 404，前端成本欄全是「—」。指紋：log 每天印「inst-cost 首次建立」且 60/120 日永遠 0 檔"
+  ],
+  "scripts/backfill-inst-cost.mjs": [
+    "AC-IC-6 一次性回補：逐日抓 TWSE T86 歷史（可帶 date 參數）+ latest.json 的當日收盤價，由舊到新呼叫 updateSeries 補到 120 個交易日，讓 60/120 日成本不必等三個月/六個月累積",
+    "⚠️ 收盤價一定要用「當天」的（stock.dates.indexOf(dateISO)），找不到就跳過該股該日——不可 fallback 到最新價，回補跨越 120 天用今天的價算三個月前的成本會整個歪掉（這是與 fetch-daily 的 fetchT86Sectors 唯一刻意不同之處）",
+    "2026-09-08 實測：120 個交易日中 117 天成功、3 天（07/03、07/07、07/08）TWSE 回無資料；產出 5日 809 檔／20日 973 檔／60日 1051 檔／120日 0 檔（序列 117 天未滿 120）；series 1.8MB、inst-cost 96KB",
+    "節流 1 秒/日，跑完約 4 分鐘。BACKFILL_DAYS 調天數、BACKFILL_DRY_RUN=1 只算不上傳"
+  ],
   "scripts/fetch-options-oi.mjs": [
     "功能二十三：抓期交所 optDailyMarketReport（TXO）逐履約價 OI，每個到期別留 Call/Put 各前三大，加 optIndxFSP 的最後結算價，寫 Supabase options-oi.json（零依賴，比照 fetch-global.mjs）",
     "⚠️ 就緒判定（AC-OI-A2）：盤中查當日，未沖銷欄整欄是空的且表格少兩欄成交量。必須同時「有『盤後交易時段成交量』欄」且「OI 總量>0」才寫入，否則整批不寫——只追加不重算的檔案寫進整排 0 就永遠壞了（同 2026-09-07 calc-heat 中毒）",

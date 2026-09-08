@@ -1219,6 +1219,12 @@ async function main() {
     stockHistory,
     concepts,
     marketSignals: snapshot.marketSignals ?? null,
+    // AC-IC-5：這兩個欄位一定要列在這裡。newSnapshot 是白名單物件，上面第 1141 行
+    // 雖然設了 snapshot.instCostSeries/instCost，但寫檔寫的是 newSnapshot——漏列就等於
+    // 整個算完丟掉，write-firebase 的 if 永遠不成立，production 從 2026-09-04 起
+    // 兩個 inst-cost 檔案一直是 404（指紋：log 每天都印「inst-cost 首次建立」）
+    instCostSeries: snapshot.instCostSeries ?? null,
+    instCost: snapshot.instCost ?? null,
   }
 
   const outDir = join(__dirname, '..', 'data')
