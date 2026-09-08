@@ -15,6 +15,7 @@
  * 執行：SUPABASE_URL=... SUPABASE_SERVICE_KEY=... node scripts/backfill-inst-cost.mjs
  *   BACKFILL_DAYS=120   要回補幾個交易日（預設 120）
  *   BACKFILL_DRY_RUN=1  只算不上傳
+ *   BACKFILL_RECALC=1   只下載既有 series 重算成本並上傳（改了 calcCosts 邏輯時用，不重抓 T86）
  */
 import { pathToFileURL } from 'url'
 import { updateSeries, calcCosts, COST_WINDOWS } from './calc-inst-cost.mjs'
@@ -86,7 +87,26 @@ async function upload(path, body) {
   if (!res.ok) throw new Error(`上傳 ${path} 失敗 HTTP ${res.status}：${await res.text()}`)
 }
 
+/** 只重算成本不重抓 T86：改了 calcCosts 邏輯（例如權值事件偵測）後用這個 */
+async function recalcOnly() {
+  console.log('[backfill] RECALC：下載既有 series 重算成本…')
+  const series = await fetchJSON(`${SUPABASE_URL}/storage/v1/object/public/snapshots/inst-cost-series.json`)
+  const cost = calcCosts(series)
+  const cnt = w => Object.values(cost).filter(v => v[`t${w}`] != null).length
+  console.log(`[backfill] 序列 ${series.dates.length} 天 → ${COST_WINDOWS.map(w => `${w}日 ${cnt(w)} 檔`).join('／')}`)
+  const payload = JSON.stringify({
+    updatedAt: new Date().toISOString(),
+    date: series.dates[0] ?? null,
+    days: series.dates.length,
+    cost,
+  })
+  if (process.env.BACKFILL_DRY_RUN) { console.log('[backfill] DRY RUN：不上傳'); return }
+  await upload('inst-cost.json', payload)
+  console.log(`[backfill] inst-cost.json 已上傳（${(payload.length / 1024).toFixed(0)} KB）`)
+}
+
 async function main() {
+  if (process.env.BACKFILL_RECALC) return recalcOnly()
   console.log(`[backfill] 下載 latest.json…`)
   const snap = await fetchJSON(`${SUPABASE_URL}/storage/v1/object/public/snapshots/latest.json`)
 

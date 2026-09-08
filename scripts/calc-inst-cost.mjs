@@ -58,9 +58,35 @@ export function updateSeries(prev, rows, dateISO) {
   return { dates: nextDates, stocks: next }
 }
 
+/**
+ * 權值事件（除權息／減資／股票分割）之前的價格與之後不可比——分割前買的 1 股，
+ * 分割後變成 N 股，直接混在同一個加權平均裡算，成本會被拉高（或壓低）好幾倍。
+ * 台股有 ±10% 漲跌停，單日變動超過 25% 幾乎必然是權值事件而非行情。
+ * 回傳「從最新往回、可安全使用的天數」；跨過事件就停在那裡。
+ *
+ * ⚠️ 必須跳過 null 比較「相鄰的兩個有值日」——停牌或當日無 T86 會讓序列中間出現 null，
+ *    只比相鄰索引會整個漏掉事件（2026-09-08 實測：6949 在 8/26 收 1490、9/07 收 67.1
+ *    的 1:20 分割，中間 8/27~9/04 全是 null，第一版掃描就漏掉了，算出 577 的假成本）。
+ */
+function effectiveLen(closes) {
+  let prevIdx = -1
+  for (let i = 0; i < closes.length; i++) {
+    const c = closes[i]
+    if (c == null || c <= 0) continue
+    if (prevIdx >= 0) {
+      const prev = closes[prevIdx]          // 較新的那一筆
+      if (Math.abs(prev / c - 1) > 0.25) return prevIdx + 1
+    }
+    prevIdx = i
+  }
+  return closes.length
+}
+
 /** 單一窗口的加權均價；資料不足該窗口天數回 null */
 function costOf(nets, closes, window) {
   if (nets.length < window) return null
+  // 跨越權值事件就不輸出——寧可顯示「—」，也不要給一個差好幾倍的假成本
+  if (effectiveLen(closes) < window) return null
   let amount = 0, shares = 0
   for (let i = 0; i < window; i++) {
     const n = nets[i], c = closes[i]

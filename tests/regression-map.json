@@ -314,11 +314,17 @@
     "⚠️ newSnapshot 是欄位白名單，寫檔寫的是它不是 snapshot——任何新增的快照欄位都必須同時列進這裡，否則算完會被靜默丟掉",
     "2026-09-08 事故（AC-IC-5）：instCostSeries/instCost 設在 snapshot 上但沒列進 newSnapshot，寫檔時被丟棄 → write-firebase 的 if 從未成立 → production 兩個 inst-cost 檔案自 2026-09-04 起一直 404，前端成本欄全是「—」。指紋：log 每天印「inst-cost 首次建立」且 60/120 日永遠 0 檔"
   ],
+  "scripts/calc-inst-cost.mjs::effectiveLen": [
+    "⚠️ 權值事件（除權息／減資／股票分割）前後的價格不可比：分割前買的 1 股分割後變 N 股，混在同一個加權平均裡算，成本會差好幾倍。單日變動 >25% 幾乎必然是權值事件（台股漲跌停 ±10%），跨過事件的窗口一律不輸出成本，寧可顯示「—」也不給假數字",
+    "⚠️ 必須跳過 null 比較「相鄰的兩個有值日」——停牌或當日無 T86 會讓序列中間出現 null，只比相鄰索引會整個漏掉事件。2026-09-08 實測：6949 沛爾生醫 8/26 收 1490、9/07 收 67.1（1:20 分割），中間 8/27~9/04 全是 null，第一版掃描漏掉，算出 577 的假成本（現價 60.4，距成本 −89%）",
+    "2026-09-08 影響範圍：1095 檔中 6 檔有 >25% 跳動（5 檔 7/06 減資股價向上跳、1 檔 6669 緯穎 9/02 由 7800→2610 的 1:3 分割）；修正後 20 日 973→971 檔、60 日 1051→1042 檔",
+    "正常分布佐證（修正前後皆同）：距成本% 中位 −1.3%、P25 −3.3%、P75 +0.5%，68% 低於成本——這是「只計買超日」的內生特性（法人買超日股價通常偏強），不是計算錯誤"
+  ],
   "scripts/backfill-inst-cost.mjs": [
     "AC-IC-6 一次性回補：逐日抓 TWSE T86 歷史（可帶 date 參數）+ latest.json 的當日收盤價，由舊到新呼叫 updateSeries 補到 120 個交易日，讓 60/120 日成本不必等三個月/六個月累積",
     "⚠️ 收盤價一定要用「當天」的（stock.dates.indexOf(dateISO)），找不到就跳過該股該日——不可 fallback 到最新價，回補跨越 120 天用今天的價算三個月前的成本會整個歪掉（這是與 fetch-daily 的 fetchT86Sectors 唯一刻意不同之處）",
     "2026-09-08 實測：120 個交易日中 117 天成功、3 天（07/03、07/07、07/08）TWSE 回無資料；產出 5日 809 檔／20日 973 檔／60日 1051 檔／120日 0 檔（序列 117 天未滿 120）；series 1.8MB、inst-cost 96KB",
-    "節流 1 秒/日，跑完約 4 分鐘。BACKFILL_DAYS 調天數、BACKFILL_DRY_RUN=1 只算不上傳"
+    "節流 1 秒/日，跑完約 4 分鐘。BACKFILL_DAYS 調天數、BACKFILL_DRY_RUN=1 只算不上傳、BACKFILL_RECALC=1 只重算成本不重抓 T86（改了 calcCosts 邏輯時用）"
   ],
   "scripts/fetch-options-oi.mjs": [
     "功能二十三：抓期交所 optDailyMarketReport（TXO）逐履約價 OI，每個到期別留 Call/Put 各前三大，加 optIndxFSP 的最後結算價，寫 Supabase options-oi.json（零依賴，比照 fetch-global.mjs）",
