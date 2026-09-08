@@ -290,8 +290,13 @@ export interface StockHistoryDay {
 // 契約代號含 W = 週三到期週選、含 F = 週五到期週選、純 6 碼 = 月選（不進日曆，另有區塊）。
 export interface OptionsOIContract {
   exp: string                 // 契約到期日 YYYY-MM-DD
-  C: [number, number][]       // 買權（壓力 SC）前三大
-  P: [number, number][]       // 賣權（支撐 SP）前三大
+  C: [number, number][]       // 買權（壓力 SC）累積 OI 前三大
+  P: [number, number][]       // 賣權（支撐 SP）累積 OI 前三大
+  // 當日淨增加前三大＝今日 OI − 昨日 OI（只取正值），看「今天押在哪」。
+  // 與累積是兩件事：累積是整段佈局，當日是今天的動作，位置常常不同。
+  // 掛牌首日沒有昨日資料，此時等同當日 OI 本身；全無增加時欄位不存在。
+  dC?: [number, number][]
+  dP?: [number, number][]
 }
 
 export interface OptionsOISnapshot {

@@ -9,6 +9,7 @@
  *   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... node scripts/fetch-options-oi.mjs
  *   OPTIONS_OI_BACKFILL=15 node scripts/fetch-options-oi.mjs   # 一次性回補近 15 個交易日
  *   OPTIONS_OI_DRY_RUN=1 ...                                    # 只抓不寫，先看產出
+ *   OPTIONS_OI_REBUILD=1 OPTIONS_OI_BACKFILL=30 ...             # 欄位改版後整段重抓覆蓋
  *
  * ⚠️ 兩個必須遵守的坑（AC-OI-A2 / A3）：
  *  1. 盤中查當日，未沖銷契約量整欄是空的（2026-09-08 實測 13:07 與 14:33 皆為 0，14:37 才有值）。
@@ -42,6 +43,13 @@ function shiftDate(iso, days) {
   const d = new Date(`${iso}T00:00:00Z`)
   d.setUTCDate(d.getUTCDate() + days)
   return d.toISOString().slice(0, 10)
+}
+
+/** 前一個交易日（只跳週末；遇國定假日該日抓不到資料，delta 會退化成當日 OI，不影響主資料） */
+function previousTradingDay(iso) {
+  let d = shiftDate(iso, -1)
+  while (isWeekend(d)) d = shiftDate(d, -1)
+  return d
 }
 
 const isWeekend = iso => {
@@ -105,11 +113,11 @@ const toNum = s => {
 // ── 抓取 ────────────────────────────────────────────────────
 
 /**
- * 抓某一交易日的選擇權 OI。
- * 回傳 { [契約代號]: { exp, C:[[履約價,口數]...], P:[...] } }；
+ * 抓某一交易日的完整逐履約價 OI。
+ * 回傳 { [契約代號]: { exp, C: Map(履約價→口數), P: Map } }；
  * 未就緒（盤中版或 OI 全 0）一律回 null，呼叫端不得寫入。
  */
-export async function fetchOptionsOI(dateISO) {
+async function fetchRaw(dateISO) {
   const queryDate = dateISO.replace(/-/g, '/')
   const html = await postForm(REPORT_URL, {
     queryDate, commodity_id: COMMODITY, commodity_id2: '',
@@ -118,7 +126,6 @@ export async function fetchOptionsOI(dateISO) {
 
   const table = parseTable(html)
   if (!table || !table.rows.length) return null
-
   const { columns, rows } = table
 
   // AC-OI-A2 第一關：收盤版才有「盤後交易時段成交量」欄，盤中版只有「*成交量」
@@ -150,19 +157,48 @@ export async function fetchOptionsOI(dateISO) {
     const key = cp === 'Call' ? 'C' : cp === 'Put' ? 'P' : null
     if (!key) continue
 
-    byCode[code] ??= { exp, C: [], P: [] }
-    byCode[code][key].push([strike, oi])
+    byCode[code] ??= { exp, C: new Map(), P: new Map() }
+    byCode[code][key].set(strike, oi)
   }
 
   // AC-OI-A2 第二關：OI 全 0 代表資料還沒發布，整批不寫
   if (totalOI <= 0) return null
-
-  for (const rec of Object.values(byCode)) {
-    rec.C = rec.C.sort((a, b) => b[1] - a[1]).slice(0, TOP_N)
-    rec.P = rec.P.sort((a, b) => b[1] - a[1]).slice(0, TOP_N)
-  }
   return Object.keys(byCode).length ? byCode : null
 }
+
+const topN = map => [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, TOP_N)
+
+/**
+ * 壓縮成要存的形狀：累積 OI 前三大（C/P）＋當日淨增加前三大（dC/dP）。
+ * 當日淨增加＝今日 OI − 昨日 OI，只取正值——那是「今天新押在哪個履約價」，
+ * 跟累積量是兩件事（累積看的是整段佈局，當日看的是今天的動作）。
+ * 掛牌首日沒有昨日資料，此時淨增加就等於當日 OI 本身。
+ */
+function compress(curCode, prevCode) {
+  const out = { exp: curCode.exp, C: topN(curCode.C), P: topN(curCode.P) }
+  for (const key of ['C', 'P']) {
+    const delta = new Map()
+    for (const [strike, oi] of curCode[key]) {
+      const before = prevCode?.[key]?.get(strike) ?? 0
+      const diff = oi - before
+      if (diff > 0) delta.set(strike, diff)
+    }
+    const top = topN(delta)
+    if (top.length) out[key === 'C' ? 'dC' : 'dP'] = top
+  }
+  return out
+}
+
+/** 對外：抓一天並壓縮；prevRaw 給前一交易日的完整資料以算當日淨增加 */
+export async function fetchOptionsOI(dateISO, prevRaw = null) {
+  const cur = await fetchRaw(dateISO)
+  if (!cur) return null
+  const out = {}
+  for (const [code, rec] of Object.entries(cur)) out[code] = compress(rec, prevRaw?.[code])
+  return out
+}
+
+export { fetchRaw }
 
 /** AC-OI-A5：各契約的最後結算日與最後結算價 */
 export async function fetchSettlements(fromISO, toISO) {
@@ -225,6 +261,8 @@ async function upload(payload) {
 
 async function main() {
   const backfill = Number(process.env.OPTIONS_OI_BACKFILL || 0)
+  // 欄位結構改版時用：忽略既有資料重抓覆蓋（平常回補只補檔案裡沒有的日期）
+  const rebuild = !!process.env.OPTIONS_OI_REBUILD
   const today = todayTPE()
 
   const existing = (await loadExisting()) ?? { updatedAt: null, days: {}, settle: {} }
@@ -236,7 +274,7 @@ async function main() {
   if (backfill > 0) {
     let cursor = today
     while (targets.length < backfill && cursor > shiftDate(today, -90)) {
-      if (!isWeekend(cursor) && !existing.days[cursor]) targets.push(cursor)
+      if (!isWeekend(cursor) && (rebuild || !existing.days[cursor])) targets.push(cursor)
       cursor = shiftDate(cursor, -1)
     }
   } else if (existing.days[today]) {
@@ -250,11 +288,23 @@ async function main() {
     return
   }
 
+  // 由舊到新處理：前一天的完整資料可以直接拿來算隔天的淨增加，不必重抓
+  targets.sort()
   let added = 0
+  let prevRaw = null
+  let prevDate = null
   for (const date of targets) {
+    // 找這一天的前一個交易日（回補時通常就是上一輪，平日模式要另外抓一次）
+    if (!prevRaw || prevDate !== previousTradingDay(date)) {
+      const pd = previousTradingDay(date)
+      prevRaw = pd ? await fetchRaw(pd).catch(() => null) : null
+      prevDate = pd
+      if (pd) await new Promise(r => setTimeout(r, 500))
+    }
+
     let rec
     try {
-      rec = await fetchOptionsOI(date)
+      rec = await fetchOptionsOI(date, prevRaw)
     } catch (e) {
       console.log(`[oi] ${date} 抓取失敗：${e.message}`)
       continue
@@ -266,7 +316,11 @@ async function main() {
     existing.days[date] = rec
     added++
     console.log(`[oi] ${date} 已記錄 ${Object.keys(rec).length} 個到期別`)
-    if (targets.length > 1) await new Promise(r => setTimeout(r, 800))   // 回補時放慢，別敲太兇
+
+    // 這一天處理完，它的完整資料就是下一天的「前一日」
+    prevRaw = await fetchRaw(date).catch(() => null)
+    prevDate = date
+    if (targets.length > 1) await new Promise(r => setTimeout(r, 500))
   }
 
   if (!added) {
@@ -301,7 +355,7 @@ async function main() {
 // 被 import 當函式庫時不執行 main（測試用）。
 // 用 pathToFileURL 而不是字串拼 file://——本機 repo 路徑含空格時 import.meta.url 會編成 %20，
 // 直接比對永遠不相等，main() 就靜默不執行（Actions 上路徑無空格，只有本機會踩到）
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch(e => {
     console.error(`[oi] 失敗：${e.message}`)
     process.exit(1)

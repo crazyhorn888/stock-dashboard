@@ -142,15 +142,16 @@ export function buildCalendar(
 /** 月選區塊（AC-OI-B9）：當月／次月依選擇權月份而非日曆月份 */
 export function monthlyContracts(
   snap: OptionsOISnapshot, today: string,
-): { code: string; rec: OptionsOIContract }[] {
+): { date: string | null; items: { code: string; rec: OptionsOIContract }[] } {
   const days = Object.keys(snap.days).filter(d => d <= today).sort()
   const latest = days[days.length - 1]
-  if (!latest) return []
-  return Object.entries(snap.days[latest])
+  if (!latest) return { date: null, items: [] }
+  const items = Object.entries(snap.days[latest])
     .filter(([code, rec]) => /^\d{6}$/.test(code) && rec.exp > today)
     .sort((a, b) => a[1].exp.localeCompare(b[1].exp))
     .slice(0, 2)
     .map(([code, rec]) => ({ code, rec }))
+  return { date: latest, items }
 }
 
 /** 追蹤契約最後一個有記錄的交易日，供明細預設選中 */

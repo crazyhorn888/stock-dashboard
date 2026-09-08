@@ -102,11 +102,17 @@ const COPY: Record<HeatLevel, { label: string; advice: string }> = {
   entry:  { label: '洗盤轉強', advice: '跌深轉強，歷史最佳進場點。' },
 }
 
-/** 六項條件的顯示名稱，順序與 scripts/calc-heat.mjs 的 KEYS 一致 */
+/**
+ * 六項條件的顯示名稱，順序與 scripts/calc-heat.mjs 的 KEYS 一致。
+ * 第 2、3 項容易被讀成同一件事，名稱必須點出存量／流量的差別：
+ * dCallOI 是未平倉部位（自營手上還留多少買權多單），dSC 是當日成交（今天賣出多少買權）。
+ * 實測 2013 天原始值 r = −0.14、計分方向的 Z 值 r = +0.07，兩項同時成立僅 1.37x 期望值，
+ * 是兩個獨立訊號而非重複計分。
+ */
 export const HEAT_CONDITIONS = [
   '大盤乖離 MA60 偏高',
-  '自營不留買權多單',
-  '自營大量賣出買權',
+  '自營買權未平倉偏低',
+  '自營當日賣出買權放大',
   '外資追買權',
   '投信期貨加多單',
   '成交量異常放大',

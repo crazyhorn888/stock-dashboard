@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
-import type { OptionsOISnapshot } from '@/lib/types'
+import type { OptionsOISnapshot, OptionsOIContract } from '@/lib/types'
 import { fetchOptionsOI } from '@/lib/fetchOptionsOI'
 import { taipeiToday } from '@/lib/tradingDay'
 import {
@@ -13,7 +13,7 @@ import {
 // 日曆三行 ＝ 追蹤契約的完整生命週期（掛牌週／中間週／結算週），規則詳見 lib/optionsOI.ts。
 
 const WEEK_LABELS = ['日', '一', '二', '三', '四', '五', '六']
-type DetailMode = 'main' | 'next' | 'prev'
+type DetailMode = 'main' | 'next' | 'prev' | 'm0' | 'm1'
 
 const md = (d: string) => `${Number(d.slice(5, 7))}/${d.slice(8, 10)}`
 
@@ -47,7 +47,8 @@ export default function OptionsOICard() {
   const nextCode = selected ? nextContractOn(snap, kind, selected, track.exp) : null
   const detailCode = mode === 'next' && nextCode ? nextCode : track.code
   const detailRec = selected ? snap.days[selected]?.[detailCode] ?? null : null
-  const months = monthlyContracts(snap, today)
+  const { date: monthDate, items: months } = monthlyContracts(snap, today)
+  const monthPick = mode === 'm0' ? months[0] : mode === 'm1' ? months[1] : null
 
   const cellClass = (c: OICell) => {
     if (c.weekend) return 'bg-transparent border-transparent'
@@ -148,13 +149,21 @@ export default function OptionsOICard() {
 
       {/* 明細：追蹤中／下一檔／上一檔 */}
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-        <div className="flex gap-1 mb-1.5">
+        <div className="flex flex-wrap gap-1 mb-1.5">
           <TabButton on={mode === 'main'} onClick={() => setMode('main')} label={`追蹤中 ${track.code}`} />
           {nextCode && <TabButton on={mode === 'next'} onClick={() => setMode('next')} label={`下一檔 ${nextCode}`} />}
           {prev && <TabButton on={mode === 'prev'} onClick={() => setMode('prev')} label={`上一檔 ${prev.code}`} />}
+          {monthPick && <TabButton on onClick={() => setMode('main')} label={`月選 ${monthPick.code}`} />}
         </div>
 
-        {mode === 'prev' && prev ? (
+        {monthPick ? (
+          <>
+            <h4 className="text-[11px] font-bold text-slate-800 mb-1.5">
+              {monthDate ? `${md(monthDate)} 收盤 · ` : ''}{monthPick.code}（月選，結算 {md(monthPick.rec.exp)}）
+            </h4>
+            <TopThree rec={monthPick.rec} />
+          </>
+        ) : mode === 'prev' && prev ? (
           <>
             <h4 className="text-[11px] font-bold text-slate-800 mb-1.5">
               {prev.code} · 已於 {md(prev.date)} 結算
@@ -189,7 +198,14 @@ export default function OptionsOICard() {
       {months.length > 0 && (
         <div className="grid grid-cols-2 gap-2">
           {months.map((m, i) => (
-            <div key={m.code} className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+            <button
+              key={m.code}
+              onClick={() => setMode(i === 0 ? 'm0' : 'm1')}
+              className={`text-left rounded-lg border bg-slate-50 p-2 ${
+                (mode === 'm0' && i === 0) || (mode === 'm1' && i === 1)
+                  ? 'border-blue-400 ring-1 ring-blue-200' : 'border-slate-200'
+              }`}
+            >
               <div className="text-[10px] text-slate-400 mb-1">
                 月選{i === 0 ? '當月' : '次月'} · 結算 {md(m.rec.exp)}
               </div>
@@ -201,7 +217,8 @@ export default function OptionsOICard() {
                 <span className="text-emerald-600">支撐 SP</span>
                 <b className="text-slate-800">{m.rec.P[0]?.[0] ?? '—'}</b>
               </div>
-            </div>
+              <div className="text-[9px] text-slate-400 mt-1">點看前三大與今日新增</div>
+            </button>
           ))}
         </div>
       )}
@@ -248,24 +265,37 @@ function TabButton({ on, onClick, label }: { on: boolean; onClick: () => void; l
   )
 }
 
-function TopThree({ rec }: { rec: { C: [number, number][]; P: [number, number][] } }) {
-  const list = (arr: [number, number][]) => arr.map(([strike, oi], i) => (
+function TopThree({ rec }: { rec: OptionsOIContract }) {
+  const list = (arr: [number, number][] | undefined, sign = false) => (arr ?? []).map(([strike, oi], i) => (
     <div key={strike} className="flex justify-between text-[10.5px] tabular-nums text-slate-500 py-[1.5px]">
       <b className={`text-slate-800 font-bold ${i === 0 ? 'text-[11.5px]' : ''}`}>{strike}</b>
-      <span>{oi.toLocaleString()} 口</span>
+      <span>{sign ? '+' : ''}{oi.toLocaleString()} 口</span>
     </div>
   ))
+  const hasDelta = (rec.dC?.length ?? 0) > 0 || (rec.dP?.length ?? 0) > 0
   return (
-    <div className="grid grid-cols-2 gap-2">
-      <div>
-        <div className="text-[10px] font-bold text-red-600 mb-0.5">壓力 SC · 前三大</div>
-        {list(rec.C)}
+    <>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <div className="text-[10px] font-bold text-red-600 mb-0.5">壓力 SC · 前三大</div>
+          {list(rec.C)}
+        </div>
+        <div>
+          <div className="text-[10px] font-bold text-emerald-600 mb-0.5">支撐 SP · 前三大</div>
+          {list(rec.P)}
+        </div>
       </div>
-      <div>
-        <div className="text-[10px] font-bold text-emerald-600 mb-0.5">支撐 SP · 前三大</div>
-        {list(rec.P)}
-      </div>
-    </div>
+      {/* 累積是整段佈局，今日新增是當天的動作，兩者位置常常不同 */}
+      {hasDelta && (
+        <div className="mt-1.5 pt-1.5 border-t border-slate-200">
+          <div className="text-[9.5px] text-slate-400 mb-0.5">今日新增未平倉（當天押在哪）</div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>{list(rec.dC, true)}</div>
+            <div>{list(rec.dP, true)}</div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
