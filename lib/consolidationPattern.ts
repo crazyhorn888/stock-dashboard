@@ -8,14 +8,16 @@ export interface ConsolidationParams {
   minCross: number    // 收盤穿越均價的最少次數
   volSpike: number    // 期間單日量 ≤ 均量 × 此倍數（超過視為爆量，不算整理）
   todayMult: number   // 當日量 ≥ 均量 × 此倍數 → 爆量訊號
+  breakPct: number    // AC-CS-10：當日收盤 ≥ 整理期最高價 ×(1+breakPct/100)；0＝需站上上緣，負值放寬
   minVolHigh: number  // 股價 ≥1000 元的均量門檻（張）
   minVolMid: number   // 股價 100–1000 元
   minVolLow: number   // 股價 <100 元
+  excludeEtf: boolean // AC-CS-11：排除 ETF（代號 00 開頭）
 }
 
 export const CONSOLIDATION_DEFAULTS: ConsolidationParams = {
-  days: 10, rangePct: 12, dayPct: 4, minCross: 3, volSpike: 2, todayMult: 1.25,
-  minVolHigh: 100, minVolMid: 1000, minVolLow: 3000,
+  days: 10, rangePct: 12, dayPct: 4, minCross: 3, volSpike: 2, todayMult: 1.25, breakPct: 0,
+  minVolHigh: 100, minVolMid: 1000, minVolLow: 3000, excludeEtf: true,
 }
 
 export interface StockBars {
@@ -28,6 +30,7 @@ export interface ConsolidationHit {
   avgVol: number     // 整理期均量（張）
   todayVol: number   // 當日量（張）
   ratio: number      // 當日量 / 均量
+  breakout: number   // 當日收盤相對整理期最高價的幅度（%），正值＝已站上上緣
   signal: 'burst' | 'rising' | 'both'
 }
 
@@ -36,6 +39,7 @@ export interface ConsolidationHit {
  * 缺值一律視為不符合（不當 0），與既有篩選器的缺值原則一致。
  */
 export function matchConsolidation(
+  code: string,
   closes: number[] | undefined,
   bars: StockBars | undefined,
   price: number,
@@ -44,6 +48,9 @@ export function matchConsolidation(
   const v = bars?.v ?? [], h = bars?.h ?? [], l = bars?.l ?? [], c = closes ?? []
   const N = p.days
   if (v.length < N + 3 || c.length < N + 2) return null
+
+  // (0) AC-CS-11：ETF 天生窄幅，長期佔用名額——代號 00 開頭即為 ETF
+  if (p.excludeEtf && code.startsWith('00')) return null
 
   // 整理期＝扣除當日往前 N 日
   const win: { v: number; h: number; l: number; c: number; prevC: number }[] = []
@@ -80,17 +87,24 @@ export function matchConsolidation(
   // (e) 期間量能平穩，沒有突然爆大量
   if (win.some(d => d.v > avgV * p.volSpike)) return null
 
-  // 當日訊號：爆量 或 連兩日遞增
+  // 當日量能訊號：爆量 或 連兩日遞增
   const todayV = v[0]
   if (todayV == null) return null
   const burst  = avgV > 0 && todayV >= avgV * p.todayMult
   const rising = v[2] != null && v[1] != null && v[2]! < v[1]! && v[1]! < todayV
   if (!burst && !rising) return null
 
+  // AC-CS-9：量能訊號只說「有人進場」，沒說往哪走。放量跌破平台是出貨，
+  // 必須額外要求 (a) 當日收紅 (b) 收盤站上整理期最高價（breakPct 可放寬/收緊）
+  const todayC = c[0], prevC = c[1]
+  if (todayC == null || prevC == null || todayC <= prevC) return null
+  if (todayC < hi * (1 + p.breakPct / 100)) return null
+
   return {
     avgVol: avgV,
     todayVol: todayV,
     ratio: avgV > 0 ? todayV / avgV : 0,
+    breakout: hi > 0 ? (todayC / hi - 1) * 100 : 0,
     signal: burst && rising ? 'both' : burst ? 'burst' : 'rising',
   }
 }

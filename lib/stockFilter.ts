@@ -82,9 +82,17 @@ export const CONDITION_DEFS: ConditionDef[] = [
   { id: 'belowInstCost', label: '低於法人成本', kind: 'inst-cost-lt', unit: '%', defaultValue: 0 },
 ]
 
+// ConsolidationParams 的數字欄位／布林欄位（型別上分開，兩種 UI 控件不共用 setter）
+export type ConsolidationNumKey = {
+  [K in keyof ConsolidationParams]: ConsolidationParams[K] extends number ? K : never
+}[keyof ConsolidationParams]
+export type ConsolidationBoolKey = {
+  [K in keyof ConsolidationParams]: ConsolidationParams[K] extends boolean ? K : never
+}[keyof ConsolidationParams]
+
 // 整理平台的可調參數（基本常駐、進階收合，AC-CS-6）
 export const CONSOLIDATION_FIELDS: {
-  key: keyof ConsolidationParams; label: string; unit: string; advanced: boolean
+  key: ConsolidationNumKey; label: string; unit: string; advanced: boolean
 }[] = [
   { key: 'days',       label: '整理期',        unit: '日', advanced: false },
   { key: 'minVolHigh', label: '≥1000元 均量',  unit: '張', advanced: false },
@@ -95,6 +103,14 @@ export const CONSOLIDATION_FIELDS: {
   { key: 'minCross',   label: '穿越均價',      unit: '次', advanced: true },
   { key: 'volSpike',   label: '期間爆量上限',  unit: '倍', advanced: true },
   { key: 'todayMult',  label: '當日爆量',      unit: '倍', advanced: true },
+  { key: 'breakPct',   label: '突破幅度',      unit: '%',  advanced: true },
+]
+
+// 勾選型參數（AC-CS-11），與數字欄位分開渲染
+export const CONSOLIDATION_FLAGS: {
+  key: ConsolidationBoolKey; label: string; hint: string
+}[] = [
+  { key: 'excludeEtf', label: '排除 ETF', hint: '代號 00 開頭，天生窄幅' },
 ]
 
 interface FilterState {
@@ -158,7 +174,7 @@ function matches(
   }
   // 需要 K 線的兩個條件：資料沒到齊就視為不符合（缺值不當 0）
   if (def.kind === 'pattern') {
-    return !!matchConsolidation(row.closes, bars?.[row.code], row.close, state.consolidation)
+    return !!matchConsolidation(row.code, row.closes, bars?.[row.code], row.close, state.consolidation)
   }
   if (def.kind === 'bars-gt') {
     const todayVol = bars?.[row.code]?.v?.[0]
@@ -216,9 +232,16 @@ export function useStockFilter() {
 
   const activeCount = CONDITION_DEFS.filter(d => state.enabled[d.id]).length
 
-  const setConsolidationParam = useCallback((key: keyof ConsolidationParams, v: number) => {
+  const setConsolidationParam = useCallback((key: ConsolidationNumKey, v: number) => {
     const next = getState()
     next.consolidation = { ...next.consolidation, [key]: v }
+    saveState(next)
+    setStateLocal(next)
+  }, [])
+
+  const toggleConsolidationFlag = useCallback((key: ConsolidationBoolKey) => {
+    const next = getState()
+    next.consolidation = { ...next.consolidation, [key]: !next.consolidation[key] }
     saveState(next)
     setStateLocal(next)
   }, [])
@@ -243,6 +266,6 @@ export function useStockFilter() {
 
   return {
     state, defs: CONDITION_DEFS, toggle, setValue, setRange, reset, activeCount,
-    filterRows, needsBars, setConsolidationParam,
+    filterRows, needsBars, setConsolidationParam, toggleConsolidationFlag,
   }
 }

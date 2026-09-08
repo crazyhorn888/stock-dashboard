@@ -312,13 +312,17 @@
   ],
   "lib/consolidationPattern.ts": [
     "AC-CS-2~5 整理平台形態判斷（純函式）：整理期＝扣除當日往前 N 日，五條件全成立（區間收斂/日振幅/收盤圍繞均價/穿越次數/期間無爆量）+ 當日訊號（爆量 或 連兩日遞增）+ 股價分段均量門檻",
-    "驗收基準（AC-CS-8）：2026-09-02 收盤資料 + 預設參數 = 2812/2330/2353/2542/2618 五支；改動公式後必須重跑比對",
+    "AC-CS-9/10 當日方向（2026-09-08 新增）：量能訊號成立後還要過價格關卡——今日收盤 > 前一日收盤（收紅）且 ≥ 整理期最高價 ×(1+breakPct/100)。量能條件本身不分方向，少了這關會把「放量跌破平台」當成「放量突破」（3033 威健 2026-09-07：量增 1.41 倍但收盤跌破整理區下緣）",
+    "AC-CS-11 excludeEtf（預設 true）：代號 00 開頭視為 ETF。全庫僅 0050/0051/0052/0053/0055/0056/0057/0061 共 8 檔，與 industry 標記「—」判定等價；matchConsolidation 因此第一個參數是 code",
+    "驗收基準（AC-CS-8）：2026-09-02 收盤資料 + 預設參數 = 2812/2330/2353/2542/2618 五支——此基準在 2026-09-08 加入方向過濾前取得，重跑前先確認那五支當日是否收紅站上上緣",
+    "驗收基準（AC-CS-12）：2026-09-07 收盤資料 + 整理期5日/<100元均量1000張 = 只剩 8926 台汽電（改動前為 0050/0052/2027/3033/6016/8926 六檔）",
     "收盤帶寬刻意綁定 rangePct 的一半（rangePct/200），不另外開參數，避免兩個相關參數互相打架"
   ],
   "lib/stockFilter.ts": [
     "F1 選股器：localStorage 持久化 + CustomEvent 跨元件同步；缺值一律視為不符合（不當 0）",
     "2026-09-02 新增兩個需 ohlc.json 的條件：volume（kind='bars-gt'，當日量能>X張）與 consolidation（kind='pattern'，整理平台）。BARS_FILTER_IDS 是「需要 K 線資料」的清單，needsBars 讓外層決定要不要 lazy fetch",
-    "filterRows(rows, bars?)：勾了需 bars 的條件但 bars 還沒到 → 直接回傳全部 rows 不套用（AC-CS-1），避免表格瞬間清空"
+    "filterRows(rows, bars?)：勾了需 bars 的條件但 bars 還沒到 → 直接回傳全部 rows 不套用（AC-CS-1），避免表格瞬間清空",
+    "ConsolidationParams 混了數字與布林：CONSOLIDATION_FIELDS（數字，NumberField）與 CONSOLIDATION_FLAGS（布林，checkbox）分兩張表，setter 也分 setConsolidationParam / toggleConsolidationFlag，型別由 ConsolidationNumKey/BoolKey 收斂。新增參數要挑對應那張表"
   ],
   "components/shared/StockRowsTable.tsx::barsLazyLoad": [
     "勾選整理平台/量能條件才 fetch ohlc.json（1.4MB，module-level cache）；載入中顯示提示且不套用篩選；失敗則自動取消勾選那兩個條件，否則會永遠卡在載入中",

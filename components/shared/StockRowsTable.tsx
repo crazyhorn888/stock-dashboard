@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import type { StockRow, StockData } from '@/lib/types'
 import ConceptTags from '@/components/shared/ConceptTags'
 import { useWatchlist } from '@/lib/watchlist'
-import { useStockFilter, CONSOLIDATION_FIELDS, BARS_FILTER_IDS, type FilterId } from '@/lib/stockFilter'
+import { useStockFilter, CONSOLIDATION_FIELDS, CONSOLIDATION_FLAGS, BARS_FILTER_IDS, type FilterId } from '@/lib/stockFilter'
 import { fetchInstCost, costOf, gapToCost, windowForN } from '@/lib/fetchInstCost'
 import { useNDays } from '@/lib/nDays'
 import type { InstCostSnapshot } from '@/lib/types'
@@ -257,7 +257,7 @@ interface FilterPanelProps {
 }
 
 function StockFilterPanel({ open, onToggleOpen, filter, matchedCount, barsLoading, barsError }: FilterPanelProps) {
-  const { state, defs, toggle, setValue, setRange, reset, activeCount, setConsolidationParam } = filter
+  const { state, defs, toggle, setValue, setRange, reset, activeCount, setConsolidationParam, toggleConsolidationFlag } = filter
   const [advOpen, setAdvOpen] = useState(false)
 
   function symbol(id: FilterId) {
@@ -322,6 +322,17 @@ function StockFilterPanel({ open, onToggleOpen, filter, matchedCount, barsLoadin
                         />
                         <span className="text-[11px]">{f.unit}</span>
                       </span>
+                    ))}
+                    {CONSOLIDATION_FLAGS.map(f => (
+                      <label key={f.key} className="flex items-center gap-1 text-slate-500">
+                        <input
+                          type="checkbox"
+                          checked={state.consolidation[f.key]}
+                          onChange={() => toggleConsolidationFlag(f.key)}
+                        />
+                        <span className="text-[11px]">{f.label}</span>
+                        <span className="text-[10px] text-slate-400">（{f.hint}）</span>
+                      </label>
                     ))}
                   </div>
                   <button
