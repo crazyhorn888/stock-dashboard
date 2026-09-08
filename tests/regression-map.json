@@ -498,5 +498,10 @@
   ],
   "components/aftermarket/MarketHeatCard.tsx::Modal 對照表": [
     "Modal 的「亮燈後」三欄對照表（紅燈 / 藍燈 / 隨便挑一天）數字來自回測，改訊號定義就要一起重算；重點是紅燈持有 20 日 +0.5% 輸給基準 +1.9%——這是「紅燈不是承接點」的證據，不可省略"
+  ],
+  "components/aftermarket/MarketHeatCard.tsx::CompareBar": [
+    "AC-HT-D11：兩個指標各自與 HEAT_BASELINE 並排成對比條，共用 0~60% 尺規（所以風險條與報酬條的絕對長度可以互相比）。不要改成各自縮放，那會讓兩者失去可比性",
+    "回落機率是「越高越糟」→ worseIsHigher；顏色由 good 決定，不是由 above 決定。若把 worseIsHigher 拿掉，弱勢區的高風險會顯示成綠色",
+    "差距 <2 個百分點時顯示「與平均相當」並用灰色，避免 1 個百分點的雜訊被讀成訊號"
   ]
 }

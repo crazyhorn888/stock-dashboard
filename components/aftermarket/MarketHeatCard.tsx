@@ -82,10 +82,12 @@ export default function MarketHeatCard({ indexHistory }: Props) {
           </div>
         </div>
 
-        {/* 固定兩項指標（AC-HT-D2 的對照依據） */}
-        <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-2.5">
-          <Stat label="進場後 60 日賺 10%" value={`${st.upOdds}%`} base={`基準 ${HEAT_BASELINE.up}%`} />
-          <Stat label="20 日內回落 5%" value={`${st.downOdds}%`} base={`基準 ${HEAT_BASELINE.down}%`} />
+        {/* AC-HT-D11 風險–報酬雙軸條：兩個指標各自跟全樣本基準並排，
+            長短一眼看出高於還是低於平均。兩條共用同一個 0~60% 尺規，
+            所以風險與報酬的絕對大小也可以互相比 */}
+        <div className="border-t border-slate-100 pt-2.5 flex flex-col gap-2">
+          <CompareBar label="20 日內回落 5%" value={st.downOdds} base={HEAT_BASELINE.down} worseIsHigher />
+          <CompareBar label="60 日賺 10% 不被套" value={st.upOdds} base={HEAT_BASELINE.up} />
         </div>
 
         {/* AC-HT-D9 兩個旗標常駐：平常灰著把條件寫出來，成立時整列變色並補上機率。
@@ -239,14 +241,42 @@ export default function MarketHeatCard({ indexHistory }: Props) {
   )
 }
 
-function Stat({ label, value, base }: { label: string; value: string; base: string }) {
+/**
+ * 一個指標與全樣本基準的並排對比條。
+ * worseIsHigher：這個指標越高越糟（回落機率）——決定超出基準時該用紅還是綠。
+ */
+function CompareBar({ label, value, base, worseIsHigher = false }: {
+  label: string; value: number; base: number; worseIsHigher?: boolean
+}) {
+  const SCALE = 60                       // 共用尺規上限，兩條才能互相比大小
+  const w = (v: number) => `${Math.min(100, v / SCALE * 100)}%`
+  const above = value > base
+  const good = worseIsHigher ? !above : above
+  const diff = Math.round(value - base)
+  const barColor = Math.abs(diff) < 2 ? 'bg-slate-400'
+    : good ? 'bg-emerald-500' : 'bg-rose-500'
+  const tag = Math.abs(diff) < 2 ? '與平均相當'
+    : `${above ? '高' : '低'}於平均 ${Math.abs(diff)} 個百分點`
+  const tagColor = Math.abs(diff) < 2 ? 'text-slate-400'
+    : good ? 'text-emerald-600' : 'text-rose-600'
   return (
-    <div className="flex flex-col">
-      <span className="text-[10.5px] text-slate-400 leading-snug">{label}</span>
-      <span className="text-[15px] font-semibold text-slate-700 tabular-nums">
-        {value}
-        <span className="text-[10px] font-normal text-slate-400 ml-1">{base}</span>
-      </span>
+    <div>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[10.5px] text-slate-400">{label}</span>
+        <span className={`text-[10px] font-medium ${tagColor}`}>{tag}</span>
+      </div>
+      <div className="flex items-center gap-1.5 mt-1">
+        <div className="flex-1 h-[9px] rounded bg-slate-100 overflow-hidden">
+          <div className={`h-full rounded transition-all duration-500 ${barColor}`} style={{ width: w(value) }} />
+        </div>
+        <span className="text-[12px] font-semibold text-slate-700 tabular-nums w-[34px] text-right">{value}%</span>
+      </div>
+      <div className="flex items-center gap-1.5 mt-[3px]">
+        <div className="flex-1 h-[5px] rounded bg-slate-100 overflow-hidden">
+          <div className="h-full rounded bg-slate-300" style={{ width: w(base) }} />
+        </div>
+        <span className="text-[10px] text-slate-400 tabular-nums w-[34px] text-right">{base}%</span>
+      </div>
     </div>
   )
 }
