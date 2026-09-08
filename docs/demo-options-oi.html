@@ -1,0 +1,583 @@
+<title>選擇權 OI 支撐壓力表</title>
+<style>
+  :root{
+    --bg:#e9eef4; --page:#f8fafc; --surface:#ffffff; --line:#e2e8f0; --line-soft:#eef2f7;
+    --ink:#0f172a; --muted:#64748b; --faint:#94a3b8;
+    --accent:#2563eb; --accent-soft:#eff6ff;
+    --press:#dc2626; --press-soft:#fef2f2;
+    --support:#059669; --support-soft:#ecfdf5;
+    --segA:#eff6ff; --segA-line:#bfdbfe;
+    --segB:#fef6ec; --segB-line:#fed7aa;
+    --today-bg:#fffbeb; --today-line:#fcd34d;
+    --void:#f1f5f9; --amber:#b45309; --amber-soft:#fffbeb;
+  }
+  :root:not([data-theme="light"]){ }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#070b14; --page:#0f172a; --surface:#1e293b; --line:#334155; --line-soft:#293548;
+      --ink:#e5edf7; --muted:#94a3b8; --faint:#64748b;
+      --accent:#60a5fa; --accent-soft:#17273f;
+      --press:#f87171; --press-soft:#2a1618;
+      --support:#34d399; --support-soft:#12291f;
+      --segA:#16273d; --segA-line:#2b4a6f;
+      --segB:#2e2415; --segB-line:#6b4a22;
+      --today-bg:#33270f; --today-line:#8a6516;
+      --void:#161f2e; --amber:#fbbf24; --amber-soft:#2a2213;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#070b14; --page:#0f172a; --surface:#1e293b; --line:#334155; --line-soft:#293548;
+    --ink:#e5edf7; --muted:#94a3b8; --faint:#64748b;
+    --accent:#60a5fa; --accent-soft:#17273f;
+    --press:#f87171; --press-soft:#2a1618;
+    --support:#34d399; --support-soft:#12291f;
+    --segA:#16273d; --segA-line:#2b4a6f;
+    --segB:#2e2415; --segB-line:#6b4a22;
+    --today-bg:#33270f; --today-line:#8a6516;
+    --void:#161f2e; --amber:#fbbf24; --amber-soft:#2a2213;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Noto Sans TC",sans-serif;
+    padding:20px 12px 48px; line-height:1.5;
+  }
+  .wrap{max-width:920px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+
+  /* Demo 標頭（不屬於 app） */
+  .demo-note{
+    background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--accent);
+    border-radius:10px; padding:12px 14px; font-size:13px; color:var(--muted);
+  }
+  .demo-note b{color:var(--ink)}
+  .demo-note code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;background:var(--void);padding:1px 5px;border-radius:4px}
+
+  /* 手機框 */
+  .phone{
+    width:402px; max-width:100%; margin:0 auto; background:var(--page);
+    border:1px solid var(--line); border-radius:20px; overflow:hidden;
+    box-shadow:0 10px 30px rgba(15,23,42,.10);
+  }
+  .hdr{background:var(--surface);border-bottom:1px solid var(--line);padding:10px 14px;display:flex;align-items:flex-start;justify-content:space-between}
+  .logo{font-size:19px;font-weight:800;color:var(--accent);letter-spacing:-.02em}
+  .stamp{text-align:right;font-size:11px;color:#c2410c}
+  .stamp span{display:block;color:var(--faint);font-size:10px}
+  .tabs{display:flex;gap:6px;padding:9px 14px;background:var(--surface);border-bottom:1px solid var(--line)}
+  .tab{font-size:12px;padding:5px 12px;border-radius:999px;border:1px solid var(--line);color:var(--muted);background:var(--surface)}
+  .tab.on{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+  .fresh{display:flex;gap:10px;flex-wrap:wrap;padding:7px 14px;font-size:10px;color:var(--muted);background:var(--page);border-bottom:1px solid var(--line-soft)}
+  .fresh b{color:var(--support);font-weight:600}
+  .body{padding:10px;display:flex;flex-direction:column;gap:9px}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:11px}
+  .card-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+  .card-t{font-size:13px;font-weight:700}
+  .card-sub{font-size:10px;color:var(--faint)}
+
+  /* 既有卡片的縮影 */
+  .brief{font-size:11px;color:var(--muted);line-height:1.6}
+  .kline{height:96px;width:100%;display:block}
+  .heat-num{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
+  .heat-tag{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--amber-soft);color:var(--amber);font-weight:600}
+  .bar{height:7px;border-radius:999px;background:var(--void);overflow:hidden}
+  .bar i{display:block;height:100%;border-radius:999px}
+  .flag{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--muted);background:var(--void);border-radius:7px;padding:6px 8px}
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .lights{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:11px;color:var(--muted)}
+  .dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px}
+
+  /* ★ 選擇權 OI 卡 */
+  .seg-toggle{display:flex;gap:4px}
+  .seg-btn{font-size:11px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer}
+  .seg-btn.on{background:var(--ink);color:var(--page);border-color:var(--ink);font-weight:600}
+  .cal{width:100%;border-collapse:separate;border-spacing:2px;table-layout:fixed}
+  .cal th{font-size:10px;font-weight:600;color:var(--faint);padding:2px 0}
+  .cal td{
+    height:56px;vertical-align:top;border-radius:6px;border:1px solid var(--line-soft);
+    background:var(--surface); padding:3px 2px 2px; text-align:center; cursor:default;
+  }
+  .cal td.void{background:var(--void);border-color:transparent}
+  .cal td.segA{background:var(--segA);border-color:var(--segA-line)}
+  .cal td.today{background:var(--today-bg);border-color:var(--today-line)}
+  .cal td.has{cursor:pointer}
+  .cal td.wknd{background:transparent;border-color:transparent}
+  .cal td.segA{cursor:pointer}
+  .cal td.sel{outline:2px solid var(--accent);outline-offset:1px}
+  .d{font-size:9.5px;color:var(--faint);font-variant-numeric:tabular-nums;line-height:1.2}
+  .d.today{color:var(--accent);font-weight:800}
+  .k{font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.35}
+  .k.c{color:var(--press)}
+  .k.p{color:var(--support)}
+  .k.s{color:var(--ink)}
+  .pend{font-size:9px;color:var(--faint);margin-top:8px}
+  .settle{font-size:8.5px;font-weight:700;color:var(--muted);line-height:1.25;margin-top:9px}
+  .chd{display:flex;align-items:flex-start;justify-content:space-between;gap:2px}
+  .badges{display:flex;gap:2px;flex-shrink:0}
+  .badge{font-size:7.5px;font-weight:800;color:#fff;background:var(--faint);border-radius:3px;padding:0 3px;line-height:1.6;cursor:pointer;white-space:nowrap}
+  .badge:hover{background:var(--accent)}
+  .badge.prev{background:var(--muted)}
+  .cal .d{text-align:left;padding-left:2px}
+  .fspbox{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:10.5px;color:var(--muted);line-height:1.6}
+  .fspbox b{color:var(--ink)}
+  .fspbox .price{font-size:13px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+  .settle.m{color:var(--accent)}
+
+  .detail{margin-top:9px;border:1px solid var(--line);border-radius:9px;padding:9px;background:var(--page)}
+  .detail h4{margin:0 0 7px;font-size:11px;font-weight:700}
+  .tabs2{display:flex;gap:4px;margin-bottom:7px}
+  .t2{font-size:9.5px;padding:3px 7px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer;font-variant-numeric:tabular-nums}
+  .t2.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+  .top3{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .top3 .col-t{font-size:10px;font-weight:700;margin-bottom:3px}
+  .row3{display:flex;justify-content:space-between;font-size:10.5px;font-variant-numeric:tabular-nums;padding:1.5px 0;color:var(--muted)}
+  .row3 b{color:var(--ink);font-weight:700}
+  .row3.first b{font-size:11.5px}
+
+  .month{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}
+  .mbox{border:1px solid var(--line);border-radius:9px;padding:8px;background:var(--page)}
+  .mbox .lbl{font-size:10px;color:var(--faint);margin-bottom:4px}
+  .mbox .val{display:flex;justify-content:space-between;font-size:11px;font-variant-numeric:tabular-nums;padding:1px 0}
+
+  .legend{display:flex;flex-wrap:wrap;gap:5px 10px;margin-top:9px;font-size:9.5px;color:var(--muted)}
+  .swatch{width:11px;height:11px;border-radius:3px;display:inline-block;vertical-align:-1px;margin-right:3px;border:1px solid var(--line)}
+  .note{margin-top:9px;padding-top:8px;border-top:1px solid var(--line-soft);font-size:10.5px;color:var(--muted);line-height:1.65}
+  .note b{color:var(--ink)}
+
+  .nav{display:flex;border-top:1px solid var(--line);background:var(--surface)}
+  .nav div{flex:1;text-align:center;padding:8px 0 10px;font-size:10px;color:var(--faint)}
+  .nav div.on{color:var(--accent);font-weight:700}
+  .nav i{display:block;font-style:normal;font-size:15px;margin-bottom:1px}
+
+  .help{margin-left:5px;width:15px;height:15px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:10px;font-weight:700;line-height:1;cursor:pointer;padding:0}
+  .help:hover{border-color:var(--accent);color:var(--accent)}
+  .modal{position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}
+  .sheet{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;max-width:360px;width:100%;font-size:12.5px;line-height:1.75;color:var(--muted)}
+  .sheet h3{margin:0 0 10px;font-size:14px;color:var(--ink)}
+  .sheet p{margin:0 0 8px}
+  .sheet b{color:var(--ink)}
+  .sheet .x{position:absolute;top:10px;right:10px;border:0;background:none;color:var(--faint);font-size:14px;cursor:pointer}
+  .simbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:9px 12px}
+  .simdate{font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:var(--page);color:var(--muted);cursor:pointer}
+  .simdate.on{background:var(--ink);color:var(--page);border-color:var(--ink);font-weight:700}
+  .simnote{color:var(--faint);font-size:10.5px}
+
+
+  /* 規則對照 */
+  .check{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .check h3{margin:0 0 4px;font-size:15px}
+  .check p.lead{margin:0 0 12px;font-size:12.5px;color:var(--muted)}
+  .qa{border-top:1px solid var(--line-soft);padding:11px 0}
+  .qa:last-child{padding-bottom:0}
+  .qa .q{font-size:12.5px;font-weight:700;margin-bottom:3px}
+  .qa .a{font-size:12px;color:var(--muted);line-height:1.65}
+  .qa .src{font-size:11px;color:var(--faint);font-style:italic;margin-top:4px;padding-left:9px;border-left:2px solid var(--line)}
+  @media (max-width:460px){ body{padding:12px 6px 32px} .phone{border-radius:14px} }
+</style>
+
+<div class="wrap">
+
+  <div class="demo-note">
+    <b>UI 稿 · 選擇權 OI 支撐壓力表</b>　盤後行情頁完整版面，新卡片在最下方（國際指數之後）。
+    三行＝<b>追蹤中那一檔的完整生命週期</b>：掛牌日永遠落在第一行的週三（週五選則是週五），結算日在第三行。今天在哪一行會隨契約推進而移動。數字為期交所 <code>2026-08-18 ~ 09-07</code> 真實收盤 OI，點格子展開該日前三大；
+    上方其他卡片只畫輪廓示意，不是實際數值。
+  </div>
+
+  <div class="simbar">
+    <span>Demo 專用 · 模擬今天是</span>
+    <button class="simdate" data-d="2026-09-01" type="button">9/01 二</button>
+    <button class="simdate" data-d="2026-09-02" type="button">9/02 三（W1 結算）</button>
+    <button class="simdate on" data-d="2026-09-08" type="button">9/08 二</button>
+    <button class="simdate" data-d="2026-09-09" type="button">9/09 三（W2 結算）</button>
+    <button class="simdate" data-d="2026-09-10" type="button">9/10 四</button>
+    <button class="simdate" data-d="2026-09-14" type="button">9/14 一（月結算週）</button>
+    <span class="simnote">9/09 起為模擬數字</span>
+
+  </div>
+
+  <div class="phone">
+    <div class="hdr">
+      <div class="logo">StockView ⚙</div>
+      <div class="stamp">最後更新：9/8 10:38<span>股價資料：09/07</span></div>
+    </div>
+    <div class="tabs">
+      <div class="tab on">大盤關鍵資料</div><div class="tab">個股清單</div><div class="tab">基本面</div>
+    </div>
+    <div class="fresh">
+      <span>K線 <b>09/07</b></span><span>籌碼 <b>09/07</b></span><span>融資 <b>09/07</b></span><span>板塊 <b>09/07</b></span><span>股價 <b>09/07</b></span>
+    </div>
+
+    <div class="body">
+      <div class="card">
+        <div class="card-h"><div class="card-t">盤後總結</div><div class="card-sub">AI · 09/07</div></div>
+        <div class="brief">加權指數收 46,551 點，量能 3,842 億。外資買超 128 億，投信連三日站在買方⋯⋯</div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><div class="card-t">加權指數</div><div class="card-sub">日K · MA5/20/60</div></div>
+        <svg class="kline" viewBox="0 0 340 96" aria-label="加權指數 K 線示意">
+          <g stroke="#94a3b8" stroke-width="1" opacity=".25"><line x1="0" y1="24" x2="340" y2="24"/><line x1="0" y1="52" x2="340" y2="52"/><line x1="0" y1="80" x2="340" y2="80"/></g>
+          <g>
+            <rect x="8" y="46" width="6" height="20" fill="#059669"/><rect x="20" y="40" width="6" height="18" fill="#dc2626"/>
+            <rect x="32" y="44" width="6" height="14" fill="#059669"/><rect x="44" y="36" width="6" height="22" fill="#dc2626"/>
+            <rect x="56" y="42" width="6" height="16" fill="#059669"/><rect x="68" y="30" width="6" height="24" fill="#dc2626"/>
+            <rect x="80" y="34" width="6" height="18" fill="#dc2626"/><rect x="92" y="44" width="6" height="20" fill="#059669"/>
+            <rect x="104" y="38" width="6" height="16" fill="#dc2626"/><rect x="116" y="32" width="6" height="20" fill="#dc2626"/>
+            <rect x="128" y="40" width="6" height="18" fill="#059669"/><rect x="140" y="28" width="6" height="26" fill="#dc2626"/>
+            <rect x="152" y="34" width="6" height="14" fill="#dc2626"/><rect x="164" y="42" width="6" height="18" fill="#059669"/>
+            <rect x="176" y="30" width="6" height="22" fill="#dc2626"/><rect x="188" y="26" width="6" height="18" fill="#dc2626"/>
+            <rect x="200" y="36" width="6" height="20" fill="#059669"/><rect x="212" y="24" width="6" height="26" fill="#dc2626"/>
+            <rect x="224" y="30" width="6" height="16" fill="#dc2626"/><rect x="236" y="38" width="6" height="18" fill="#059669"/>
+            <rect x="248" y="22" width="6" height="24" fill="#dc2626"/><rect x="260" y="28" width="6" height="14" fill="#dc2626"/>
+            <rect x="272" y="34" width="6" height="20" fill="#059669"/><rect x="284" y="20" width="6" height="26" fill="#dc2626"/>
+            <rect x="296" y="26" width="6" height="16" fill="#dc2626"/><rect x="308" y="18" width="6" height="22" fill="#dc2626"/>
+            <rect x="320" y="30" width="6" height="18" fill="#059669"/>
+          </g>
+          <polyline points="11,60 35,54 59,52 83,46 107,48 131,44 155,42 179,40 203,44 227,38 251,34 275,38 299,32 323,30" fill="none" stroke="#f59e0b" stroke-width="1.4"/>
+        </svg>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><div class="card-t">市場熱度</div><div class="card-sub">09/07 收盤</div></div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:7px">
+          <span class="heat-num">4</span><span style="font-size:11px;color:var(--faint)">/100</span>
+          <span class="heat-tag">弱勢</span>
+        </div>
+        <div class="bar"><i style="width:4%;background:var(--amber)"></i></div>
+        <div style="display:flex;flex-direction:column;gap:5px;margin-top:8px">
+          <div class="flag">⚪ 外資倒貨　未成立</div>
+          <div class="flag">⚪ 進場訊號　未成立</div>
+        </div>
+      </div>
+
+      <div class="duo">
+        <div class="card"><div class="card-t" style="margin-bottom:6px">融資維持率</div>
+          <div style="font-size:20px;font-weight:800;font-variant-numeric:tabular-nums">171.4<span style="font-size:11px">%</span></div>
+          <div style="font-size:10px;color:var(--faint);margin-top:3px">估算 · 安全區</div></div>
+        <div class="card"><div class="card-t" style="margin-bottom:6px">融資增幅</div>
+          <div style="font-size:20px;font-weight:800;color:var(--support);font-variant-numeric:tabular-nums">−2.1<span style="font-size:11px">%</span></div>
+          <div style="font-size:10px;color:var(--faint);margin-top:3px">未觸發</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><div class="card-t">國際指數</div><div class="card-sub">09/05 收盤</div></div>
+        <div class="lights">
+          <span><i class="dot" style="background:#dc2626"></i>S&amp;P 500 +0.32%</span>
+          <span><i class="dot" style="background:#059669"></i>那斯達克 −0.18%</span>
+          <span><i class="dot" style="background:#dc2626"></i>費城半導體 +1.05%</span>
+          <span><i class="dot" style="background:#dc2626"></i>日經 +0.44%</span>
+          <span><i class="dot" style="background:#059669"></i>韓國 KOSPI −0.27%</span>
+          <span><i class="dot" style="background:#dc2626"></i>道瓊 +0.11%</span>
+        </div>
+      </div>
+
+      <!-- ★★★ 新卡片 ★★★ -->
+      <div class="card" id="oi-card">
+        <div class="card-h">
+          <div class="card-t">選擇權 OI
+            <button id="oi-help" class="help" type="button" aria-label="說明">?</button>
+          </div>
+          <div class="seg-toggle">
+            <button class="seg-btn on" data-kind="wed" type="button">週三選</button>
+            <button class="seg-btn" data-kind="fri" type="button">週五選</button>
+          </div>
+        </div>
+
+        <table class="cal" id="cal">
+          <thead><tr><th>日</th><th>一</th><th>二</th><th>三</th><th>四</th><th>五</th><th>六</th></tr></thead>
+          <tbody></tbody>
+        </table>
+
+        <div class="detail" id="detail"></div>
+
+        <div class="month">
+          <div class="mbox">
+            <div class="lbl">月選當月 · 結算 09/16</div>
+            <div class="val"><span style="color:var(--press)">壓力 SC</span><b>50000</b></div>
+            <div class="val"><span style="color:var(--support)">支撐 SP</span><b>40000</b></div>
+          </div>
+          <div class="mbox">
+            <div class="lbl">月選次月 · 結算 10/21</div>
+            <div class="val"><span style="color:var(--press)">壓力 SC</span><b>50000</b></div>
+            <div class="val"><span style="color:var(--support)">支撐 SP</span><b>44000</b></div>
+          </div>
+        </div>
+
+        <div class="legend">
+          <span><i class="swatch" style="background:var(--segA);border-color:var(--segA-line)"></i>未結算</span>
+          <span><i class="swatch" style="background:var(--today-bg);border-color:var(--today-line)"></i>今日</span>
+          <span><i class="swatch" style="background:var(--surface)"></i>尚未到</span>
+          <span><i class="swatch" style="background:var(--void);border-color:transparent"></i>掛牌前／結算後</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav">
+      <div class="on"><i>📊</i>盤後行情</div><div><i>🫧</i>泡泡圖</div><div><i>〽️</i>市場條件</div>
+    </div>
+  </div>
+
+  <div class="check">
+    <h3>三行版：一張表 ＝ 一檔契約的一生</h3>
+    <p class="lead">用上方的模擬日期切換，可以看整張表怎麼隨契約推進滾動。9/09 之後為模擬數字。</p>
+
+    <div class="qa">
+      <div class="q">日曆跟著契約走，不是跟著日曆週走</div>
+      <div class="a">
+        追蹤中的那一檔＝<b>最近一檔還沒結算的週選</b>。它的掛牌日固定落在第一行的週三、結算日落在第三行的週三，
+        所以<b>今天會在三行之間移動</b>：9/01 在第三行 → 9/02（W1 結算）整張表跳到 W2、今天變第二行 →
+        9/08 又回到第三行 → <b>9/09（W2 結算）跳到 W4，今天回到第一行的週三</b>，一路走到 9/23 結算。
+        第一行的日／一／二（掛牌前）與第三行的四／五／六（結算後）永遠純灰、不放任何標註。
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="q">右上角＝下一檔同型週選，掛牌後才出現</div>
+      <div class="a">
+        月選不進日曆（它有自己的區塊）。週三表只認 W、週五表只認 F。
+        點右上小字看下一檔、點格子回到追蹤中那檔，明細上方用分頁分開，兩檔不會互相蓋掉。
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="q">上一檔的結算價放在明細分頁</div>
+      <div class="a">
+        契約結算當天日曆就換下一檔了，舊契約已經不在畫面上，所以明細多一個<b>「上一檔」</b>分頁：
+        最後結算價 ＋ 它結算前最後一天的支撐壓力擺在一起，直接看得出那一輪有沒有守住（例：202609W1 結算 46,223，結算前支撐 46000 → 收在區間內）。
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const OI_DATA = {"2026-09-07":{"202609":{"exp":"2026-09-16","C":[[50000,2607],[49000,1444],[48000,1304]],"P":[[40000,2002],[21800,1776],[42000,1501]]},"202609F2":{"exp":"2026-09-11","C":[[45400,371],[45000,350],[45700,304]],"P":[[45000,245],[46200,163],[45400,151]]},"202609F3":{"exp":"2026-09-18","C":[[49000,33],[48500,27],[48800,14]],"P":[[45300,40],[41200,39],[45400,20]]},"202609W2":{"exp":"2026-09-09","C":[[50000,2192],[48000,1835],[49000,1593]],"P":[[46000,2622],[45000,1527],[46500,1296]]},"202610":{"exp":"2026-10-21","C":[[50000,254],[47000,252],[52000,206]],"P":[[44000,383],[40000,326],[33900,207]]},"202611":{"exp":"2026-11-18","C":[[48000,37],[50000,21],[47500,17]],"P":[[38000,36],[40000,22],[39500,21]]},"202612":{"exp":"2026-12-16","C":[[49000,420],[53000,398],[54000,314]],"P":[[40800,300],[46000,192],[38000,175]]},"202703":{"exp":"2027-03-17","C":[[57400,220],[49000,32],[50000,28]],"P":[[31800,96],[47000,52],[36000,43]]}},"2026-09-04":{"202609":{"exp":"2026-09-16","C":[[50000,2923],[48000,1542],[49000,1119]],"P":[[40000,2048],[21800,1750],[42000,1730]]},"202609F1":{"exp":"2026-09-04","C":[[47500,9657],[46500,3575],[46600,3260]],"P":[[46000,4611],[46200,3992],[46300,3644]]},"202609F2":{"exp":"2026-09-11","C":[[45400,371],[45000,350],[45700,304]],"P":[[45000,207],[45400,108],[41300,102]]},"202609F3":{"exp":"2026-09-18","C":[[49000,27],[48500,21],[48800,7]],"P":[[45400,20],[42200,15],[42500,13]]},"202609W2":{"exp":"2026-09-09","C":[[50000,1640],[51000,872],[47000,676]],"P":[[40600,1186],[45000,945],[44000,927]]},"202610":{"exp":"2026-10-21","C":[[47000,244],[52000,194],[50000,166]],"P":[[44000,383],[40000,249],[33900,191]]},"202611":{"exp":"2026-11-18","C":[[48000,37],[50000,21],[52100,15]],"P":[[38000,33],[39500,21],[40000,21]]},"202612":{"exp":"2026-12-16","C":[[53000,330],[57400,269],[46000,259]],"P":[[40800,300],[46000,190],[38000,175]]},"202703":{"exp":"2027-03-17","C":[[57400,210],[49000,31],[56400,31]],"P":[[31800,70],[42000,44],[36000,42]]}},"2026-09-03":{"202609":{"exp":"2026-09-16","C":[[50000,2833],[48000,1524],[49000,1129]],"P":[[40000,1950],[42000,1706],[21800,1564]]},"202609F1":{"exp":"2026-09-04","C":[[47500,8970],[49500,2434],[47000,2072]],"P":[[45000,2645],[46000,1829],[45900,1549]]},"202609F2":{"exp":"2026-09-11","C":[[46300,19],[48000,18],[48050,12]],"P":[[41300,112],[44000,39],[44900,33]]},"202609W2":{"exp":"2026-09-09","C":[[51000,873],[50000,690],[44800,400]],"P":[[40600,1176],[44000,418],[42000,385]]},"202610":{"exp":"2026-10-21","C":[[47000,242],[52000,171],[50000,151]],"P":[[44000,384],[40000,222],[33900,192]]},"202611":{"exp":"2026-11-18","C":[[48000,37],[50000,21],[52100,15]],"P":[[38000,37],[39500,21],[40000,20]]},"202612":{"exp":"2026-12-16","C":[[53000,330],[57400,269],[46000,259]],"P":[[40800,300],[46000,190],[38000,177]]},"202703":{"exp":"2027-03-17","C":[[57400,210],[49000,31],[56400,31]],"P":[[31800,70],[42000,44],[36000,41]]}},"2026-09-02":{"202609":{"exp":"2026-09-16","C":[[50000,2563],[48000,1471],[49000,1102]],"P":[[40000,1871],[42000,1483],[21800,1464]]},"202609F1":{"exp":"2026-09-04","C":[[49500,2431],[50000,1377],[48300,728]],"P":[[45000,714],[46000,586],[45500,526]]},"202609F2":{"exp":"2026-09-11","C":[[46300,15],[48700,11],[48000,10]],"P":[[41300,99],[44000,37],[43500,23]]},"202609W1":{"exp":"2026-09-02","C":[[48000,7505],[47000,5073],[46500,4842]],"P":[[46000,5079],[46200,4832],[46100,3694]]},"202609W2":{"exp":"2026-09-09","C":[[51000,872],[44800,400],[45100,400]],"P":[[40600,638],[42000,293],[44000,204]]},"202610":{"exp":"2026-10-21","C":[[47000,229],[50000,143],[44800,133]],"P":[[44000,392],[40000,224],[33900,173]]},"202611":{"exp":"2026-11-18","C":[[48000,37],[52000,22],[50000,21]],"P":[[38000,33],[39500,21],[40000,20]]},"202612":{"exp":"2026-12-16","C":[[53000,329],[57400,269],[46000,259]],"P":[[40800,300],[46000,190],[38000,169]]},"202703":{"exp":"2027-03-17","C":[[57400,210],[49000,31],[56400,31]],"P":[[31800,70],[42000,44],[36000,41]]}},"2026-09-01":{"202609":{"exp":"2026-09-16","C":[[50000,2441],[48000,1387],[49000,1023]],"P":[[40000,1834],[21800,1461],[42000,1394]]},"202609F1":{"exp":"2026-09-04","C":[[50000,1080],[45800,423],[45300,421]],"P":[[45000,222],[46000,196],[45800,181]]},"202609F2":{"exp":"2026-09-11","C":[[48000,8],[48700,8],[49500,6]],"P":[[41300,55],[44000,34],[47700,26]]},"202609W1":{"exp":"2026-09-02","C":[[48000,5585],[48200,2589],[47000,1618]],"P":[[46000,2541],[45000,1948],[46500,1671]]},"202609W2":{"exp":"2026-09-09","C":[[47800,167],[48000,94],[48900,81]],"P":[[42000,282],[40700,179],[40600,177]]},"202610":{"exp":"2026-10-21","C":[[47000,229],[48000,227],[50000,142]],"P":[[44000,373],[40000,213],[33900,158]]},"202611":{"exp":"2026-11-18","C":[[51000,427],[48000,317],[52000,20]],"P":[[38000,31],[39500,16],[39000,12]]},"202612":{"exp":"2026-12-16","C":[[53000,328],[57400,270],[46000,259]],"P":[[40800,300],[46000,190],[25200,185]]},"202703":{"exp":"2027-03-17","C":[[57400,210],[49000,31],[56400,31]],"P":[[31800,70],[42000,44],[40000,33]]}},"2026-08-31":{"202609":{"exp":"2026-09-16","C":[[50000,2559],[48000,1364],[55800,914]],"P":[[40000,1992],[21800,1362],[42000,1334]]},"202609F1":{"exp":"2026-09-04","C":[[45800,423],[45300,422],[49200,210]],"P":[[40400,202],[44000,189],[45800,128]]},"202609F2":{"exp":"2026-09-11","C":[[48000,7],[45800,4],[47500,4]],"P":[[44000,34],[42500,19],[43700,19]]},"202609W1":{"exp":"2026-09-02","C":[[47000,1812],[48200,1330],[48000,1230]],"P":[[44000,1558],[45000,1341],[45500,982]]},"202609W2":{"exp":"2026-09-09","C":[[47800,167],[48900,80],[48000,48]],"P":[[42000,331],[40700,161],[40600,127]]},"202610":{"exp":"2026-10-21","C":[[48000,227],[47000,213],[44800,134]],"P":[[44000,370],[40000,163],[33900,162]]},"202611":{"exp":"2026-11-18","C":[[51000,425],[48000,316],[52100,16]],"P":[[38000,27],[39500,16],[39000,8]]},"202612":{"exp":"2026-12-16","C":[[57400,269],[46000,259],[47000,239]],"P":[[40800,300],[46000,190],[25200,186]]},"202703":{"exp":"2027-03-17","C":[[57400,207],[49000,31],[50000,29]],"P":[[31800,73],[42000,44],[40000,36]]}},"2026-08-28":{"202608F4":{"exp":"2026-08-28","C":[[46500,6170],[46400,3976],[46350,3972]],"P":[[46000,3937],[46300,3513],[46200,3299]]},"202609":{"exp":"2026-09-16","C":[[50000,2401],[48000,1196],[55800,901]],"P":[[40000,1953],[21800,1328],[42000,1284]]},"202609F1":{"exp":"2026-09-04","C":[[45800,421],[45300,420],[49000,24]],"P":[[40400,270],[44000,139],[43500,131]]},"202609F2":{"exp":"2026-09-11","C":[[48200,2],[48600,2],[48900,2]],"P":[[41600,6],[43000,4],[43200,4]]},"202609W1":{"exp":"2026-09-02","C":[[47400,935],[50600,710],[48000,558]],"P":[[45000,737],[44000,617],[43000,529]]},"202609W2":{"exp":"2026-09-09","C":[[48900,79],[48000,68],[49100,30]],"P":[[42000,301],[40600,110],[41700,105]]},"202610":{"exp":"2026-10-21","C":[[48000,297],[47000,209],[44800,134]],"P":[[44000,368],[33900,177],[40000,132]]},"202611":{"exp":"2026-11-18","C":[[51000,425],[48000,316],[52100,16]],"P":[[38000,23],[39500,11],[39300,5]]},"202612":{"exp":"2026-12-16","C":[[57400,269],[46000,263],[47000,235]],"P":[[40800,300],[46000,190],[25200,185]]},"202703":{"exp":"2027-03-17","C":[[57400,207],[49000,31],[50000,28]],"P":[[31800,72],[42000,44],[40000,36]]}},"2026-08-27":{"202608F4":{"exp":"2026-08-28","C":[[47000,1688],[46500,1310],[46800,1013]],"P":[[45000,1684],[44500,1386],[44000,1327]]},"202609":{"exp":"2026-09-16","C":[[50000,2238],[48000,1110],[55800,868]],"P":[[40000,1931],[21800,1315],[42000,1094]]},"202609F1":{"exp":"2026-09-04","C":[[48800,18],[49000,17],[46000,11]],"P":[[40400,271],[43500,129],[44000,118]]},"202609W1":{"exp":"2026-09-02","C":[[44800,457],[44100,451],[48400,299]],"P":[[43000,381],[40200,354],[44000,255]]},"202609W2":{"exp":"2026-09-09","C":[[48900,79],[48000,61],[49100,30]],"P":[[40600,92],[42000,40],[44700,35]]},"202610":{"exp":"2026-10-21","C":[[48000,240],[47000,165],[44800,134]],"P":[[44000,369],[33900,155],[43500,107]]},"202611":{"exp":"2026-11-18","C":[[51000,421],[48000,316],[51700,17]],"P":[[38000,24],[41500,7],[39300,5]]},"202612":{"exp":"2026-12-16","C":[[57400,271],[46000,263],[47000,235]],"P":[[40800,300],[46000,190],[25200,184]]},"202703":{"exp":"2027-03-17","C":[[57400,206],[49000,31],[50000,30]],"P":[[31800,70],[40000,36],[35600,28]]}},"2026-08-26":{"202608F4":{"exp":"2026-08-28","C":[[44500,454],[43800,431],[46000,423]],"P":[[44000,1008],[40200,619],[44500,603]]},"202608W4":{"exp":"2026-08-26","C":[[46000,4870],[45900,4358],[45850,3587]],"P":[[45800,4048],[45000,2999],[45850,2838]]},"202609":{"exp":"2026-09-16","C":[[50000,2116],[48000,959],[55800,871]],"P":[[40000,1531],[21800,1254],[42000,1022]]},"202609F1":{"exp":"2026-09-04","C":[[49000,17],[47600,14],[45650,8]],"P":[[40400,278],[43500,128],[40500,52]]},"202609W1":{"exp":"2026-09-02","C":[[44800,457],[44100,451],[48400,287]],"P":[[40200,285],[44000,176],[40700,163]]},"202609W2":{"exp":"2026-09-09","C":[[48900,73],[48000,58],[49400,18]],"P":[[40600,76],[41500,34],[42000,30]]},"202610":{"exp":"2026-10-21","C":[[48000,229],[47000,174],[44800,134]],"P":[[44000,369],[33900,141],[43500,120]]},"202611":{"exp":"2026-11-18","C":[[51000,420],[48000,315],[51700,17]],"P":[[38000,23],[41500,7],[39300,5]]},"202612":{"exp":"2026-12-16","C":[[57400,274],[46000,259],[47000,236]],"P":[[40800,300],[46000,190],[25200,182]]},"202703":{"exp":"2027-03-17","C":[[57400,203],[50000,32],[49000,29]],"P":[[31800,69],[42000,45],[40000,36]]}},"2026-08-25":{"202608F4":{"exp":"2026-08-28","C":[[43700,420],[45300,416],[43600,350]],"P":[[40200,365],[41000,189],[43000,136]]},"202608W4":{"exp":"2026-08-26","C":[[46000,2772],[45000,1970],[45500,1478]],"P":[[43000,2641],[44000,2072],[43500,1800]]},"202609":{"exp":"2026-09-16","C":[[50000,2092],[48000,910],[55800,871]],"P":[[40000,1269],[21800,1172],[30000,828]]},"202609F1":{"exp":"2026-09-04","C":[[49000,14],[47600,10],[47500,8]],"P":[[40400,183],[40500,44],[43800,22]]},"202609W1":{"exp":"2026-09-02","C":[[48400,283],[49900,88],[46200,63]],"P":[[40200,310],[40700,256],[45000,148]]},"202610":{"exp":"2026-10-21","C":[[44800,134],[50000,78],[51000,61]],"P":[[44000,367],[33900,123],[43500,105]]},"202611":{"exp":"2026-11-18","C":[[51700,15],[52100,6],[51500,4]],"P":[[38000,25],[41500,7],[45400,4]]},"202612":{"exp":"2026-12-16","C":[[57400,272],[46000,259],[47000,236]],"P":[[40800,300],[46000,190],[25200,181]]},"202703":{"exp":"2027-03-17","C":[[57400,201],[50000,34],[49000,29]],"P":[[31800,69],[42000,45],[40000,36]]}},"2026-08-24":{"202608F4":{"exp":"2026-08-28","C":[[43700,420],[43600,350],[48000,62]],"P":[[41000,142],[40200,140],[40700,119]]},"202608W4":{"exp":"2026-08-26","C":[[46000,2762],[47000,1177],[46200,1133]],"P":[[43000,2379],[44000,1306],[40200,1210]]},"202609":{"exp":"2026-09-16","C":[[50000,2020],[48000,904],[55800,761]],"P":[[40000,1301],[21800,1054],[30000,828]]},"202609F1":{"exp":"2026-09-04","C":[[47800,19],[47500,17],[47700,17]],"P":[[40400,102],[41000,28],[41700,24]]},"202609W1":{"exp":"2026-09-02","C":[[48400,281],[49900,81],[45200,56]],"P":[[40700,253],[40200,119],[45000,119]]},"202610":{"exp":"2026-10-21","C":[[44800,133],[50000,69],[51000,51]],"P":[[44000,367],[33900,113],[43500,105]]},"202611":{"exp":"2026-11-18","C":[[51700,14],[51500,4],[52100,3]],"P":[[38000,22],[41500,7],[45400,4]]},"202612":{"exp":"2026-12-16","C":[[57400,271],[46000,259],[47000,236]],"P":[[40800,300],[46000,190],[25200,184]]},"202703":{"exp":"2027-03-17","C":[[57400,199],[50000,34],[49000,29]],"P":[[31800,66],[42000,45],[40000,36]]}},"2026-08-21":{"202608F3":{"exp":"2026-08-21","C":[[45200,3342],[45150,3154],[47500,2990]],"P":[[45000,4554],[45100,3103],[44900,3008]]},"202608F4":{"exp":"2026-08-28","C":[[43700,420],[48800,52],[46500,37]],"P":[[40700,112],[41200,76],[41000,67]]},"202608W4":{"exp":"2026-08-26","C":[[46000,987],[43500,751],[47000,513]],"P":[[43000,1042],[40200,805],[42000,750]]},"202609":{"exp":"2026-09-16","C":[[50000,1813],[48000,863],[55800,677]],"P":[[40000,1193],[21800,1013],[30000,827]]},"202609F1":{"exp":"2026-09-04","C":[[47500,21],[48000,17],[47800,7]],"P":[[40400,50],[41000,22],[40600,20]]},"202609W1":{"exp":"2026-09-02","C":[[48400,281],[49900,79],[45200,56]],"P":[[40700,246],[40200,108],[43000,33]]},"202610":{"exp":"2026-10-21","C":[[44800,133],[50000,67],[52000,45]],"P":[[44000,365],[43500,105],[33900,97]]},"202611":{"exp":"2026-11-18","C":[[51500,5],[51700,3],[46800,1]],"P":[[38000,14],[45400,4],[44000,2]]},"202612":{"exp":"2026-12-16","C":[[57400,270],[46000,259],[47000,236]],"P":[[40800,300],[46000,190],[25200,184]]},"202703":{"exp":"2027-03-17","C":[[57400,199],[50000,35],[49000,29]],"P":[[31800,66],[42000,45],[40000,36]]}},"2026-08-20":{"202608F3":{"exp":"2026-08-21","C":[[47500,3024],[46000,1536],[45000,1452]],"P":[[43000,1975],[44000,1771],[44400,1273]]},"202608F4":{"exp":"2026-08-28","C":[[48800,51],[50500,30],[46500,28]],"P":[[41200,94],[41000,52],[44100,51]]},"202608W4":{"exp":"2026-08-26","C":[[43300,400],[46000,350],[44300,201]],"P":[[40600,534],[41000,395],[42400,377]]},"202609":{"exp":"2026-09-16","C":[[50000,1569],[48000,839],[42000,609]],"P":[[40000,906],[21800,905],[30000,827]]},"202609W1":{"exp":"2026-09-02","C":[[48400,281],[47100,31],[49000,30]],"P":[[40700,145],[42000,32],[43000,32]]},"202610":{"exp":"2026-10-21","C":[[44800,133],[50000,58],[52000,46]],"P":[[44000,365],[43500,105],[36000,93]]},"202611":{"exp":"2026-11-18","C":[[51500,4],[46800,1],[50400,1]],"P":[[38000,10],[45400,4],[45500,2]]},"202612":{"exp":"2026-12-16","C":[[57400,270],[46000,249],[47000,236]],"P":[[40800,300],[46000,190],[25200,183]]},"202703":{"exp":"2027-03-17","C":[[57400,198],[50000,35],[49000,29]],"P":[[31800,61],[42000,40],[40000,36]]}},"2026-08-19":{"202608":{"exp":"2026-08-19","C":[[48000,4374],[45000,4306],[44700,3858]],"P":[[44000,4588],[34000,4438],[44600,4336]]},"202608F3":{"exp":"2026-08-21","C":[[47500,2234],[46000,683],[45700,668]],"P":[[42000,582],[43000,501],[39800,473]]},"202608F4":{"exp":"2026-08-28","C":[[48800,41],[50500,30],[47000,25]],"P":[[41200,81],[41000,51],[43700,50]]},"202608W4":{"exp":"2026-08-26","C":[[43300,400],[44300,200],[47000,189]],"P":[[40600,465],[41000,363],[42400,321]]},"202609":{"exp":"2026-09-16","C":[[50000,1237],[48000,714],[52000,565]],"P":[[21800,908],[40000,896],[30000,820]]},"202609W1":{"exp":"2026-09-02","C":[[48400,281],[49000,20],[47800,14]],"P":[[40700,69],[43000,31],[42000,28]]},"202610":{"exp":"2026-10-21","C":[[44800,133],[50000,38],[52000,32]],"P":[[44000,365],[43500,106],[33900,94]]},"202612":{"exp":"2026-12-16","C":[[57400,270],[46000,230],[47000,216]],"P":[[40800,300],[46000,190],[25200,162]]},"202703":{"exp":"2027-03-17","C":[[57400,196],[50000,31],[49000,29]],"P":[[31800,61],[42000,40],[40000,36]]}},"2026-08-18":{"202608":{"exp":"2026-08-19","C":[[48000,4539],[46000,3823],[55000,3172]],"P":[[34000,4734],[37200,3043],[37000,3040]]},"202608F3":{"exp":"2026-08-21","C":[[47500,1746],[44300,401],[50700,246]],"P":[[39800,321],[40000,236],[42000,186]]},"202608F4":{"exp":"2026-08-28","C":[[50500,30],[48000,14],[47500,13]],"P":[[41200,80],[43700,50],[44100,50]]},"202608W4":{"exp":"2026-08-26","C":[[49000,369],[47000,143],[48000,65]],"P":[[40600,365],[41000,258],[42000,204]]},"202609":{"exp":"2026-09-16","C":[[50000,841],[48000,671],[52000,527]],"P":[[40000,1138],[21800,897],[30000,802]]},"202610":{"exp":"2026-10-21","C":[[44800,133],[52500,32],[50500,31]],"P":[[44000,365],[43500,103],[36000,81]]},"202612":{"exp":"2026-12-16","C":[[57400,276],[46000,230],[47000,166]],"P":[[40800,300],[25200,212],[46000,190]]},"202703":{"exp":"2027-03-17","C":[[57400,194],[49000,29],[50000,28]],"P":[[31800,61],[40000,36],[42000,33]]}},"_settle":{"202609F1":{"date":"2026-09-04","fsp":46520},"202609W1":{"date":"2026-09-02","fsp":46223},"202608F4":{"date":"2026-08-28","fsp":46323},"202608W4":{"date":"2026-08-26","fsp":45850},"202608F3":{"date":"2026-08-21","fsp":45121},"202608":{"date":"2026-08-19","fsp":44612},"202608F2":{"date":"2026-08-14","fsp":45892},"202608W2":{"date":"2026-08-12","fsp":45467},"202608F1":{"date":"2026-08-07","fsp":44237},"202608W1":{"date":"2026-08-05","fsp":44560},"202607F5":{"date":"2026-07-31","fsp":43181},"202607W5":{"date":"2026-07-29","fsp":40035},"202607F4":{"date":"2026-07-24","fsp":43688},"202607W4":{"date":"2026-07-22","fsp":44841},"202607F3":{"date":"2026-07-17","fsp":42928},"202607":{"date":"2026-07-15","fsp":45830},"202607F2":{"date":"2026-07-13","fsp":45605},"202607W2":{"date":"2026-07-08","fsp":45530},"202607F1":{"date":"2026-07-03","fsp":46825},"202607W1":{"date":"2026-07-01","fsp":46959},"202606F4":{"date":"2026-06-26","fsp":44600},"202606W4":{"date":"2026-06-24","fsp":46233},"202606F3":{"date":"2026-06-22","fsp":47778},"202606":{"date":"2026-06-17","fsp":45670},"202606F2":{"date":"2026-06-12","fsp":44097},"202606W2":{"date":"2026-06-10","fsp":43389},"202606F1":{"date":"2026-06-05","fsp":44942},"202606W1":{"date":"2026-06-03","fsp":46445},"202605F5":{"date":"2026-05-29","fsp":44894},"202605W4":{"date":"2026-05-27","fsp":44332},"202605F4":{"date":"2026-05-22","fsp":42324},"202605":{"date":"2026-05-20","fsp":40080},"202605F3":{"date":"2026-05-15","fsp":41096},"202605W2":{"date":"2026-05-13","fsp":41485},"202605F2":{"date":"2026-05-08","fsp":41610},"202605W1":{"date":"2026-05-06","fsp":41216},"202605F1":{"date":"2026-05-04","fsp":40705},"202604W5":{"date":"2026-04-29","fsp":39335},"202604F4":{"date":"2026-04-24","fsp":38880},"202604W4":{"date":"2026-04-22","fsp":37900},"202604F3":{"date":"2026-04-17","fsp":36813},"202604":{"date":"2026-04-15","fsp":36642},"202604F2":{"date":"2026-04-10","fsp":35350},"202604W2":{"date":"2026-04-08","fsp":34733},"202604F1":{"date":"2026-04-07","fsp":33117},"202604W1":{"date":"2026-04-01","fsp":33125},"202603F4":{"date":"2026-03-27","fsp":33110},"202603W4":{"date":"2026-03-25","fsp":33511},"202603F3":{"date":"2026-03-20","fsp":33538},"202603":{"date":"2026-03-18","fsp":34264},"202603F2":{"date":"2026-03-13","fsp":33421},"202603W2":{"date":"2026-03-11","fsp":34151},"202603F1":{"date":"2026-03-06","fsp":33573},"202603W1":{"date":"2026-03-04","fsp":32932},"202602F4":{"date":"2026-03-02","fsp":35194},"202602W4":{"date":"2026-02-25","fsp":35336},"202602":{"date":"2026-02-23","fsp":33839},"202602W2":{"date":"2026-02-11","fsp":33684},"202602F1":{"date":"2026-02-06","fsp":31676},"202602W1":{"date":"2026-02-04","fsp":32342},"202601F5":{"date":"2026-01-30","fsp":32253},"202601W4":{"date":"2026-01-28","fsp":32718},"202601F4":{"date":"2026-01-23","fsp":31930},"202601":{"date":"2026-01-21","fsp":31245},"202601F3":{"date":"2026-01-16","fsp":31421},"202601W2":{"date":"2026-01-14","fsp":30841},"202601F2":{"date":"2026-01-09","fsp":30320},"202601W1":{"date":"2026-01-07","fsp":30401},"202601F1":{"date":"2026-01-02","fsp":29337},"202512W5":{"date":"2025-12-31","fsp":28982},"202512F4":{"date":"2025-12-26","fsp":28547},"202512W4":{"date":"2025-12-24","fsp":28348},"202512F3":{"date":"2025-12-19","fsp":27741},"202512":{"date":"2025-12-17","fsp":27483},"202512F2":{"date":"2025-12-12","fsp":28143},"202512W2":{"date":"2025-12-10","fsp":28359},"202512F1":{"date":"2025-12-05","fsp":27892},"202512W1":{"date":"2025-12-03","fsp":27749},"202511F4":{"date":"2025-11-28","fsp":27789},"202511W4":{"date":"2025-11-26","fsp":27283},"202511F3":{"date":"2025-11-21","fsp":26503},"202511":{"date":"2025-11-19","fsp":26615},"202511F2":{"date":"2025-11-14","fsp":27455},"202511W2":{"date":"2025-11-12","fsp":28058},"202511F1":{"date":"2025-11-07","fsp":27683},"202511W1":{"date":"2025-11-05","fsp":27752},"202510F5":{"date":"2025-10-31","fsp":28444},"202510W5":{"date":"2025-10-29","fsp":28321},"202510F4":{"date":"2025-10-27","fsp":28104},"202510W4":{"date":"2025-10-22","fsp":27691},"202510F3":{"date":"2025-10-17","fsp":27383},"202510":{"date":"2025-10-15","fsp":27156},"202510F2":{"date":"2025-10-13","fsp":26874},"202510W2":{"date":"2025-10-08","fsp":27056},"202510F1":{"date":"2025-10-03","fsp":26698},"202510W1":{"date":"2025-10-01","fsp":26043},"202509F4":{"date":"2025-09-26","fsp":25572},"202509W4":{"date":"2025-09-24","fsp":26147},"202509F3":{"date":"2025-09-19","fsp":25695},"202509":{"date":"2025-09-17","fsp":25433},"202509F2":{"date":"2025-09-12","fsp":25405},"202509W2":{"date":"2025-09-10","fsp":25250},"202509F1":{"date":"2025-09-05","fsp":24434},"202509W1":{"date":"2025-09-03","fsp":24082},"202609W2":{"date":"2026-09-09","fsp":46380}},"2026-09-09":{"202609W4":{"exp":"2026-09-23","C":[[48000,142],[49000,96],[47500,73]],"P":[[45000,168],[44000,121],[45500,88]]},"202609":{"exp":"2026-09-16","C":[[50000,2810],[49000,1655],[48000,1402]],"P":[[40000,2140],[42000,1620],[44000,1388]]},"202609F3":{"exp":"2026-09-18","C":[[47000,612],[46500,488],[47500,401]],"P":[[45000,533],[44500,402],[45500,377]]}},"2026-09-10":{"202609W4":{"exp":"2026-09-23","C":[[48000,386],[47500,275],[49000,241]],"P":[[45000,402],[44500,318],[44000,266]]},"202609":{"exp":"2026-09-16","C":[[50000,2905],[49000,1712],[48000,1509]],"P":[[40000,2201],[42000,1688],[44000,1455]]},"202609F3":{"exp":"2026-09-18","C":[[47000,988],[47500,701],[46500,655]],"P":[[45000,842],[44500,611],[45500,540]]}},"2026-09-11":{"202609W4":{"exp":"2026-09-23","C":[[48000,701],[47500,522],[49000,455]],"P":[[45000,733],[44500,588],[44000,470]]},"202609":{"exp":"2026-09-16","C":[[50000,3012],[49000,1804],[48000,1622]],"P":[[40000,2288],[42000,1755],[44000,1533]]}},"2026-09-14":{"202609W4":{"exp":"2026-09-23","C":[[48000,1205],[47500,940],[49000,812]],"P":[[45000,1288],[44500,1002],[44000,845]]},"202609":{"exp":"2026-09-16","C":[[50000,3340],[49000,2110],[48000,1880]],"P":[[40000,2455],[42000,1922],[44000,1701]]},"202609F4":{"exp":"2026-09-25","C":[[48000,180],[47500,142],[48500,96]],"P":[[45000,205],[44500,160],[44000,121]]}},"2026-09-15":{"202609W4":{"exp":"2026-09-23","C":[[48000,1622],[47500,1288],[49000,1044]],"P":[[45000,1701],[44500,1344],[44000,1120]]},"202609":{"exp":"2026-09-16","C":[[50000,3588],[49000,2344],[48000,2088]],"P":[[40000,2611],[42000,2044],[44000,1866]]},"202609F4":{"exp":"2026-09-25","C":[[48000,402],[47500,318],[48500,244]],"P":[[45000,455],[44500,366],[44000,288]]}},"_sim":["2026-09-09","2026-09-10","2026-09-11","2026-09-14","2026-09-15"]};
+let TODAY = '2026-09-08';   // Demo 專用：可切換模擬日期
+
+const pad = n => String(n).padStart(2, '0');
+const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const md = s => s.slice(5).replace('-', '/');
+
+let kind = 'wed';
+let selected = '2026-09-07';
+let detailMode = 'main';   // main = 當週結算契約；next = 下週結算契約
+
+// 追蹤中的那一檔：最近一檔還沒結算的同型週選。它的掛牌日永遠落在第一行的週三／週五
+function track() {
+  let best = null;
+  for (const [ds, day] of Object.entries(OI_DATA)) {
+    if (!ds.startsWith('2') || ds > TODAY) continue;
+    for (const [code, e] of Object.entries(day)) {
+      if (!isOurs(code) || e.exp <= TODAY) continue;
+      if (!best || e.exp < best.exp) best = { code, exp: e.exp };
+    }
+  }
+  if (!best) return null;
+  const exp = parse(best.exp);
+  const listD = new Date(exp); listD.setDate(exp.getDate() - 14);   // 掛牌＝結算日往前兩週
+  return { code: best.code, exp: best.exp, listDate: iso(listD) };
+}
+
+// 這張表只認同型週選：週三表看 W 系列、週五表看 F 系列，月選一律不進日曆
+const mark = () => kind === 'wed' ? 'W' : 'F';
+const isOurs = code => code.includes(mark());
+
+// 下一檔同型週選：該日掛牌中、到期日晚於本週結算日的最近一檔（沒掛牌就沒有）
+function nextCodeOn(ds, mainExp) {
+  const day = OI_DATA[ds];
+  if (!day) return null;
+  let best = null;
+  for (const [code, e] of Object.entries(day)) {
+    if (!isOurs(code) || e.exp <= mainExp) continue;
+    if (!best || e.exp < day[best].exp) best = code;
+  }
+  return best;
+}
+
+const suffix = code => code.slice(-2);
+
+// 三行＝掛牌週／中間週／結算週
+function weeks(listDate) {
+  const l = parse(listDate);
+  const sun = new Date(l); sun.setDate(l.getDate() - l.getDay());
+  return [0, 7, 14].map(off => Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(sun); d.setDate(sun.getDate() + off + i); return iso(d);
+  }));
+}
+
+function render() {
+  const t = track();
+  const tb = document.querySelector('#cal tbody');
+  tb.innerHTML = '';
+  if (!t) { tb.innerHTML = '<tr><td colspan="7" style="height:auto;padding:14px">目前沒有掛牌中的週選</td></tr>'; return; }
+  const rows = weeks(t.listDate);
+
+  rows.forEach(week => {
+    const tr = document.createElement('tr');
+    week.forEach(ds => {
+      const td = document.createElement('td');
+      const d = parse(ds);
+      const isWknd = d.getDay() === 0 || d.getDay() === 6;
+      const inLife = ds >= t.listDate && ds <= t.exp;          // 掛牌～結算，外面一律灰
+      // 未來的日子即使資料庫已有（Demo 模擬），也一律當成還沒發生
+      const rec = ds <= TODAY ? (OI_DATA[ds] || {})[t.code] : null;
+      const nextCode = ds <= TODAY ? nextCodeOn(ds, t.exp) : null;
+
+      let cls = '';
+      if (isWknd) cls = 'wknd';
+      else if (!inLife) cls = 'void';        // 掛牌前／結算後＝灰
+      else if (rec) cls = 'segA';            // 已記錄＝藍
+      else if (ds === TODAY) cls = 'today';  // 今天＝琥珀
+      // 生命週期內、還沒到的日子＝白底
+      td.className = cls + (ds === selected ? ' sel' : '');
+
+      const prevHere = ds === t.listDate && ds <= TODAY && prevContract();
+      const badges = (prevHere ? `<span class="badge prev" title="上一檔">上</span>` : '')
+        + (nextCode ? `<span class="badge">${suffix(nextCode)}</span>` : '');
+      const label = `<div class="d${ds === TODAY ? ' today' : ''}"${isWknd ? ' style="opacity:.45"' : ''}>${d.getMonth() + 1}/${pad(d.getDate())}</div>`;
+      // 日期與徽章同一行、左右分站，徽章不會壓到日期或數字
+      let inner = `<div class="chd">${label}${badges ? `<span class="badges">${badges}</span>` : ''}</div>`;
+
+      if (isWknd) {
+        // 週末只留日期
+      } else if (!inLife) {
+        // 掛牌前／結算後：純灰無標註
+      } else if (rec) {
+        inner += `<div class="k c">${rec.C[0][0]}</div><div class="k p">${rec.P[0][0]}</div>`;
+      } else if (isMonthlySettle(ds)) {
+        inner += `<div class="settle m">月結算日</div>`;
+      } else if (ds === t.exp) {
+        inner += `<div class="settle">週結算日</div>`;
+      } else if (ds === TODAY) {
+        inner += `<div class="pend">收盤後<br>更新</div>`;
+      }
+      // 生命週期內還沒到的日子：白底留白，不放任何字
+
+      td.innerHTML = inner;
+
+      if (rec) td.addEventListener('click', () => { selected = ds; detailMode = 'main'; render(); });
+      td.querySelectorAll('.badge').forEach(b => b.addEventListener('click', ev => {
+        ev.stopPropagation(); selected = ds;
+        detailMode = b.classList.contains('prev') ? 'prev' : 'next'; render();
+      }));
+      tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  });
+
+  renderDetail();
+}
+
+// 月結算＝當月第三個週三
+function isMonthlySettle(ds) {
+  if (kind !== 'wed') return false;          // 月選是週三結算，只在週三表標
+  const d = parse(ds);
+  return d.getDay() === 3 && Math.floor((d.getDate() - 1) / 7) + 1 === 3;
+}
+
+function renderDetail() {
+  const t = track();
+  const box = document.getElementById('detail');
+  if (!t) { box.innerHTML = ''; return; }
+  const nextCode = nextCodeOn(selected, t.exp);
+  const prev = selected === t.listDate ? prevContract() : null;   // 只在掛牌日那格提供
+
+  const list = arr => arr.map((r, i) =>
+    `<div class="row3${i === 0 ? ' first' : ''}"><b>${r[0]}</b><span>${r[1].toLocaleString()} 口</span></div>`).join('');
+  const tab = (m, label) => `<button class="t2${detailMode === m ? ' on' : ''}" data-mode="${m}">${label}</button>`;
+  const tabs = `<div class="tabs2">${tab('main', '追蹤中 ' + t.code)}` +
+    (nextCode ? tab('next', '下一檔 ' + nextCode) : '') +
+    (prev ? tab('prev', '上一檔 ' + prev.code) : '') + '</div>';
+
+  // 上一檔：結算價 + 它結算前最後一天的支撐壓力，直接對照有沒有守住
+  if (detailMode === 'prev' && !prev) detailMode = 'main';
+  if (detailMode === 'prev' && prev) {
+    const inRange = prev.rec && prev.fsp <= prev.rec.C[0][0] && prev.fsp >= prev.rec.P[0][0];
+    box.innerHTML = `${tabs}
+      <h4>${prev.code} · 已於 ${md(prev.date)} 結算</h4>
+      <div class="fspbox" style="margin-top:0;padding-top:0;border-top:0">
+        <b>最後結算價</b> <span class="price">${prev.fsp.toLocaleString()}</span>
+        ${prev.rec ? `　結算前（${md(prev.lastDay)}）壓力 ${prev.rec.C[0][0]} ／ 支撐 ${prev.rec.P[0][0]}
+        → <b>${inRange ? '收在區間內' : '突破區間'}</b>` : ''}
+      </div>
+      ${prev.rec ? `<div class="top3" style="margin-top:8px">
+        <div><div class="col-t" style="color:var(--press)">壓力 SC · 前三大</div>${list(prev.rec.C)}</div>
+        <div><div class="col-t" style="color:var(--support)">支撐 SP · 前三大</div>${list(prev.rec.P)}</div>
+      </div>` : ''}`;
+    box.querySelectorAll('.t2').forEach(b =>
+      b.addEventListener('click', () => { detailMode = b.dataset.mode; renderDetail(); }));
+    return;
+  }
+
+  const code = (detailMode === 'next' && nextCode) ? nextCode : t.code;
+  const rec = (OI_DATA[selected] || {})[code];
+  if (!rec) { box.innerHTML = `${tabs}<h4>${md(selected)} 尚無記錄</h4>`; }
+  else box.innerHTML = `${tabs}
+    <h4>${md(selected)} 收盤 · ${code}（結算 ${md(rec.exp)}）</h4>
+    <div class="top3">
+      <div><div class="col-t" style="color:var(--press)">壓力 SC · 前三大</div>${list(rec.C)}</div>
+      <div><div class="col-t" style="color:var(--support)">支撐 SP · 前三大</div>${list(rec.P)}</div>
+    </div>`;
+
+  box.querySelectorAll('.t2').forEach(b =>
+    b.addEventListener('click', () => { detailMode = b.dataset.mode; renderDetail(); }));
+}
+
+document.querySelectorAll('.seg-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.seg-btn').forEach(x => x.classList.toggle('on', x === b));
+    kind = b.dataset.kind;
+    detailMode = 'main';
+    pickSelected();
+    render();
+  });
+});
+
+pickSelected();
+render();
+
+// 上一檔：已結算的同型週選中最近的一檔，連它結算前最後一天的 SC/SP 一起帶出來
+function prevContract() {
+  const t = track();
+  if (!t) return null;
+  // 新契約的掛牌日就是上一檔的結算日，兩件事同一天；那天結算的若是月選就沒有上一檔
+  const e = Object.entries(OI_DATA._settle || {})
+    .find(([c, v]) => isOurs(c) && v.date === t.listDate && v.date <= TODAY);
+  if (!e) return null;
+  const [code, v] = e;
+  const days = Object.keys(OI_DATA)
+    .filter(k => k.startsWith('2') && k <= TODAY && OI_DATA[k][code]).sort();
+  const lastDay = days.length ? days[days.length - 1] : null;
+  return { code, fsp: v.fsp, date: v.date, lastDay, rec: lastDay ? OI_DATA[lastDay][code] : null };
+}
+
+// 選到追蹤契約最後一個有資料的交易日
+function pickSelected() {
+  const t = track();
+  if (!t) return;
+  const days = Object.keys(OI_DATA).filter(k => k.startsWith('2') && k <= TODAY && OI_DATA[k][t.code]).sort();
+  selected = days.length ? days[days.length - 1] : TODAY;
+}
+
+// ── 以下為 Demo 專用控制項，實際上線不會有 ──
+document.querySelectorAll('.simdate').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.simdate').forEach(x => x.classList.toggle('on', x === b));
+    TODAY = b.dataset.d;
+    detailMode = 'main';
+    pickSelected();
+    render();
+  });
+});
+
+const modal = document.getElementById('oi-modal');
+document.getElementById('oi-help').addEventListener('click', () => modal.hidden = false);
+modal.addEventListener('click', ev => { if (ev.target === modal || ev.target.dataset.close) modal.hidden = true; });
+
+document.querySelectorAll('.layout').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.layout').forEach(x => x.classList.toggle('on', x === b));
+    document.getElementById('cal').className = 'cal ' + b.dataset.l;
+  });
+});
+</script>

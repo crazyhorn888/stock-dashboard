@@ -4,6 +4,7 @@ import MarketSignalCards from '@/components/aftermarket/MarketSignalCards'
 import KlineChart from '@/components/aftermarket/KlineChart'
 import StockTable from '@/components/aftermarket/StockTable'
 import GlobalIndexLights from '@/components/aftermarket/GlobalIndexLights'
+import OptionsOICard from '@/components/aftermarket/OptionsOICard'
 import DailyBriefCard from '@/components/aftermarket/DailyBriefCard'
 import GlobalIndexModal from '@/components/aftermarket/GlobalIndexModal'
 import SectorPanel from '@/components/bubble/SectorPanel'
@@ -227,6 +228,7 @@ export default function AftermarketPage() {
                 <KlineChart data={data.indexHistory ?? []} n={n} />
                 <MarketSignalCards signals={computedSignals} indexHistory={data.indexHistory} />
                 <GlobalIndexLights indices={data.globalIndices} onSelect={setGlobalModalKey} />
+                <OptionsOICard />
               </>
             )}
 

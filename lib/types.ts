@@ -284,3 +284,19 @@ export interface StockHistoryDay {
   unit?: 'yi'
   stocks: StockHistoryEntry[]  // 當日全部 T86 活躍個股
 }
+
+// ── 功能二十三（AC-OI-A4/A5）：選擇權 OI（options-oi.json）─────────────────
+// days[交易日][契約代號] = 該日這檔的 Call/Put 各前三大 OI；[履約價, 口數] 由大到小。
+// 契約代號含 W = 週三到期週選、含 F = 週五到期週選、純 6 碼 = 月選（不進日曆，另有區塊）。
+export interface OptionsOIContract {
+  exp: string                 // 契約到期日 YYYY-MM-DD
+  C: [number, number][]       // 買權（壓力 SC）前三大
+  P: [number, number][]       // 賣權（支撐 SP）前三大
+}
+
+export interface OptionsOISnapshot {
+  updatedAt: string | null
+  days: Record<string, Record<string, OptionsOIContract>>
+  /** 各契約的最後結算日與最後結算價（期交所 optIndxFSP） */
+  settle: Record<string, { date: string; fsp: number }>
+}

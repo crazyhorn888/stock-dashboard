@@ -45,6 +45,14 @@ on:
     # 台北 09:37 = UTC 01:37、台北 11:37 = UTC 03:37
     - cron: '37 1 * * 1-5'
     - cron: '37 3 * * 1-5'
+    # 選擇權 OI 專用輕量班次（AC-OI-A8）：期交所 2026-09-08 實測 14:37 才放出當日 OI
+    #（14:33 仍為 0），所以 14:05 那班（沿用上面搶股價的 '5 6'）注定是空的、留著當早鳥保險，
+    # 正常情況 14:45 這班第一次抓到，後面兩班備援 GitHub 排程本身 5~15 分鐘的延遲。
+    # 這四班只跑 options-oi job，不跑主 pipeline。台北 14:25/14:45/15:05/15:25
+    - cron: '25 6 * * 1-5'
+    - cron: '45 6 * * 1-5'
+    - cron: '5 7 * * 1-5'
+    - cron: '25 7 * * 1-5'
   workflow_dispatch: # n8n Phase1/Phase2 完成後觸發，或手動補跑
     inputs:
       force_run:
@@ -64,10 +72,12 @@ concurrency:
 
 jobs:
   fetch-and-upload:
-    # 06:07 全球指數班次不跑這個 job（交給下面的 fetch-global-indices）
+    # 06:07 全球指數、選擇權 OI 四班都不跑這個 job（各自交給下面的獨立 job）
     if: >-
       github.event_name != 'schedule' ||
-      (github.event.schedule != '7 22 * * *' && github.event.schedule != '32 7 * * 1-5')
+      (github.event.schedule != '7 22 * * *' && github.event.schedule != '32 7 * * 1-5'
+       && github.event.schedule != '25 6 * * 1-5' && github.event.schedule != '45 6 * * 1-5'
+       && github.event.schedule != '5 7 * * 1-5' && github.event.schedule != '25 7 * * 1-5')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -160,6 +170,15 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: node scripts/write-firebase.mjs
 
+      # AC-OI-A10：選擇權 OI 的尾端保險。專用班次（14:25~15:25）萬一全被 GitHub 漏跑，
+      # 靠這裡補；已有當日資料時腳本會早退，幾秒結束，所以不另開 runner
+      - name: 抓選擇權 OI（尾端保險）
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node scripts/fetch-options-oi.mjs
+
   # P2-3：全球指數，只在台北 06:07 這班跑。不裝依賴（腳本零依賴、只用內建 fetch），
   # 不動 latest.json/主 pipeline，AC(d) 要求 <1 分鐘結束
   fetch-global-indices:
@@ -184,3 +203,32 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: node scripts/fetch-global.mjs
+
+  # 功能二十三（AC-OI-A8/A9）：選擇權 OI 輕量班次。零依賴、已有當日資料就早退，
+  # 所以排五班的成本趨近於零。workflow_dispatch（含 /review 後台「強制執行」）不帶
+  # schedule 值，兩個 job 的條件都會成立 → 按下去主 pipeline 與這支都會跑，
+  # force-run/route.ts 因此一行都不用改
+  options-oi:
+    if: >-
+      (github.event_name == 'schedule' &&
+        (github.event.schedule == '5 6 * * 1-5' || github.event.schedule == '25 6 * * 1-5'
+         || github.event.schedule == '45 6 * * 1-5' || github.event.schedule == '5 7 * * 1-5'
+         || github.event.schedule == '25 7 * * 1-5'))
+      || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 抓取選擇權 OI（期交所 optDailyMarketReport）
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node scripts/fetch-options-oi.mjs
