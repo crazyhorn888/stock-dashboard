@@ -107,7 +107,15 @@ export default function OptionsOIChart({ snap, indexClose, today }: Props) {
     if (el) el.scrollLeft = el.scrollWidth   // 進來就停在最新一天
   }, [view])
 
-  if (!view) return null
+  // 資料不足時說明現況，不要整塊無聲消失——舊快照沒有 fut/nC/nP 這些欄位，
+  // 靜靜不顯示的話使用者只會看到卡片少一塊，無從判斷是壞了還是還沒到
+  if (!view) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-4 text-center text-[11px] text-slate-400">
+        PC Ratio 走勢需要至少兩個交易日的近月月選資料，稍後收盤更新後顯示
+      </div>
+    )
+  }
   const { s, W, X, Y, Y2, pMin, pMax, rMin, rMax } = view
 
   const scPts = s.map((p, i) => [X(i), Y(p.sc)] as [number, number])
