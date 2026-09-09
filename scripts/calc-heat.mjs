@@ -24,7 +24,7 @@
  */
 import { readFileSync, writeFileSync } from 'fs'
 import { join, dirname } from 'path'
-import { fileURLToPath } from 'url'
+import { fileURLToPath, pathToFileURL } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DATA_FILE = join(__dirname, '..', 'data', 'latest.json')
@@ -263,4 +263,10 @@ async function main() {
   console.log('[calc-heat] 完成')
 }
 
-main().catch(e => { console.error(e); process.exit(1) })
+// 只有直接執行才跑 main。被 import 時（heat-drift-report.mjs 要重用 compute /
+// extractFeatures / entrySignal 以確保與 production 算出同一組數字）不能有副作用。
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  main().catch(e => { console.error(e); process.exit(1) })
+}
+
+export { extractFeatures, compute, entrySignal, KEYS, Z_WINDOW, P_WINDOW }

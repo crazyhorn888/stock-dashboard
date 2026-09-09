@@ -1,0 +1,46 @@
+# 市場熱度 STATS 季度漂移檢查
+#
+# 為什麼是季度、而且是「報告」不是「自動更新」：
+#   2026-09-08 實測（資料截止在四個不同時間點重算）——風險側四年幾乎不動
+#   （強勢區 11/11/10/11%，排序從未翻轉），報酬側會隨多空循環漂但與基準同步，
+#   所以看「與基準的差距」就穩。真正該防的是悄悄過期，不是想重算時按不到。
+#   而且回測結論需要判斷：2026-09 那次改動每一項都要先確認不是資料源問題，
+#   自動更新會把 Phase2 Sheet 的欄位定義 bug 一起寫上卡片。
+#
+# 超過門檻時 job 會失敗（GitHub 預設會寄信），此時人工看報告決定要不要改
+# lib/marketHeat.ts；沒超過就綠燈，什麼都不用做。
+name: 市場熱度漂移檢查
+
+on:
+  schedule:
+    # 每季首日 01:00 UTC ＝ 台北 09:00
+    - cron: '0 1 1 1,4,7,10 *'
+  workflow_dispatch:
+    inputs:
+      as_of:
+        description: '只用這天以前的資料重算（YYYY-MM-DD，留空＝用全部）'
+        type: string
+        default: ''
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 腳本零依賴，只用內建 fetch，不必 npm install
+      - name: 重算 STATS 並與 lib/marketHeat.ts 比對
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          if [ -n "${{ inputs.as_of }}" ]; then
+            node scripts/heat-drift-report.mjs --as-of "${{ inputs.as_of }}"
+          else
+            node scripts/heat-drift-report.mjs
+          fi

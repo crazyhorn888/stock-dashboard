@@ -562,5 +562,20 @@
   "components/aftermarket/GlobalIndexLights.tsx::休市顯示": [
     "AC-GL-4：市場放假時日期要維持綠色並標「休 · MM/DD」，代表顯示的是放假前最後一個交易日，不是資料落後。resting 判斷 = closedDays 裡有比最新 K 更新的日期",
     "businessDaysBehind 的第三個參數（closedDays）不可省略，否則 2026-09-07 美國勞動節會讓美股四個指數全部誤亮橘燈"
+  ],
+  "scripts/calc-heat.mjs::可 import": [
+    "檔尾用 import.meta.url === pathToFileURL(process.argv[1]).href 守住 main()，被 import 時不能有副作用——heat-drift-report.mjs 要重用 compute/extractFeatures/entrySignal，才能保證漂移報告與 production 算出同一組數字（先前是用字串切原始碼 import，很脆）"
+  ],
+  "scripts/rebuild-heat-history.py::build_pairs": [
+    "對做分析用的 6 個特徵（rCallNet/rPutNet/fCallNet/fSC/fFutD5/fSpot5），給 docs/backlog.md A 節那三個候選訊號重驗用，不進 production",
+    "fFutD5 的分母必須是「全市場未平倉」（TaiwanFuturesDaily 的 trading_session=position 各契約 open_interest 加總）。換成三大法人淨額絕對值加總之類的代理，實測 r 只有 0.75，訊號③ 會重現不出來",
+    "散戶用零和反推（−三大法人淨額），與 Phase1 的 opt_tr.retail 算法一致"
+  ],
+  "scripts/heat-drift-report.mjs": [
+    "季度跑，只報告不自動改。門檻：風險側任一格差 ≥6pp（實測四年最大擺幅 8pp），報酬側看「與基準的差距」變化 ≥8pp——絕對值會隨多空循環漂（健康區 21→36%）但基準同步漂（24→33%），看相對差距才濾得掉",
+    "還會檢查風險排序有沒有翻轉：最安全的必須是強勢區，翻了代表 U 型結構變了，要重新設計而不只是改數字",
+    "解析 lib/marketHeat.ts 的 regex 失敗時要拋錯，不能默默跟空值比",
+    "樣本要 i + 62 < N，否則最近兩個月會被算成「沒賺到 10%」而低估報酬",
+    "--as-of 可回看當時的樣子，也是驗證警報邏輯的方式（--as-of 2023-09-30 應觸發 3 項）"
   ]
 }
