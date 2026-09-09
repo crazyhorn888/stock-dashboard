@@ -13,6 +13,8 @@ export interface TrackedContract {
   code: string
   exp: string        // 結算日
   listDate: string   // 掛牌日 ＝ 結算日往前 14 天
+  /** AC-OI-B14：這是「已結算、還在等下一檔掛牌」的契約，不是正常追蹤中的那檔 */
+  settled: boolean
 }
 
 export interface OICell {
@@ -53,20 +55,33 @@ export function isMonthlySettle(dateISO: string, kind: OIKind): boolean {
   return d.getUTCDay() === 3 && Math.floor((d.getUTCDate() - 1) / 7) + 1 === 3
 }
 
-/** 追蹤契約 ＝ 資料裡最近一檔「還沒結算」的同型週選 */
+/**
+ * 追蹤契約 ＝ 資料裡最近一檔「還沒結算」的同型週選。
+ *
+ * AC-OI-B14：結算日當天沒有任何未結算契約——舊的今天到期、新的要等當天盤後
+ * （約 14:37）那班抓到才進資料。這段空窗期若回 null，整張卡會消失，而且每個
+ * 週三／週五選結算日都會發生。所以找不到時退回最近一檔「已結算」的同型週選，
+ * 標記 settled 讓 UI 說明現在的狀態；當天盤後新契約進來後自動切回正常追蹤。
+ */
 export function trackContract(
   snap: OptionsOISnapshot, kind: OIKind, today: string,
 ): TrackedContract | null {
   let best: { code: string; exp: string } | null = null
+  let settled: { code: string; exp: string } | null = null
   for (const [date, day] of Object.entries(snap.days)) {
     if (date > today) continue
     for (const [code, rec] of Object.entries(day)) {
-      if (!isOurs(code, kind) || rec.exp <= today) continue
-      if (!best || rec.exp < best.exp) best = { code, exp: rec.exp }
+      if (!isOurs(code, kind)) continue
+      if (rec.exp > today) {
+        if (!best || rec.exp < best.exp) best = { code, exp: rec.exp }
+      } else if (!settled || rec.exp > settled.exp) {
+        settled = { code, exp: rec.exp }   // 已結算的取最近一檔
+      }
     }
   }
-  if (!best) return null
-  return { code: best.code, exp: best.exp, listDate: shift(best.exp, -14) }
+  const pick = best ?? settled
+  if (!pick) return null
+  return { code: pick.code, exp: pick.exp, listDate: shift(pick.exp, -14), settled: !best }
 }
 
 /** 某日掛牌中、到期晚於追蹤契約的最近一檔同型週選（AC-OI-B7 的右上角徽章） */

@@ -41,11 +41,13 @@ export default function OptionsOICard() {
     setMode('main')
   }, [snap, track, today])
 
-  if (!snap || !track || !rows.length) return null
+  // AC-OI-B15：月選與週選結算無關，不得被 track = null 一起隱藏
+  if (!snap) return null
 
-  const prev = selected === track.listDate ? prevContract(snap, kind, track.listDate, today) : null
-  const nextCode = selected ? nextContractOn(snap, kind, selected, track.exp) : null
-  const detailCode = mode === 'next' && nextCode ? nextCode : track.code
+  const hasWeek = !!track && rows.length > 0
+  const prev = track && selected === track.listDate ? prevContract(snap, kind, track.listDate, today) : null
+  const nextCode = track && selected ? nextContractOn(snap, kind, selected, track.exp) : null
+  const detailCode = mode === 'next' && nextCode ? nextCode : track?.code ?? ''
   const detailRec = selected ? snap.days[selected]?.[detailCode] ?? null : null
   const { date: monthDate, items: months } = monthlyContracts(snap, today)
   const monthPick = mode === 'm0' ? months[0] : mode === 'm1' ? months[1] : null
@@ -70,7 +72,12 @@ export default function OptionsOICard() {
             className="w-4 h-4 rounded-full border border-slate-300 text-slate-400 text-[10px] leading-none hover:border-blue-500 hover:text-blue-600"
           >?</button>
         </div>
-        <div className="flex gap-1">
+        <div className="flex items-center gap-1">
+          {track?.settled && (
+            <span className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5 whitespace-nowrap">
+              已結算 · 等下一檔掛牌
+            </span>
+          )}
           {(['wed', 'fri'] as const).map(k => (
             <button
               key={k}
@@ -85,6 +92,13 @@ export default function OptionsOICard() {
         </div>
       </div>
 
+      {!hasWeek && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-4 text-[11px] text-slate-500 text-center">
+          {kind === 'wed' ? '週三選' : '週五選'}目前沒有可追蹤的契約，收盤後新契約掛牌即會恢復。
+        </div>
+      )}
+
+      {hasWeek && <>
       {/* 日曆：三行＝掛牌週／中間週／結算週 */}
       <table className="w-full table-fixed border-separate border-spacing-[2px]">
         <thead>
@@ -193,6 +207,7 @@ export default function OptionsOICard() {
           <div className="text-[11px] text-slate-400">尚無記錄</div>
         )}
       </div>
+      </>}
 
       {/* 月選（AC-OI-B9） */}
       {months.length > 0 && (
