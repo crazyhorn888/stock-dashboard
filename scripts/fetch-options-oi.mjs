@@ -27,7 +27,8 @@ const FUT_URL = 'https://www.taifex.com.tw/cht/3/futDailyMarketReport'
 const COMMODITY = 'TXO'
 const BAND = 0.05      // AC-PCR-4：支撐壓力只認現價 ±5% 內的最大 OI
 const TOP_N = 3        // AC-OI-A4：每個到期別只留 Call/Put 各前三大
-const KEEP_DAYS = 60   // AC-OI-A7：保留 60 個交易日滾動（約 60 KB）
+const KEEP_DAYS = 60   // AC-OI-A7：保留 60 個交易日滾動
+const GAP_FIX_MAX = 3  // AC-OI-A11：一班最多自動補幾個缺漏日，避免單次 run 過長
 
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
@@ -313,6 +314,37 @@ async function upload(payload) {
   if (!res.ok) throw new Error(`上傳失敗 HTTP ${res.status}：${await res.text()}`)
 }
 
+/**
+ * AC-OI-A11：抓取失敗偵測。
+ *
+ * 「平日沒資料」不等於漏抓——國定假日與颱風假也是平日沒交易（實例：2026-06-19
+ * 端午、2026-07-10）。要分辨兩者只能對照真實的交易日曆，這裡用大盤 K 線
+ * （latest.json 的 indexHistory）當權威來源：有 K 棒就代表那天有開盤。
+ *
+ * 排除今天——大盤 K 棒約 13:57 就有，OI 要等 14:37，當天有 K 沒 OI 是正常時間差。
+ */
+async function findGaps(existing) {
+  if (!SUPABASE_URL) return []
+  let tradingDays
+  try {
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/public/snapshots/latest.json`, { cache: 'no-store' })
+    if (!res.ok) return []
+    const snap = await res.json()
+    tradingDays = (snap.indexHistory ?? []).map(r => r?.date).filter(Boolean)
+  } catch {
+    return []      // 拿不到日曆就不判斷，不要因為這個附加檢查讓主流程失敗
+  }
+  if (!tradingDays.length) return []
+
+  const have = Object.keys(existing.days)
+  if (!have.length) return []
+  const from = have.sort()[0]
+  const today = todayTPE()
+  return tradingDays
+    .filter(d => d >= from && d < today && !existing.days[d])
+    .sort()
+}
+
 // ── 主流程 ──────────────────────────────────────────────────
 
 async function main() {
@@ -335,9 +367,15 @@ async function main() {
       cursor = shiftDate(cursor, -1)
     }
   } else if (existing.days[today]) {
-    // AC-OI-A8 早退：當日已有資料，一次 HTTP 判斷後就結束，多排幾班成本趨近 0
-    console.log(`[oi] ${today} 已有資料（${Object.keys(existing.days).length} 天在檔），早退`)
-    return
+    // AC-OI-A8 早退：當日已有資料，一次 HTTP 判斷後就結束，多排幾班成本趨近 0。
+    // 早退前先補上歷史缺漏——不然缺的那天永遠不會有人回頭處理
+    const gaps = await findGaps(existing)
+    if (!gaps.length) {
+      console.log(`[oi] ${today} 已有資料（${Object.keys(existing.days).length} 天在檔），早退`)
+      return
+    }
+    console.log(`[oi] ⚠️ 偵測到 ${gaps.length} 個交易日缺資料：${gaps.join(' ')}`)
+    targets.push(...gaps.slice(-GAP_FIX_MAX))   // 一次最多補幾天，避免單班跑太久
   } else if (!isWeekend(today)) {
     targets.push(today)
   } else {
