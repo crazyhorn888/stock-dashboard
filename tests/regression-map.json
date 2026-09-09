@@ -284,7 +284,8 @@
     "2026-07-12: P/E 資料源 = TWSE BWIBBU_ALL + TPEX peratio_analysis 官方免費端點（Step 3c 全市場更新，不受 sdaIsToday 限制、不設 changed 旗標）。FinMind 已整個移除——參數名寫錯（date→start_date）每次 400 從未成功過，修正後又發現 TaiwanStockPER 需付費等級。官方本益比口徑=收盤÷最近四季EPS合計；EPS 顯示值由 close/PE 反推；虧損公司官方無 P/E → null 顯示「—」。不要再引入 FinMind"
   ],
   "components/shared/StockRowsTable.tsx": [
-    "2026-07-12: 個股列表統一表格——StockTable 與 SectorPanel 共用（同欄位/同排序/同格式），rows 由 page.tsx 統一產生（rowsByCode）。法人四欄絕對值排序；上櫃股投信/自營/合計顯示「—」（T86 不涵蓋）。產業欄保留（曾短暫移除，Franky 確認資料修復後加回）。改欄位時兩個使用端會同時變，這是刻意設計"
+    "2026-07-12: 個股列表統一表格——StockTable 與 SectorPanel 共用（同欄位/同排序/同格式），rows 由 page.tsx 統一產生（rowsByCode）。法人四欄絕對值排序；上櫃股投信/自營/合計顯示「—」（T86 不涵蓋）。產業欄保留（曾短暫移除，Franky 確認資料修復後加回）。改欄位時兩個使用端會同時變，這是刻意設計",
+    "AC-F1-g（2026-09-08）：NumberField 的 ± 鈕是行動裝置唯一能輸入負值的路徑——type=\"number\" inputMode=\"decimal\" 在 iOS 叫出的鍵盤沒有負號鍵（驗證正則 /^-?\\d*\\.?\\d*$/ 本身支援負號，2026-07-16 那次修復沒問題，是鍵盤的限制）。拿掉這顆鈕等於讓「距N高 預設 −30」在手機上永久改不了。⚠️ 這顆 button 位在 <label> 內：HTML 規範不會把 label 的點擊轉發給 interactive content，所以不會誤觸勾選框，改成非 button 元素則會"
   ],
   "scripts/fetch-daily.mjs::fetchTWSEPrices_graceful": [
     "2026-07-12: TWSE openapi 有上午維護窗（台北 ~11:30-12:00 整站回 HTML 而非 JSON）。fetchTWSEPrices 失敗回空陣列不拋錯（sdaIsToday 自然 false、股價沿用快照），比照外資/FMTQIK 的 graceful 處理。Promise.all 裡的每個資料源呼叫都必須有自己的 catch——新增資料源時比照辦理，否則單一來源維護窗會炸掉整個 run 寄失敗信"
@@ -361,7 +362,8 @@
     "F1 選股器：localStorage 持久化 + CustomEvent 跨元件同步；缺值一律視為不符合（不當 0）",
     "2026-09-02 新增兩個需 ohlc.json 的條件：volume（kind='bars-gt'，當日量能>X張）與 consolidation（kind='pattern'，整理平台）。BARS_FILTER_IDS 是「需要 K 線資料」的清單，needsBars 讓外層決定要不要 lazy fetch",
     "filterRows(rows, bars?)：勾了需 bars 的條件但 bars 還沒到 → 直接回傳全部 rows 不套用（AC-CS-1），避免表格瞬間清空",
-    "ConsolidationParams 混了數字與布林：CONSOLIDATION_FIELDS（數字，NumberField）與 CONSOLIDATION_FLAGS（布林，checkbox）分兩張表，setter 也分 setConsolidationParam / toggleConsolidationFlag，型別由 ConsolidationNumKey/BoolKey 收斂。新增參數要挑對應那張表"
+    "ConsolidationParams 混了數字與布林：CONSOLIDATION_FIELDS（數字，NumberField）與 CONSOLIDATION_FLAGS（布林，checkbox）分兩張表，setter 也分 setConsolidationParam / toggleConsolidationFlag，型別由 ConsolidationNumKey/BoolKey 收斂。新增參數要挑對應那張表",
+    "AC-IC-3（2026-09-08 反轉）：belowInstCost 的 kind 是 'inst-cost-gte'，門檻語意為「折價幅度 ≥ X%」（正值＝比法人成本便宜幾 %），判斷式 -gapToCost() >= value。舊語意是「距成本 ≤ X%」（負值），反轉理由是 iOS 數字鍵盤沒有負號鍵，負值門檻在手機上打不出來。⚠️ FilterState.icv 是這個語意的版本標記：getState 讀到 icv !== 2 就把 belowInstCost 取絕對值遷移一次——絕不可改成每次載入都取絕對值，那會讓使用者之後刻意輸入的負值被永久翻正。已實測新舊公式在 5/10/20/60 四個窗口、五個門檻下篩出的是完全相同的股票集合"
   ],
   "components/shared/StockRowsTable.tsx::barsLazyLoad": [
     "勾選整理平台/量能條件才 fetch ohlc.json（1.4MB，module-level cache）；載入中顯示提示且不套用篩選；失敗則自動取消勾選那兩個條件，否則會永遠卡在載入中",
@@ -468,7 +470,8 @@
     "⚠️ nDays 一定要由呼叫端傳入頁面 N。2026-09-04 事故：兩個呼叫點都沒傳，計算一直吃預設 100，但卡片文字用 N 顯示『從 N 日低點起算』，導致市場條件頁的乖離卡不亮、高點反轉卡卻亮（N=30 時差距 2.35%，100 日時 13.13%）。新增呼叫點務必傳 n。"
   ],
   "components/aftermarket/SignalHelpModal.tsx": [
-    "AC-PB-6/7：只放四張卡共用的基礎（亮燈規則、相對值原則）。各指標自己的公式與 Z 算法一律跟著卡片走——放這裡會四張卡重複四次。改動時確認沒有把個別指標的說明搬回來。"
+    "AC-PB-6/7：只放四張卡共用的基礎（亮燈規則、相對值原則）。各指標自己的公式與 Z 算法一律跟著卡片走——放這裡會四張卡重複四次。改動時確認沒有把個別指標的說明搬回來。",
+    "AC-IC-7（2026-09-08）：第 ③ 段列出 windowForN 的完整分段（N≤7→5日…>90→120日）。⚠️ 這份對照表是 lib/fetchInstCost.ts::windowForN 的複寫，改那支函式必須同步改這裡，否則說明會騙人"
   ],
   "components/aftermarket/MarginThermometer.tsx": [
     "AC-PB-3/6：溫度計本身 + 可點開的公式 modal。刻度 145~195、門檻 175/165/155 是依 130 天實測分布訂的，改門檻前要重跑分布，否則會回到『九成日子都綠燈』的狀態。"

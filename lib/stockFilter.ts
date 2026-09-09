@@ -59,12 +59,14 @@ interface PatternDef {
   kind: 'pattern'
 }
 
-// AC-IC-3：低於法人成本。資料來自 inst-cost.json 不是 StockRow 欄位；
-// 窗口跟著頁面 N 走（windowForN），門檻是「距成本 ≤ X%」，預設 0 = 只要低於成本
+// AC-IC-3（2026-09-08 修訂）：低於法人成本。資料來自 inst-cost.json 不是 StockRow 欄位；
+// 窗口跟著頁面 N 走（windowForN）。門檻語意是「折價幅度 ≥ X%」，X 為正值＝比成本便宜幾 %，
+// 預設 0 = 只要低於成本。反轉自舊版的「距成本 ≤ X%」——舊版有意義的範圍是 0～−10，
+// 但 iOS 的數字鍵盤沒有負號鍵，那在手機上是一條打不出來的條件。
 interface InstCostDef {
   id: 'belowInstCost'
   label: string
-  kind: 'inst-cost-lt'
+  kind: 'inst-cost-gte'
   unit: string
   defaultValue: number
 }
@@ -79,7 +81,7 @@ export const CONDITION_DEFS: ConditionDef[] = [
   { id: 'instTotal', label: '三大法人合計', kind: 'gt', field: 'instTotal', unit: '億', defaultValue: 0 },
   { id: 'volume', label: '當日量能', kind: 'bars-gt', unit: '張', defaultValue: 1000 },
   { id: 'consolidation', label: '整理平台', kind: 'pattern' },
-  { id: 'belowInstCost', label: '低於法人成本', kind: 'inst-cost-lt', unit: '%', defaultValue: 0 },
+  { id: 'belowInstCost', label: '低於法人成本', kind: 'inst-cost-gte', unit: '%', defaultValue: 0 },
 ]
 
 // ConsolidationParams 的數字欄位／布林欄位（型別上分開，兩種 UI 控件不共用 setter）
@@ -119,7 +121,11 @@ interface FilterState {
   min: Record<FilterId, number>
   max: Record<FilterId, number>
   consolidation: ConsolidationParams
+  /** AC-IC-3a：belowInstCost 的語意版本。2 = 折價幅度（正值）；缺值或 1 = 舊的距成本（負值） */
+  icv: number
 }
+
+const ICV_CURRENT = 2
 
 function defaultState(): FilterState {
   const enabled = {} as Record<FilterId, boolean>
@@ -131,7 +137,7 @@ function defaultState(): FilterState {
     if (def.kind === 'range') { min[def.id] = def.defaultMin; max[def.id] = def.defaultMax }
     else if (def.kind !== 'pattern') value[def.id] = def.defaultValue
   }
-  return { enabled, value, min, max, consolidation: { ...CONSOLIDATION_DEFAULTS } }
+  return { enabled, value, min, max, consolidation: { ...CONSOLIDATION_DEFAULTS }, icv: ICV_CURRENT }
 }
 
 function getState(): FilterState {
@@ -141,12 +147,17 @@ function getState(): FilterState {
     if (!raw) return defaultState()
     const parsed = JSON.parse(raw)
     const base = defaultState()
+    const value = { ...base.value, ...parsed.value }
+    // AC-IC-3a：舊版存的是「距成本 ≤ X%」的負值，新版是「折價幅度 ≥ X%」的正值。
+    // 取絕對值即為對應的新值（舊 −5 → 新 5）。只轉一次，之後使用者刻意輸入的負值不再被翻。
+    if (parsed.icv !== ICV_CURRENT) value.belowInstCost = Math.abs(value.belowInstCost)
     return {
       enabled: { ...base.enabled, ...parsed.enabled },
-      value: { ...base.value, ...parsed.value },
+      value,
       min: { ...base.min, ...parsed.min },
       max: { ...base.max, ...parsed.max },
       consolidation: { ...base.consolidation, ...parsed.consolidation },
+      icv: ICV_CURRENT,
     }
   } catch {
     return defaultState()
@@ -166,11 +177,12 @@ function matches(
   instCost?: InstCostSnapshot | null,
   nDays = 100,
 ): boolean {
-  // AC-IC-3：距成本 ≤ 門檻。窗口跟著頁面 N；成本缺值視為不符合，不當 0
-  if (def.kind === 'inst-cost-lt') {
+  // AC-IC-3：折價幅度 ≥ 門檻（折價幅度 ＝ −距成本%，正值代表比成本便宜）。
+  // 窗口跟著頁面 N；成本缺值視為不符合，不當 0
+  if (def.kind === 'inst-cost-gte') {
     const c = costOf(instCost ?? null, row.code, windowForN(nDays))
     const gap = gapToCost(row.close, c)
-    return gap != null && gap <= state.value[def.id]
+    return gap != null && -gap >= state.value[def.id]
   }
   // 需要 K 線的兩個條件：資料沒到齊就視為不符合（缺值不當 0）
   if (def.kind === 'pattern') {

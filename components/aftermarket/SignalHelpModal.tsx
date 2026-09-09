@@ -43,7 +43,7 @@ export default function SignalHelpModal({ nDays, onClose }: Props) {
           <button onClick={onClose} className="text-slate-400 text-lg leading-none px-1">✕</button>
         </div>
         <p className="text-[11px] text-slate-400 mb-3 leading-relaxed">
-          下面兩項是所有卡片共用的規則。<b className="text-slate-500">各指標自己的公式與 Z 的算法，點該張卡片就會展開。</b>
+          下面三項是所有卡片共用的規則。<b className="text-slate-500">各指標自己的公式與 Z 的算法，點該張卡片就會展開。</b>
         </p>
 
         {/* 1. 亮燈規則 */}
@@ -63,6 +63,22 @@ export default function SignalHelpModal({ nDays, onClose }: Props) {
           不是同一回事。Z-Score 與百分比會自動跟著市場規模調整，不需要定期回來調參。
           <br />
           融資乖離的 5%／7% 同理，那是相對於<b>{nDays} 日高低點</b>的百分比，也不受市值影響。
+        </Block>
+
+        {/* 3. N 值管到哪些地方（AC-IC-7） */}
+        <div className="text-[11px] font-bold text-slate-500 mb-1.5 mt-3">③ N 值管到哪些地方</div>
+        <Block title="法人成本的累積窗口沒有獨立設定，跟著 N 換算">
+          個股清單的「成本／距成本%」兩欄，以及選股條件「低於法人成本」，用的窗口都由頁面
+          N（目前 <b>{nDays}</b>）換算而來，不另設開關——改 N 就等於換窗口。
+          <br />
+          <span className="inline-block mt-1 font-mono text-slate-400">
+            N≤7 → 5 日　N≤15 → 10 日　N≤40 → 20 日　N≤90 → 60 日　N&gt;90 → 120 日
+          </span>
+          <br />
+          分段是刻意的：低於 5 日樣本太少，單日一筆大額買超就把成本帶偏；超過 120 日則早已
+          出場的舊部位還被算進來。序列累積天數不足該窗口時，欄位標示「累積中」而非顯示半套數字。
+          <br />
+          N 同時也管：距N高／距N低兩欄與其篩選條件、融資維持率的成本指數回看期（夾在 20~120）。
         </Block>
 
         <p className="text-[10px] text-slate-400 leading-relaxed mt-3">

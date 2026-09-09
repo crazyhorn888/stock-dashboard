@@ -128,6 +128,8 @@ export default function StockRowsTable({
         matchedCount={filteredRows.length}
         barsLoading={barsLoading}
         barsError={barsError}
+        costWindow={costWindow}
+        costAccruing={costAccruing}
       />
       <table className="w-full text-xs border-collapse" style={{ minWidth: 760 }}>
         <thead>
@@ -254,9 +256,14 @@ interface FilterPanelProps {
   matchedCount: number
   barsLoading: boolean
   barsError: string | null
+  /** AC-IC-7：法人成本當下實際窗口，直接標在條件旁，不必開 Modal 才看得到 */
+  costWindow: number
+  costAccruing: boolean
 }
 
-function StockFilterPanel({ open, onToggleOpen, filter, matchedCount, barsLoading, barsError }: FilterPanelProps) {
+function StockFilterPanel({
+  open, onToggleOpen, filter, matchedCount, barsLoading, barsError, costWindow, costAccruing,
+}: FilterPanelProps) {
   const { state, defs, toggle, setValue, setRange, reset, activeCount, setConsolidationParam, toggleConsolidationFlag } = filter
   const [advOpen, setAdvOpen] = useState(false)
 
@@ -264,7 +271,7 @@ function StockFilterPanel({ open, onToggleOpen, filter, matchedCount, barsLoadin
     const def = defs.find(d => d.id === id)!
     if (def.kind === 'lt') return '<'
     if (def.kind === 'range') return '~'
-    if (def.kind === 'inst-cost-lt') return '≤'   // AC-IC-3：距成本 ≤ 門檻
+    if (def.kind === 'inst-cost-gte') return '≥'   // AC-IC-3：折價幅度 ≥ 門檻
     return '>'
   }
 
@@ -389,6 +396,12 @@ function StockFilterPanel({ open, onToggleOpen, filter, matchedCount, barsLoadin
                   <span>{def.unit}</span>
                 </span>
               )}
+              {/* AC-IC-7：成本窗口不是獨立設定，是跟著頁面 N 換算出來的 */}
+              {def.kind === 'inst-cost-gte' && (
+                <span className="text-[10px] text-slate-400">
+                  比成本便宜幾 %；窗口跟頁面 N 走，目前 {costAccruing ? '累積中' : `${costWindow} 日`}
+                </span>
+              )}
             </label>
           ))}
         </div>
@@ -424,14 +437,33 @@ function NumberField({ value, onCommit }: { value: number; onCommit: (v: number)
     }
   }
 
+  // AC-F1-g：iOS 的數字鍵盤沒有負號鍵，負值只能靠這顆鈕翻。
+  // 不改 inputMode 為 text——那會叫出整個英文鍵盤，代價比這顆鈕大。
+  function flipSign() {
+    const n = Number(text)
+    const next = text === '' || Number.isNaN(n) ? -value : -n
+    setText(String(next))
+    onCommit(next)
+  }
+
   return (
-    <input
-      type="number"
-      inputMode="decimal"
-      value={text}
-      onChange={handleChange}
-      onBlur={handleBlur}
-      className="w-16 border border-slate-200 rounded px-1.5 py-0.5"
-    />
+    <span className="inline-flex items-center">
+      <button
+        type="button"
+        onClick={flipSign}
+        aria-label="切換正負號"
+        className="border border-slate-200 border-r-0 rounded-l px-1 py-0.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+      >
+        ±
+      </button>
+      <input
+        type="number"
+        inputMode="decimal"
+        value={text}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        className="w-16 border border-slate-200 rounded-r px-1.5 py-0.5"
+      />
+    </span>
   )
 }
