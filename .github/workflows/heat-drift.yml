@@ -32,7 +32,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       # 腳本零依賴，只用內建 fetch，不必 npm install
       - name: 重算 STATS 並與 lib/marketHeat.ts 比對
