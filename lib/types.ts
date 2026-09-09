@@ -297,6 +297,18 @@ export interface OptionsOIContract {
   // 掛牌首日沒有昨日資料，此時等同當日 OI 本身；全無增加時欄位不存在。
   dC?: [number, number][]
   dP?: [number, number][]
+
+  // ── AC-PCR（2026-09-09）：PC Ratio 與支撐壓力通道 ──
+  /** 該契約 Call／Put 總 OI。PC Ratio = oiP / oiC；全部契約加總等於期交所官方公布值 */
+  oiC?: number
+  oiP?: number
+  /** 現價（期貨收盤）±5% 內的最大 OI 位置 [履約價, 口數]。
+   *  不用全域 Top1——它有四分之一的日子落在離現價 20% 以外的深價外保單 */
+  nC?: [number, number]
+  nP?: [number, number]
+  /** ±5% 內的當日淨增加前三大（先框範圍、再排前三大） */
+  dnC?: [number, number][]
+  dnP?: [number, number][]
 }
 
 export interface OptionsOISnapshot {
@@ -304,4 +316,6 @@ export interface OptionsOISnapshot {
   days: Record<string, Record<string, OptionsOIContract>>
   /** 各契約的最後結算日與最後結算價（期交所 optIndxFSP） */
   settle: Record<string, { date: string; fsp: number }>
+  /** AC-PCR-3：每日期貨近月收盤，用來框 ±5% 範圍；舊快照沒有這個欄位 */
+  fut?: Record<string, number>
 }

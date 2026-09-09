@@ -23,7 +23,9 @@ import { pathToFileURL } from 'url'
 
 const REPORT_URL = 'https://www.taifex.com.tw/cht/3/optDailyMarketReport'
 const FSP_URL = 'https://www.taifex.com.tw/cht/5/optIndxFSP'
+const FUT_URL = 'https://www.taifex.com.tw/cht/3/futDailyMarketReport'
 const COMMODITY = 'TXO'
+const BAND = 0.05      // AC-PCR-4：支撐壓力只認現價 ±5% 內的最大 OI
 const TOP_N = 3        // AC-OI-A4：每個到期別只留 Call/Put 各前三大
 const KEEP_DAYS = 60   // AC-OI-A7：保留 60 個交易日滾動（約 60 KB）
 
@@ -174,8 +176,14 @@ const topN = map => [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, TOP_
  * 跟累積量是兩件事（累積看的是整段佈局，當日看的是今天的動作）。
  * 掛牌首日沒有昨日資料，此時淨增加就等於當日 OI 本身。
  */
-function compress(curCode, prevCode) {
+function compress(curCode, prevCode, fut = null) {
   const out = { exp: curCode.exp, C: topN(curCode.C), P: topN(curCode.P) }
+
+  // AC-PCR-2：該契約 Call/Put 總 OI。PC Ratio = oiP / oiC；全部契約加總後
+  // 必須等於期交所 pcRatio 端點公布的數字（2026-09-08 已逐字驗證）
+  out.oiC = [...curCode.C.values()].reduce((a, b) => a + b, 0)
+  out.oiP = [...curCode.P.values()].reduce((a, b) => a + b, 0)
+
   for (const key of ['C', 'P']) {
     const delta = new Map()
     for (const [strike, oi] of curCode[key]) {
@@ -186,16 +194,64 @@ function compress(curCode, prevCode) {
     const top = topN(delta)
     if (top.length) out[key === 'C' ? 'dC' : 'dP'] = top
   }
+
+  // AC-PCR-4/5：±5% 內的最大 OI 位置與當日淨增加前三大。
+  // 順序必須是「先框範圍、再排前三大」——反過來（先取全域前三大再砍範圍外）
+  // 會讓大量天數變空的，因為月選的 Top1 常落在離現價 20% 以上的深價外保單
+  if (fut > 0) {
+    const lo = fut * (1 - BAND), hi = fut * (1 + BAND)
+    for (const key of ['C', 'P']) {
+      const band = new Map(), delta = new Map()
+      for (const [strike, oi] of curCode[key]) {
+        if (strike < lo || strike > hi) continue
+        band.set(strike, oi)
+        const before = prevCode?.[key]?.get(strike) ?? 0
+        if (oi - before > 0) delta.set(strike, oi - before)
+      }
+      const near = topN(band)[0]
+      if (near) out[key === 'C' ? 'nC' : 'nP'] = near
+      const inc = topN(delta)
+      if (inc.length) out[key === 'C' ? 'dnC' : 'dnP'] = inc
+    }
+  }
   return out
 }
 
 /** 對外：抓一天並壓縮；prevRaw 給前一交易日的完整資料以算當日淨增加 */
-export async function fetchOptionsOI(dateISO, prevRaw = null) {
+export async function fetchOptionsOI(dateISO, prevRaw = null, fut = null) {
   const cur = await fetchRaw(dateISO)
   if (!cur) return null
+  // ±5% 那組欄位只有「近月月選」用得到（AC-PCR-13：圖表只畫它），其餘 8~9 個
+  // 契約算了也只是佔體積——全部都給的話 58 天會從 55 KB 漲到 166 KB
+  const monthly = Object.keys(cur)
+    .filter(c => /^\d{6}$/.test(c) && cur[c].exp >= dateISO)
+    .sort()[0]
   const out = {}
-  for (const [code, rec] of Object.entries(cur)) out[code] = compress(rec, prevRaw?.[code])
+  for (const [code, rec] of Object.entries(cur)) {
+    out[code] = compress(rec, prevRaw?.[code], code === monthly ? fut : null)
+  }
   return out
+}
+
+/**
+ * AC-PCR-3：期貨近月收盤。用途是框出 ±5% 的範圍，不畫在圖上
+ *（與大盤收盤幾乎重疊）。抓不到回 null，該日就沒有 nC/nP/dnC/dnP，
+ * 其餘欄位照常寫入，不影響既有功能。
+ */
+export async function fetchFutClose(dateISO) {
+  const d = dateISO.replace(/-/g, '/')
+  const html = await postForm(FUT_URL, {
+    queryDate: d, queryStartDate: d, queryEndDate: d,
+    commodity_id: 'TX', queryType: '2', marketCode: '0', MarketCode: '0',
+  }, FUT_URL)
+  const table = parseTable(html)
+  if (!table) return null
+  // AC-OI-A3 同一條紀律：一律用欄位名稱比對，不用位置索引
+  const iCode = colIndex(table.columns, '到期月份')
+  const iClose = colIndex(table.columns, '最後成交價')
+  if (iCode === -1 || iClose === -1) return null
+  const near = table.rows.find(r => /^\d{6}$/.test((r[iCode] || '').trim()))
+  return near ? toNum(near[iClose]) : null
 }
 
 export { fetchRaw }
@@ -265,9 +321,10 @@ async function main() {
   const rebuild = !!process.env.OPTIONS_OI_REBUILD
   const today = todayTPE()
 
-  const existing = (await loadExisting()) ?? { updatedAt: null, days: {}, settle: {} }
+  const existing = (await loadExisting()) ?? { updatedAt: null, days: {}, settle: {}, fut: {} }
   existing.days ??= {}
   existing.settle ??= {}
+  existing.fut ??= {}      // AC-PCR-3：每日期貨近月收盤，供 ±5% 與圖表對照用
 
   // 要補的日期：回補模式往回掃交易日，平日模式只看今天
   const targets = []
@@ -302,9 +359,17 @@ async function main() {
       if (pd) await new Promise(r => setTimeout(r, 500))
     }
 
+    // 先取期貨收盤才能框 ±5%；抓不到就只是少了 nC/nP/dnC/dnP，其餘照寫
+    let fut = null
+    try {
+      fut = await fetchFutClose(date)
+    } catch (e) {
+      console.log(`[oi] ${date} 期貨收盤抓取失敗（不影響 OI 主資料）：${e.message}`)
+    }
+
     let rec
     try {
-      rec = await fetchOptionsOI(date, prevRaw)
+      rec = await fetchOptionsOI(date, prevRaw, fut)
     } catch (e) {
       console.log(`[oi] ${date} 抓取失敗：${e.message}`)
       continue
@@ -314,8 +379,14 @@ async function main() {
       continue
     }
     existing.days[date] = rec
+    if (fut > 0) existing.fut[date] = fut
     added++
-    console.log(`[oi] ${date} 已記錄 ${Object.keys(rec).length} 個到期別`)
+    const pcr = (() => {
+      const C = Object.values(rec).reduce((a, r) => a + (r.oiC ?? 0), 0)
+      const P = Object.values(rec).reduce((a, r) => a + (r.oiP ?? 0), 0)
+      return C ? `　全市場 PCR ${(P / C * 100).toFixed(2)}%（Put ${P.toLocaleString()}／Call ${C.toLocaleString()}）` : ''
+    })()
+    console.log(`[oi] ${date} 已記錄 ${Object.keys(rec).length} 個到期別　期貨 ${fut ?? '—'}${pcr}`)
 
     // 這一天處理完，它的完整資料就是下一天的「前一日」
     prevRaw = await fetchRaw(date).catch(() => null)
@@ -339,7 +410,10 @@ async function main() {
 
   // AC-OI-A7：只留最近 KEEP_DAYS 個交易日
   if (dates.length > KEEP_DAYS) {
-    for (const d of dates.slice(0, dates.length - KEEP_DAYS)) delete existing.days[d]
+    for (const d of dates.slice(0, dates.length - KEEP_DAYS)) {
+      delete existing.days[d]
+      delete existing.fut[d]     // fut 與 days 同生命週期，漏刪會無限累積
+    }
   }
 
   existing.updatedAt = new Date().toISOString()

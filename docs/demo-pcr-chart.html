@@ -1,0 +1,347 @@
+<title>選擇權 PC Ratio 折線圖</title>
+<style>
+:root{
+  --bg:#f1f5f9; --card:#ffffff; --ink:#0f172a; --ink2:#475569; --ink3:#94a3b8;
+  --line:#e2e8f0; --line2:#cbd5e1; --blue:#2563eb; --blue-bg:#eff6ff;
+  --red:#dc2626; --green:#059669; --amber:#d97706; --amber-bg:#fffbeb;
+  --grid:#e8edf3; --twii:#7c3aed; --band:rgba(37,99,235,.07);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0b1120; --card:#131c2e; --ink:#e8eef8; --ink2:#a5b3c8; --ink3:#6b7c94;
+  --line:#25314a; --line2:#35435f; --blue:#60a5fa; --blue-bg:#16233c;
+  --red:#f87171; --green:#34d399; --amber:#fbbf24; --amber-bg:#2a2211;
+  --grid:#1e2a40; --twii:#a78bfa; --band:rgba(96,165,250,.10);
+}}
+:root[data-theme="dark"]{
+  --bg:#0b1120; --card:#131c2e; --ink:#e8eef8; --ink2:#a5b3c8; --ink3:#6b7c94;
+  --line:#25314a; --line2:#35435f; --blue:#60a5fa; --blue-bg:#16233c;
+  --red:#f87171; --green:#34d399; --amber:#fbbf24; --amber-bg:#2a2211;
+  --grid:#1e2a40; --twii:#a78bfa; --band:rgba(96,165,250,.10);
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Noto Sans TC",sans-serif;
+  margin:0;padding:14px;display:flex;flex-direction:column;align-items:center;gap:12px}
+.wrap{width:100%;max-width:430px;display:flex;flex-direction:column;gap:12px}
+.banner{background:var(--amber-bg);border:1px solid var(--amber);border-radius:10px;
+  padding:8px 11px;font-size:11.5px;color:var(--amber);line-height:1.6}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:13px 14px;display:flex;flex-direction:column;gap:9px;
+  box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.hdr{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ttl{font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px}
+.q{width:16px;height:16px;border-radius:50%;border:1px solid var(--line2);
+  background:none;color:var(--ink3);font-size:10px;line-height:1;cursor:pointer;font-family:inherit}
+.q:hover{border-color:var(--blue);color:var(--blue)}
+.seg{display:flex;gap:4px}
+.pill{font-size:11px;padding:2px 9px;border-radius:99px;border:1px solid var(--line);
+  background:var(--card);color:var(--ink2);cursor:pointer;font-family:inherit}
+.pill.on{background:var(--ink);color:var(--card);border-color:var(--ink);font-weight:600}
+table{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:2px}
+th{font-size:10px;font-weight:600;color:var(--ink3);padding-bottom:2px}
+td{border:1px solid transparent;border-radius:6px;padding:3px 2px;vertical-align:top;height:40px}
+.c-out{background:var(--bg)}
+.c-has{background:var(--blue-bg);border-color:var(--blue)}
+.c-today{background:var(--amber-bg);border-color:var(--amber)}
+.c-plain{background:var(--card);border-color:var(--line)}
+.dt{font-size:10px;color:var(--ink3);display:flex;justify-content:space-between;align-items:center}
+.badge{font-size:8.5px;background:var(--ink3);color:var(--card);border-radius:3px;padding:0 3px;font-weight:700}
+.oi{font-size:9.5px;font-variant-numeric:tabular-nums;line-height:1.35}
+.oi .sc{color:var(--red)} .oi .sp{color:var(--green)}
+.note{font-size:9px;color:var(--ink3);text-align:center;padding-top:5px}
+.note.mo{color:var(--blue)}
+.chart{border:1px solid var(--line);border-radius:9px;padding:8px 4px 2px;background:var(--card)}
+.chart .cap{font-size:11px;font-weight:600;color:var(--ink2);padding:0 4px 5px;
+  display:flex;align-items:center;justify-content:space-between;gap:6px}
+/* 左右軸固定、只有繪圖區橫向捲動，否則捲一下刻度就跟著跑掉了 */
+.plot{display:flex;align-items:flex-start}
+.plot .scroll{flex:1;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
+.plot .scroll::-webkit-scrollbar{height:4px}
+.plot .scroll::-webkit-scrollbar-thumb{background:var(--line2);border-radius:2px}
+.plot svg{display:block}
+.legend{display:flex;flex-wrap:wrap;gap:8px;font-size:9.5px;color:var(--ink2);padding:4px 6px 0}
+.legend i{display:inline-block;width:12px;height:2px;vertical-align:middle;margin-right:3px}
+.dtoggle{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--ink2);
+  padding:5px 6px 2px;cursor:pointer}
+.dtoggle input{margin:0;width:13px;height:13px}
+.detail{border:1px solid var(--line);border-radius:9px;background:var(--bg);padding:8px}
+.tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.tab{font-size:10px;padding:2px 7px;border-radius:5px;border:1px solid var(--line);
+  background:var(--card);color:var(--ink2);cursor:pointer;font-family:inherit}
+.tab.on{background:var(--blue);color:#fff;border-color:var(--blue);font-weight:600}
+.dh{font-size:11px;font-weight:700;margin-bottom:5px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.lb-sc{font-size:10px;font-weight:700;color:var(--red);margin-bottom:2px}
+.lb-sp{font-size:10px;font-weight:700;color:var(--green);margin-bottom:2px}
+.row{display:flex;justify-content:space-between;font-size:10.5px;font-variant-numeric:tabular-nums;
+  color:var(--ink3);padding:1.5px 0}
+.row b{color:var(--ink);font-weight:700}
+.row.first b{font-size:11.5px}
+.dsep{margin-top:6px;padding-top:6px;border-top:1px solid var(--line)}
+.dsep .cap{font-size:9.5px;color:var(--ink3);margin-bottom:2px}
+.mrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mcard{border:1px solid var(--line);border-radius:9px;background:var(--bg);padding:8px;text-align:left;
+  cursor:pointer;font-family:inherit;color:inherit}
+.mcard.on{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset}
+.mcard .lbl{font-size:9.5px;color:var(--ink3);margin-bottom:4px}
+.hint{font-size:10.5px;color:var(--ink3);line-height:1.6}
+.modal{position:fixed;inset:0;background:rgba(2,6,23,.5);display:flex;align-items:center;
+  justify-content:center;padding:16px;z-index:50}
+.modal[hidden]{display:none!important}
+.sheet{background:var(--card);border-radius:14px;padding:14px;max-width:400px;width:100%;
+  max-height:82vh;overflow:auto}
+.sheet h3{margin:0 0 8px;font-size:13px;display:flex;justify-content:space-between;align-items:center}
+.sheet .blk{background:var(--bg);border-radius:8px;padding:8px 10px;margin-bottom:7px;
+  font-size:10.5px;color:var(--ink2);line-height:1.7}
+.sheet .blk b{color:var(--ink)}
+.x{background:none;border:0;color:var(--ink3);font-size:17px;cursor:pointer;line-height:1;font-family:inherit}
+</style>
+
+<div class="wrap">
+  <div class="banner">
+    <b>Demo v2</b> ｜ 日曆為 2026-09-08（追蹤 202609W2），折線圖為近月月選近 60 個交易日。
+    明細與月選小卡已還原成上線版的完整結構（v1 是我手打的精簡版，抱歉造成誤會）。
+  </div>
+
+  <div class="card">
+    <div class="hdr">
+      <div class="ttl">選擇權 OI <button class="q" id="qbtn">?</button></div>
+      <div class="seg"><button class="pill on">週三選</button><button class="pill">週五選</button></div>
+    </div>
+
+    <table>
+      <thead><tr><th>日</th><th>一</th><th>二</th><th>三</th><th>四</th><th>五</th><th>六</th></tr></thead>
+      <tbody id="cal"></tbody>
+    </table>
+
+    <div class="chart">
+      <div class="cap">
+        <span>PC Ratio 與支撐壓力通道</span>
+        <span class="seg" id="rangeSeg">
+          <button class="pill on" data-n="20">近 20 日</button>
+          <button class="pill" data-n="60">60 日</button>
+        </span>
+      </div>
+      <div class="plot">
+        <svg id="axL" width="40" height="228" aria-hidden="true"></svg>
+        <div class="scroll" id="scroll">
+          <svg id="svg" height="228" role="img" aria-label="PC Ratio 與支撐壓力通道走勢"></svg>
+        </div>
+        <svg id="axR" width="36" height="228" aria-hidden="true"></svg>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--red)"></i>SC 壓力</span>
+        <span><i style="background:var(--green)"></i>SP 支撐</span>
+        <span><i style="background:var(--twii)"></i>大盤收盤</span>
+        <span><i style="height:0;border-top:2px dashed var(--amber)"></i>PC Ratio（右軸）</span>
+      </div>
+      <label class="dtoggle"><input type="checkbox" id="dchk">
+        疊上每日加倉前三大（±5% 內）<span id="dlg" hidden>（點大小＝口數）</span></label>
+    </div>
+
+    <div class="detail">
+      <div class="tabs" id="tabs">
+        <button class="tab on" data-c="202609W2">追蹤中 202609W2</button>
+        <button class="tab" data-c="202609">月選 202609</button>
+        <button class="tab" data-c="202610">月選 202610</button>
+      </div>
+      <div id="dbody"></div>
+    </div>
+
+    <div class="mrow" id="months"></div>
+  </div>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="sheet">
+    <h3>選擇權 OI 說明 <button class="x" id="mx">✕</button></h3>
+    <div class="blk">
+      <b>SP，OI 最大量區</b>：市場的支撐區，因為賣方不希望指數跌破這裡。
+    </div>
+    <div class="blk">
+      <b>SC，OI 最大量區</b>：市場的壓力區，因為賣方不希望指數漲過這裡。
+    </div>
+    <div class="blk">
+      日曆數字是該日收盤的<b>未沖銷契約量（OI）</b>，非每日成交量累加；部位平掉 OI 即減少、結算日歸零。<br>
+      <b>今日新增未平倉</b>是淨增加（新開倉 − 平倉），非當日新開倉口數。<br>
+      前三大是累積佈局，今日新增是當天動作，兩者位置常不同。
+    </div>
+    <div class="blk">
+      <b>PC Ratio</b> ＝ 賣權 OI ÷ 買權 OI，數值高代表賣權佈局相對多。<br>
+      折線圖採<b>近月月選</b>：週選每兩週換約、全市場合計每隔幾天就有契約結算，數字的跳動來自成分更換而非市場情緒。
+    </div>
+    <div class="blk">
+      支撐壓力取近月選現價 <b>±5%</b> 範圍內的最大 OI，不用全域 Top1。<br>
+      <span style="color:var(--ink3)">例：2026-09-08 指數 47,105，202609 月選的賣權第二大 OI 掛在 <b>21,800</b>（1,784 口）——那是深價外的災難險保單，不是防守線。</span>
+    </div>
+    <div class="blk" style="border-left:2px solid var(--amber)">
+      <b>PC Ratio 上升＋支撐往下鋪，是偏多形狀，不是背離警訊。</b><br>
+      <span style="color:var(--ink3)">889 個交易日回測：該組合未來 20 日跌逾 3% 的機率 4.1%，低於基準 12.0%。本卡不提供自動警示訊號。</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const DATA = {"series":[{"d":"2026-06-15","fut":45580,"twii":45396.99,"pcr":173.9,"sc":47000,"sp":44000,"code":"202606"},{"d":"2026-06-16","fut":45772,"twii":45809.19,"pcr":166.4,"sc":47000,"sp":44000,"code":"202606"},{"d":"2026-06-17","fut":45668,"twii":45877.39,"pcr":154.1,"sc":45700,"sp":45000,"code":"202606"},{"d":"2026-06-18","fut":46769,"twii":46465.2,"pcr":133.5,"sc":47000,"sp":45300,"code":"202607"},{"d":"2026-06-22","fut":48413,"twii":47741.51,"pcr":138.4,"sc":50000,"sp":46000,"code":"202607"},{"d":"2026-06-23","fut":47436,"twii":47100.65,"pcr":136.9,"sc":47000,"sp":49200,"code":"202607"},{"d":"2026-06-24","fut":46387,"twii":46043.6,"pcr":153.7,"sc":47000,"sp":45300,"code":"202607"},{"d":"2026-06-25","fut":46544,"twii":46255.26,"pcr":154.9,"sc":47000,"sp":46000,"code":"202607"},{"d":"2026-06-26","fut":44373,"twii":44571.76,"pcr":148.4,"sc":46500,"sp":43000,"code":"202607"},{"d":"2026-06-29","fut":45550,"twii":44999.9,"pcr":150.8,"sc":47000,"sp":45000,"code":"202607"},{"d":"2026-06-30","fut":46730,"twii":46125.91,"pcr":146.2,"sc":47000,"sp":45000,"code":"202607"},{"d":"2026-07-01","fut":47231,"twii":47018.99,"pcr":147.3,"sc":47000,"sp":45000,"code":"202607"},{"d":"2026-07-02","fut":46599,"twii":46744.16,"pcr":140.8,"sc":45800,"sp":45000,"code":"202607"},{"d":"2026-07-03","fut":46966,"twii":46780.62,"pcr":138.7,"sc":48000,"sp":45000,"code":"202607"},{"d":"2026-07-06","fut":46886,"twii":46556.39,"pcr":146.4,"sc":48000,"sp":45000,"code":"202607"},{"d":"2026-07-07","fut":45775,"twii":45479.11,"pcr":136.3,"sc":47000,"sp":45000,"code":"202607"},{"d":"2026-07-08","fut":45564,"twii":45734.41,"pcr":114.6,"sc":47000,"sp":45000,"code":"202607"},{"d":"2026-07-09","fut":45678,"twii":45354.61,"pcr":106.5,"sc":47000,"sp":45000,"code":"202607"},{"d":"2026-07-13","fut":45617,"twii":45380.52,"pcr":114.3,"sc":47000,"sp":45000,"code":"202607"},{"d":"2026-07-14","fut":44815,"twii":44737.95,"pcr":96,"sc":47000,"sp":43800,"code":"202607"},{"d":"2026-07-15","fut":45830,"twii":45631.59,"pcr":129.7,"sc":47000,"sp":45000,"code":"202607"},{"d":"2026-07-16","fut":45700,"twii":45624.98,"pcr":115.2,"sc":47200,"sp":46700,"code":"202608"},{"d":"2026-07-17","fut":42725,"twii":42671.27,"pcr":103.5,"sc":42000,"sp":43000,"code":"202608"},{"d":"2026-07-20","fut":42641,"twii":42449.7,"pcr":97.9,"sc":42000,"sp":43000,"code":"202608"},{"d":"2026-07-21","fut":44377,"twii":44232.87,"pcr":109.5,"sc":46000,"sp":43000,"code":"202608"},{"d":"2026-07-22","fut":44631,"twii":44825.78,"pcr":108.7,"sc":46000,"sp":43000,"code":"202608"},{"d":"2026-07-23","fut":44930,"twii":44850.81,"pcr":109,"sc":47000,"sp":43000,"code":"202608"},{"d":"2026-07-24","fut":43905,"twii":43654.84,"pcr":118.4,"sc":46000,"sp":44800,"code":"202608"},{"d":"2026-07-27","fut":43907,"twii":43634.19,"pcr":118.9,"sc":46000,"sp":44800,"code":"202608"},{"d":"2026-07-28","fut":41613,"twii":41603.36,"pcr":109.5,"sc":42000,"sp":40000,"code":"202608"},{"d":"2026-07-29","fut":40392,"twii":40039.18,"pcr":105.9,"sc":42000,"sp":40000,"code":"202608"},{"d":"2026-07-30","fut":40270,"twii":39933.3,"pcr":103.5,"sc":42000,"sp":41500,"code":"202608"},{"d":"2026-07-31","fut":43678,"twii":43119.75,"pcr":107,"sc":45000,"sp":41500,"code":"202608"},{"d":"2026-08-03","fut":43230,"twii":43386.41,"pcr":103.8,"sc":45000,"sp":41500,"code":"202608"},{"d":"2026-08-04","fut":43357,"twii":43360.66,"pcr":99.5,"sc":45000,"sp":41500,"code":"202608"},{"d":"2026-08-05","fut":44514,"twii":44611.6,"pcr":98.7,"sc":46000,"sp":43000,"code":"202608"},{"d":"2026-08-06","fut":44280,"twii":44396.7,"pcr":95.5,"sc":46000,"sp":43000,"code":"202608"},{"d":"2026-08-07","fut":44349,"twii":44225.91,"pcr":93.6,"sc":46000,"sp":43000,"code":"202608"},{"d":"2026-08-10","fut":44987,"twii":44928.76,"pcr":96.3,"sc":47000,"sp":43000,"code":"202608"},{"d":"2026-08-11","fut":45090,"twii":45120.72,"pcr":98.1,"sc":47000,"sp":43000,"code":"202608"},{"d":"2026-08-12","fut":45528,"twii":45518.07,"pcr":97.9,"sc":46000,"sp":44000,"code":"202608"},{"d":"2026-08-13","fut":46005,"twii":46021.48,"pcr":100.8,"sc":48000,"sp":44000,"code":"202608"},{"d":"2026-08-14","fut":45841,"twii":45811.01,"pcr":103.3,"sc":47000,"sp":45000,"code":"202608"},{"d":"2026-08-17","fut":45888,"twii":45857.27,"pcr":107.7,"sc":47000,"sp":45000,"code":"202608"},{"d":"2026-08-18","fut":45085,"twii":45308.68,"pcr":97.6,"sc":46000,"sp":45000,"code":"202608"},{"d":"2026-08-19","fut":44612,"twii":44719.35,"pcr":91.5,"sc":45000,"sp":44000,"code":"202608"},{"d":"2026-08-20","fut":44868,"twii":44933.74,"pcr":96.5,"sc":47000,"sp":43500,"code":"202609"},{"d":"2026-08-21","fut":45148,"twii":45224.29,"pcr":95,"sc":47000,"sp":43500,"code":"202609"},{"d":"2026-08-24","fut":44762,"twii":44762.32,"pcr":91.5,"sc":47000,"sp":43500,"code":"202609"},{"d":"2026-08-25","fut":45027,"twii":45169.46,"pcr":90.1,"sc":47000,"sp":43500,"code":"202609"},{"d":"2026-08-26","fut":46011,"twii":45832.62,"pcr":95,"sc":48000,"sp":45000,"code":"202609"},{"d":"2026-08-27","fut":46078,"twii":45975.22,"pcr":98.8,"sc":48000,"sp":45000,"code":"202609"},{"d":"2026-08-28","fut":46357,"twii":46331.45,"pcr":100.2,"sc":48000,"sp":45000,"code":"202609"},{"d":"2026-08-31","fut":45983,"twii":46128.47,"pcr":100.1,"sc":48000,"sp":45000,"code":"202609"},{"d":"2026-09-01","fut":47209,"twii":46948.72,"pcr":98.7,"sc":48000,"sp":45000,"code":"202609"},{"d":"2026-09-02","fut":46189,"twii":46164.72,"pcr":96.4,"sc":48000,"sp":45000,"code":"202609"},{"d":"2026-09-03","fut":45837,"twii":45857.66,"pcr":100.5,"sc":48000,"sp":44000,"code":"202609"},{"d":"2026-09-04","fut":46704,"twii":46551.13,"pcr":101.6,"sc":48000,"sp":45000,"code":"202609"},{"d":"2026-09-07","fut":47470,"twii":47326.27,"pcr":109,"sc":49000,"sp":46000,"code":"202609"},{"d":"2026-09-08","fut":46980,"twii":47105.78,"pcr":108.8,"sc":49000,"sp":45000,"code":"202609"}],"cal":[[{"date":"2026-08-23","weekend":true,"outside":true,"today":false,"note":null,"prevCode":null,"nextCode":null,"sc":null,"sp":null,"pcr":null},{"date":"2026-08-24","weekend":false,"outside":true,"today":false,"note":null,"prevCode":null,"nextCode":null,"sc":null,"sp":null,"pcr":null},{"date":"2026-08-25","weekend":false,"outside":true,"today":false,"note":null,"prevCode":null,"nextCode":null,"sc":null,"sp":null,"pcr":null},{"date":"2026-08-26","weekend":false,"outside":false,"today":false,"note":null,"prevCode":"202608W4","nextCode":null,"sc":48900,"sp":40600,"pcr":141.8},{"date":"2026-08-27","weekend":false,"outside":false,"today":false,"note":null,"prevCode":null,"nextCode":null,"sc":48900,"sp":40600,"pcr":144.4},{"date":"2026-08-28","weekend":false,"outside":false,"today":false,"note":null,"prevCode":null,"nextCode":null,"sc":48900,"sp":42000,"pcr":262.8},{"date":"2026-08-29","weekend":true,"outside":false,"today":false,"note":null,"prevCode":null,"nextCode":null,"sc":null,"sp":null,"pcr":null}],[{"date":"2026-08-30","weekend":true,"outside":false,"today":false,"note":null,"prevCode":null,"nextCode":null,"sc":null,"sp":null,"pcr":null},{"date":"2026-08-31","weekend":false,"outside":false,"today":false,"note":null,"prevCode":null,"nextCode":null,"sc":47800,"sp":42000,"pcr":225.3},{"date":"2026-09-01","weekend":false,"outside":false,"today":false,"note":null,"prevCode":null,"nextCode":null,"sc":47800,"sp":42000,"pcr":218.1},{"date":"2026-09-02","weekend":false,"outside":false,"today":false,"note":null,"prevCode":null,"nextCode":null,"sc":51000,"sp":40600,"pcr":103.7},{"date":"2026-09-03","weekend":false,"outside":false,"today":false,"note":null,"prevCode":null,"nextCode":null,"sc":51000,"sp":40600,"pcr":102.7},{"date":"2026-09-04","weekend":false,"outside":false,"today":false,"note":null,"prevCode":null,"nextCode":null,"sc":50000,"sp":40600,"pcr":89.2},{"date":"2026-09-05","weekend":true,"outside":false,"today":false,"note":null,"prevCode":null,"nextCode":null,"sc":null,"sp":null,"pcr":null}],[{"date":"2026-09-06","weekend":true,"outside":false,"today":false,"note":null,"prevCode":null,"nextCode":null,"sc":null,"sp":null,"pcr":null},{"date":"2026-09-07","weekend":false,"outside":false,"today":false,"note":null,"prevCode":null,"nextCode":null,"sc":50000,"sp":46000,"pcr":112.9},{"date":"2026-09-08","weekend":false,"outside":false,"today":true,"note":null,"prevCode":null,"nextCode":null,"sc":49000,"sp":46000,"pcr":102.4},{"date":"2026-09-09","weekend":false,"outside":false,"today":false,"note":"週結算日","prevCode":null,"nextCode":null,"sc":null,"sp":null,"pcr":null},{"date":"2026-09-10","weekend":false,"outside":true,"today":false,"note":null,"prevCode":null,"nextCode":null,"sc":null,"sp":null,"pcr":null},{"date":"2026-09-11","weekend":false,"outside":true,"today":false,"note":null,"prevCode":null,"nextCode":null,"sc":null,"sp":null,"pcr":null},{"date":"2026-09-12","weekend":true,"outside":true,"today":false,"note":null,"prevCode":null,"nextCode":null,"sc":null,"sp":null,"pcr":null}]],"track":{"code":"202609W2","exp":"2026-09-09","listDate":"2026-08-26","settled":false},"recs":{"202609":{"exp":"2026-09-16","C":[[50000,2628],[49000,1454],[48000,1365]],"P":[[40000,1997],[21800,1784],[42000,1508]],"dC":[[49600,342],[48500,161],[47700,100]],"dP":[[44200,157],[46000,76],[45000,63]]},"202610":{"exp":"2026-10-21","C":[[47000,253],[50000,247],[52000,217]],"P":[[44000,386],[40000,361],[43000,231]],"dC":[[48500,92],[48000,49],[54500,43]],"dP":[[44800,63],[43000,54],[40000,35]]},"202609W2":{"exp":"2026-09-09","C":[[49000,4118],[48000,2685],[47500,2602]],"P":[[46000,3332],[45900,2286],[46500,1925]],"dC":[[49000,2525],[47500,1541],[48000,850]],"dP":[[45900,1722],[45800,1067],[47200,944]]}},"months":[{"code":"202609","exp":"2026-09-16","sc":50000,"sp":40000},{"code":"202610","exp":"2026-10-21","sc":47000,"sp":44000}],"delta":{"2026-06-10":{"C":[[45000,224],[44900,221],[44500,138]],"P":[[43600,188],[45500,156],[43500,146]]},"2026-06-11":{"C":[[45000,269],[42500,249],[44000,247]],"P":[[43000,180],[42000,156],[42150,131]]},"2026-06-12":{"C":[[46000,564],[44500,357],[43800,293]],"P":[[42000,616],[43000,261],[44000,188]]},"2026-06-15":{"C":[[45500,1578],[47000,1092],[46800,797]],"P":[[44000,1823],[45000,1185],[43700,734]]},"2026-06-16":{"C":[[46000,1303],[47000,880],[46500,648]],"P":[[45000,1164],[44500,1085],[45500,789]]},"2026-06-17":{"C":[[45650,3746],[45700,3677],[45550,3224]],"P":[[45650,3224],[45550,2964],[45000,2444]]},"2026-06-22":{"C":[[47600,242],[48300,220],[47500,59]],"P":[[47000,134],[46800,87],[46000,67]]},"2026-06-23":{"C":[[48200,39],[49000,39],[48500,37]],"P":[[49200,448],[45200,95],[46000,85]]},"2026-06-24":{"C":[[48000,103],[46500,65],[46000,50]],"P":[[46400,90],[46500,51],[46200,29]]},"2026-06-25":{"C":[[47500,46],[47000,40],[46000,36]],"P":[[46500,78],[46000,70],[45000,60]]},"2026-06-26":{"C":[[45500,159],[42700,35],[46400,27]],"P":[[45000,328],[44200,322],[45800,222]]},"2026-06-29":{"C":[[45900,72],[45800,45],[47800,30]],"P":[[43800,489],[45000,118],[44600,25]]},"2026-06-30":{"C":[[46400,202],[46300,31],[46000,24]],"P":[[44500,285],[46000,53],[45500,39]]},"2026-07-01":{"C":[[48600,332],[48000,57],[47000,51]],"P":[[46000,144],[45000,83],[47000,72]]},"2026-07-02":{"C":[[45800,824],[48000,127],[46700,30]],"P":[[45800,181],[45000,103],[46000,80]]},"2026-07-03":{"C":[[46000,83],[47000,51],[49000,46]],"P":[[44900,72],[46400,53],[46500,45]]},"2026-07-06":{"C":[[49000,74],[48800,73],[48600,68]],"P":[[44900,611],[44800,147],[45050,90]]},"2026-07-07":{"C":[[47000,194],[46000,141],[48000,137]],"P":[[45500,45],[44800,38],[44600,35]]},"2026-07-08":{"C":[[44600,503],[46000,172],[47000,130]],"P":[[44000,137],[45000,110],[44800,58]]},"2026-07-09":{"C":[[47000,257],[47800,160],[47500,113]],"P":[[44200,521],[43800,213],[43500,114]]},"2026-07-13":{"C":[[47000,697],[47200,634],[46500,589]],"P":[[45000,691],[44500,445],[44000,370]]},"2026-07-14":{"C":[[46800,3125],[47000,2602],[46000,1680]],"P":[[43800,1926],[43000,1771],[44000,1576]]},"2026-07-15":{"C":[[45850,2587],[46000,1521],[45750,1314]],"P":[[45000,3960],[45500,3229],[45600,2750]]},"2026-07-17":{"C":[[43900,106],[42000,101],[42400,100]],"P":[[43900,92],[43100,50],[43500,44]]},"2026-07-20":{"C":[[42000,841],[44000,104],[44600,23]],"P":[[41500,64],[42000,37],[40800,25]]},"2026-07-21":{"C":[[45500,103],[45400,79],[44700,64]],"P":[[43000,57],[44600,45],[44700,27]]},"2026-07-22":{"C":[[46600,111],[45000,87],[46800,38]],"P":[[45000,134],[43800,102],[44700,42]]},"2026-07-23":{"C":[[45500,144],[45600,45],[47000,26]],"P":[[45000,67],[43900,54],[43000,23]]},"2026-07-24":{"C":[[44800,132],[46000,82],[43800,37]],"P":[[44800,1096],[44000,35],[44400,33]]},"2026-07-27":{"C":[[45600,56],[44000,30],[45200,18]],"P":[[42300,50],[42000,38],[43000,18]]},"2026-07-28":{"C":[[43000,82],[42000,22],[43500,18]],"P":[[40600,46],[39600,29],[40000,25]]},"2026-07-29":{"C":[[42000,123],[40000,68],[41000,60]],"P":[[39800,55],[39000,50],[40000,47]]},"2026-07-30":{"C":[[40600,100],[40700,52],[41600,36]],"P":[[41500,1299],[39800,59],[41300,35]]},"2026-07-31":{"C":[[42500,97],[45100,17],[43400,16]],"P":[[42000,33],[43000,33],[43200,27]]},"2026-08-03":{"C":[[43500,142],[44500,43],[44000,34]],"P":[[42000,68],[42200,50],[43000,26]]},"2026-08-04":{"C":[[43400,51],[43600,36],[43800,22]],"P":[[43000,74],[43200,46],[41500,18]]},"2026-08-05":{"C":[[46200,126],[44600,38],[45200,37]],"P":[[45400,241],[44000,79],[43000,59]]},"2026-08-06":{"C":[[45000,250],[46000,249],[44400,21]],"P":[[43500,69],[42500,36],[44000,34]]},"2026-08-07":{"C":[[45000,32],[44900,9],[45900,7]],"P":[[44050,36],[43000,25],[43950,12]]},"2026-08-10":{"C":[[47100,116],[47000,111],[46800,63]],"P":[[43650,367],[45400,81],[44150,72]]},"2026-08-11":{"C":[[46000,191],[45200,91],[45100,17]],"P":[[43000,142],[43400,43],[44750,42]]},"2026-08-12":{"C":[[47800,204],[43600,170],[47100,136]],"P":[[43500,221],[44000,156],[44700,116]]},"2026-08-13":{"C":[[46600,207],[46500,132],[47900,113]],"P":[[44000,336],[45500,198],[46000,165]]},"2026-08-14":{"C":[[47700,565],[47500,542],[47600,404]],"P":[[45000,841],[44500,330],[45800,324]]},"2026-08-17":{"C":[[47200,1047],[47000,870],[47300,838]],"P":[[45000,1288],[44500,1256],[44000,1184]]},"2026-08-18":{"C":[[46000,1770],[45600,866],[45800,850]],"P":[[45050,537],[44700,367],[44800,330]]},"2026-08-19":{"C":[[44700,3757],[45000,3516],[44800,3097]],"P":[[44600,3588],[44550,2405],[44500,2284]]},"2026-08-21":{"C":[[45200,103],[46000,51],[43500,41]],"P":[[43500,30],[44200,20],[43600,18]]},"2026-08-24":{"C":[[46000,43],[44900,40],[47000,26]],"P":[[43200,56],[44300,31],[43000,27]]},"2026-08-25":{"C":[[45000,139],[47000,64],[45500,56]],"P":[[44300,21],[44400,21],[43500,10]]},"2026-08-26":{"C":[[48200,152],[46500,151],[48100,101]],"P":[[45000,88],[45500,37],[46000,28]]},"2026-08-27":{"C":[[46800,221],[48000,151],[47300,90]],"P":[[46000,95],[44000,65],[44900,53]]},"2026-08-28":{"C":[[48000,86],[48200,40],[46800,12]],"P":[[45800,45],[47000,41],[45500,37]]},"2026-08-31":{"C":[[47500,336],[48000,168],[47000,65]],"P":[[43700,33],[44200,30],[44500,29]]},"2026-09-01":{"C":[[46500,314],[49000,266],[46400,170]],"P":[[47000,108],[46000,100],[45000,84]]},"2026-09-02":{"C":[[47500,160],[48000,84],[47000,81]],"P":[[44000,88],[46500,80],[44200,26]]},"2026-09-03":{"C":[[46900,82],[48000,53],[46000,45]],"P":[[47100,189],[46000,129],[44000,93]]},"2026-09-04":{"C":[[48500,254],[46300,76],[46700,43]],"P":[[45000,96],[45500,49],[46000,43]]},"2026-09-07":{"C":[[49000,325],[47200,203],[47750,99]],"P":[[46300,143],[46700,127],[46000,120]]},"2026-09-08":{"C":[[48500,161],[47700,100],[48000,61]],"P":[[46000,76],[45000,63],[44950,53]]}}};
+const md = s => s.slice(5).replace('-','/');
+const nf = n => n.toLocaleString();
+
+// ---- 日曆（不顯示 PCR）----
+document.getElementById('cal').innerHTML = DATA.cal.map(w => '<tr>' + w.map(c => {
+  const d = +c.date.slice(8);
+  if (c.weekend) return '<td style="border:0;background:none"><div class="dt" style="opacity:.45">'+d+'</div></td>';
+  if (c.outside) return '<td class="c-out"><div class="dt" style="opacity:.5">'+d+'</div></td>';
+  const cls = c.sc ? 'c-has' : (c.today ? 'c-today' : 'c-plain');
+  const tag = c.prevCode ? '上' : (c.nextCode ? c.nextCode.slice(-2) : '');
+  let body = '';
+  if (c.sc) body = '<div class="oi"><div class="sc">'+c.sc+'</div><div class="sp">'+c.sp+'</div></div>';
+  else if (c.note) body = '<div class="note'+(c.note==='月結算日'?' mo':'')+'">'+c.note+'</div>';
+  return '<td class="'+cls+'"><div class="dt"><span>'+d+'</span>'
+    + (tag?'<span class="badge">'+tag+'</span>':'') + '</div>' + body + '</td>';
+}).join('') + '</tr>').join('');
+
+// ---- 折線圖：平滑曲線 + 通道填充，不畫期貨 ----
+const DAY_W=18, H=228, PT=8, PB=28;   // 每日一格，格寬決定捲動總長
+/** Catmull-Rom 轉三次貝茲：SC/SP 本身是跳著走的，平滑只為視覺連續，
+    兩點之間的曲線不代表當日真實值 */
+function smooth(pts){
+  if(pts.length<2) return '';
+  let d = 'M'+pts[0][0]+' '+pts[0][1];
+  for(let i=0;i<pts.length-1;i++){
+    const p0=pts[i-1]||pts[i], p1=pts[i], p2=pts[i+1], p3=pts[i+2]||p2;
+    const c1x=p1[0]+(p2[0]-p0[0])/6, c1y=p1[1]+(p2[1]-p0[1])/6;
+    const c2x=p2[0]-(p3[0]-p1[0])/6, c2y=p2[1]-(p3[1]-p1[1])/6;
+    d += 'C'+c1x+' '+c1y+','+c2x+' '+c2y+','+p2[0]+' '+p2[1];
+  }
+  return d;
+}
+let range=20, showDelta=false;
+function drawChart(){
+  const s=DATA.series.slice(-range), n=s.length;
+  // 近 20 日撐滿容器不必捲；60 日用固定格寬，超出的部分橫向捲動
+  const avail=document.getElementById('scroll').clientWidth||290;
+  const dw=range<=20 ? Math.max(13, avail/n) : DAY_W;
+  const W=n*dw;
+  const prices=s.flatMap(d=>[d.twii,d.sc,d.sp]).filter(Boolean);
+  const pMin=Math.min(...prices)*0.995, pMax=Math.max(...prices)*1.005;
+  const rs=s.map(d=>d.pcr), rMin=Math.min(...rs)*0.95, rMax=Math.max(...rs)*1.05;
+  // IN：平滑曲線的控制點會衝過資料點（overshoot），60 日模式實測最多 10px，
+  // 不內縮的話曲線會壓到下方的日期標籤
+  const IN=12;
+  const X=i=>i*dw+dw/2;
+  const Y=v=>PT+IN+(pMax-v)/(pMax-pMin)*(H-PT-PB-IN*2);
+  const Y2=v=>PT+IN+(rMax-v)/(rMax-rMin)*(H-PT-PB-IN*2);
+
+  let g='';
+  for(let k=0;k<=4;k++){
+    const y=Y(pMin+(pMax-pMin)*k/4);
+    g+='<line x1="0" y1="'+y+'" x2="'+W+'" y2="'+y+'" stroke="var(--grid)"/>';
+  }
+  const scPts=s.map((d,i)=>[X(i),Y(d.sc)]), spPts=s.map((d,i)=>[X(i),Y(d.sp)]);
+  // 通道填充：上緣走 SC，到末端接下緣、沿 SP 反向回來閉合。
+  // revSp 開頭是 'M'，換成 'L' 才能接在 SC 那段後面而不另起新路徑
+  const revSp=smooth([...spPts].reverse());
+  g+='<path d="'+smooth(scPts)+'L'+revSp.slice(1)+'Z" fill="var(--band)" stroke="none"/>';
+  g+='<path d="'+smooth(scPts)+'" fill="none" stroke="var(--red)" stroke-width="1.6"/>';
+  g+='<path d="'+smooth(spPts)+'" fill="none" stroke="var(--green)" stroke-width="1.6"/>';
+  g+='<path d="'+smooth(s.map((d,i)=>[X(i),Y(d.twii)]))+'" fill="none" stroke="var(--twii)" stroke-width="1.5"/>';
+  g+='<path d="'+smooth(s.map((d,i)=>[X(i),Y2(d.pcr)]))+'" fill="none" stroke="var(--amber)" stroke-width="1.4" stroke-dasharray="3 2"/>';
+
+  // 每日加倉前三大（散點）。不連線是刻意的——加倉 top1 相鄰日跳動中位 1000 點，
+  // 連起來只會是鋸齒；而且它本來就是「當天押在哪」的分布，沒有連續性可言
+  if (showDelta) {
+    const maxOi = Math.max(1, ...s.flatMap(d => {
+      const x = DATA.delta[d.d]; return x ? [...x.C, ...x.P].map(v => v[1]) : []
+    }));
+    s.forEach((d, i) => {
+      const x = DATA.delta[d.d]; if (!x) return;
+      const pts = [...x.C.map(v => [v[0], v[1], 'C']), ...x.P.map(v => [v[0], v[1], 'P'])];
+      for (const [strike, oi, kind] of pts) {
+        const r = 1.4 + 2.2 * Math.sqrt(oi / maxOi);
+        // 描邊 + 較高不透明度：點畫在線之上，但 0.28 的淡紅壓在 1.6px 粗紅線上
+        // 幾乎看不出來，會誤以為線從來沒被點涵蓋（實測重疊率其實有 55~60%）
+        g += '<circle cx="' + X(i) + '" cy="' + Y(strike) + '" r="' + r.toFixed(1)
+          + '" fill="' + (kind === 'C' ? 'var(--red)' : 'var(--green)')
+          + '" opacity=".55" stroke="var(--card)" stroke-width=".6"/>';
+      }
+    });
+  }
+
+  // 每日：刻度線 + 資料點 + 日期標籤。月份變更或每 5 日補上月份
+  s.forEach((d,i)=>{
+    const x=X(i), day=+d.d.slice(8), isMonth=(i===0)||(d.d.slice(5,7)!==s[i-1].d.slice(5,7));
+    g+='<line x1="'+x+'" y1="'+(H-PB)+'" x2="'+x+'" y2="'+(H-PB+3)+'" stroke="var(--line2)"/>';
+    g+='<circle cx="'+x+'" cy="'+Y(d.twii)+'" r="1.5" fill="var(--twii)"/>';
+    g+='<text x="'+x+'" y="'+(H-PB+12)+'" text-anchor="middle" font-size="8.5" fill="var(--ink3)">'+day+'</text>';
+    // 只在月份真的換了才標，且不與日期同字級——先前每 5 日也標一次，
+    // 同一個月會重複出現三次，7px 下還會把 8 看成 3
+    if(isMonth)
+      g+='<text x="'+x+'" y="'+(H-PB+22)+'" text-anchor="middle" font-size="9" font-weight="600" fill="var(--ink2)">'+(+d.d.slice(5,7))+'月</text>';
+  });
+  const svg=document.getElementById('svg');
+  svg.setAttribute('width',W); svg.innerHTML=g;
+
+  // 左右軸各自獨立繪製，才不會跟著捲動跑掉
+  let l='';
+  for(let k=0;k<=4;k++){
+    const v=pMin+(pMax-pMin)*k/4, y=Y(v);
+    l+='<text x="36" y="'+(y+3)+'" text-anchor="end" font-size="8" fill="var(--ink3)">'+(Math.round(v/100)*100)+'</text>';
+  }
+  document.getElementById('axL').innerHTML=l;
+  let r='';
+  for(let k=0;k<=3;k++){
+    const v=rMin+(rMax-rMin)*k/3, y=Y2(v);
+    r+='<text x="3" y="'+(y+3)+'" font-size="8" fill="var(--amber)">'+Math.round(v)+'%</text>';
+  }
+  document.getElementById('axR').innerHTML=r;
+
+  const sc=document.getElementById('scroll');
+  sc.scrollLeft=sc.scrollWidth;   // 進來就停在最新一天
+}
+document.getElementById('rangeSeg').addEventListener('click',e=>{
+  const b=e.target.closest('[data-n]'); if(!b) return;
+  range=+b.dataset.n;
+  [...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));
+  drawChart();
+});
+document.getElementById('dchk').addEventListener('change', e => {
+  showDelta = e.target.checked;
+  document.getElementById('dlg').hidden = !showDelta;
+  drawChart();
+});
+drawChart();
+
+// ---- 明細（還原上線版結構）----
+function rows(arr, sign){
+  return (arr||[]).map((x,i)=>'<div class="row'+(i===0?' first':'')+'"><b>'+x[0]+'</b><span>'
+    +(sign?'+':'')+nf(x[1])+' 口</span></div>').join('');
+}
+function drawDetail(code){
+  const r=DATA.recs[code];
+  const isM=/^\d{6}$/.test(code);
+  document.getElementById('dbody').innerHTML =
+    '<div class="dh">09/08 收盤 · '+code+'（'+(isM?'月選，':'')+'結算 '+md(r.exp)+'）</div>'
+    +'<div class="g2"><div><div class="lb-sc">壓力 SC · 前三大</div>'+rows(r.C)+'</div>'
+    +'<div><div class="lb-sp">支撐 SP · 前三大</div>'+rows(r.P)+'</div></div>'
+    +((r.dC||r.dP)?'<div class="dsep"><div class="cap">今日新增未平倉（當天押在哪）</div>'
+      +'<div class="g2"><div>'+rows(r.dC,1)+'</div><div>'+rows(r.dP,1)+'</div></div></div>':'');
+  document.querySelectorAll('#tabs .tab').forEach(t=>t.classList.toggle('on',t.dataset.c===code));
+  document.querySelectorAll('.mcard').forEach(m=>m.classList.toggle('on',m.dataset.c===code));
+}
+document.getElementById('tabs').addEventListener('click',e=>{
+  const b=e.target.closest('[data-c]'); if(b) drawDetail(b.dataset.c);
+});
+document.getElementById('months').innerHTML = DATA.months.map((m,i)=>
+  '<button class="mcard" data-c="'+m.code+'"><div class="lbl">月選'+(i?'次月':'當月')+' · 結算 '+md(m.exp)+'</div>'
+  +'<div class="row"><span style="color:var(--red)">壓力 SC</span><b>'+m.sc+'</b></div>'
+  +'<div class="row"><span style="color:var(--green)">支撐 SP</span><b>'+m.sp+'</b></div></button>').join('');
+document.getElementById('months').addEventListener('click',e=>{
+  const b=e.target.closest('[data-c]'); if(b) drawDetail(b.dataset.c);
+});
+drawDetail('202609W2');
+
+const modal=document.getElementById('modal');
+document.getElementById('qbtn').onclick=()=>modal.hidden=false;
+document.getElementById('mx').onclick=()=>modal.hidden=true;
+modal.onclick=e=>{if(e.target===modal) modal.hidden=true};
+</script>

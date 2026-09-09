@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
+import OptionsOIChart from '@/components/aftermarket/OptionsOIChart'
 import type { OptionsOISnapshot, OptionsOIContract } from '@/lib/types'
 import { fetchOptionsOI } from '@/lib/fetchOptionsOI'
 import { taipeiToday } from '@/lib/tradingDay'
@@ -17,7 +18,12 @@ type DetailMode = 'main' | 'next' | 'prev' | 'm0' | 'm1'
 
 const md = (d: string) => `${Number(d.slice(5, 7))}/${d.slice(8, 10)}`
 
-export default function OptionsOICard() {
+interface CardProps {
+  /** 大盤日 K，供折線圖畫現貨收盤線（AC-PCR-8） */
+  indexHistory?: { date: string; close: number }[]
+}
+
+export default function OptionsOICard({ indexHistory = [] }: CardProps) {
   const [snap, setSnap] = useState<OptionsOISnapshot | null>(null)
   const [kind, setKind] = useState<OIKind>('wed')
   const [selected, setSelected] = useState<string | null>(null)
@@ -27,6 +33,12 @@ export default function OptionsOICard() {
   useEffect(() => { fetchOptionsOI().then(setSnap) }, [])
 
   const today = taipeiToday()
+  const indexClose = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const r of indexHistory) if (r?.date && r.close) m[r.date] = r.close
+    return m
+  }, [indexHistory])
+
   const track = useMemo(() => snap ? trackContract(snap, kind, today) : null, [snap, kind, today])
   const rows = useMemo(
     () => (snap && track) ? buildCalendar(snap, kind, track, today) : [],
@@ -161,6 +173,14 @@ export default function OptionsOICard() {
         </tbody>
       </table>
 
+      </>}
+
+      {/* AC-PCR-7：折線圖在日曆下方、明細上方，預設展開。口徑是近月月選，
+          與上方週選日曆不同源——Modal 有說明兩者的差別。
+          用月選資料，所以不能包在 hasWeek 裡跟著週選一起消失（同 AC-OI-B15） */}
+      <OptionsOIChart snap={snap} indexClose={indexClose} today={today} />
+
+      {hasWeek && <>
       {/* 明細：追蹤中／下一檔／上一檔 */}
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
         <div className="flex flex-wrap gap-1 mb-1.5">
@@ -274,6 +294,31 @@ export default function OptionsOICard() {
               </p>
               <p className="text-xs text-slate-600 leading-relaxed">
                 <b className="text-slate-800">前三大 vs 今日新增</b>：前者是整段累積的佈局，後者是當天的動作，兩者位置常不同。
+              </p>
+            </div>
+
+            {/* AC-PCR-15：折線圖的口徑與濾波理由 */}
+            <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col gap-2">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                <b className="text-slate-800">PC Ratio</b> ＝ 賣權 OI ÷ 買權 OI，數值高代表賣權佈局相對多。
+                折線圖採<b className="text-slate-800">近月月選</b>：週選每兩週換約、全市場合計每隔幾天就有契約結算，
+                數字的跳動來自成分更換而非市場情緒。
+              </p>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                <b className="text-slate-800">支撐壓力取近月選現價 ±5% 範圍內的最大 OI</b>，不用全域 Top1。
+                <span className="text-slate-400">
+                  　例：2026-09-08 指數 47,105，當月選賣權第二大 OI 掛在 21,800——那是深價外的災難險保單，不是防守線。
+                </span>
+              </p>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                <b className="text-slate-800">圖上的線與點是兩件事</b>：線是累積 OI 最大的位置，點是當日淨增加前三大，
+                重疊與否都正常。
+              </p>
+              <p className="text-xs text-amber-700 leading-relaxed bg-amber-50 border-l-2 border-amber-400 pl-2 py-1.5">
+                <b>PC Ratio 上升 ＋ 支撐往下鋪，是偏多形狀，不是背離警訊。</b>
+                <span className="text-amber-600">
+                　889 個交易日回測：該組合未來 20 日跌逾 3% 的機率 4.1%，低於基準 12.0%。本卡不提供自動警示訊號。
+                </span>
               </p>
             </div>
           </div>

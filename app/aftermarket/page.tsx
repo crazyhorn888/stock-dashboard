@@ -228,7 +228,7 @@ export default function AftermarketPage() {
                 <KlineChart data={data.indexHistory ?? []} n={n} />
                 <MarketSignalCards signals={computedSignals} indexHistory={data.indexHistory} />
                 <GlobalIndexLights indices={data.globalIndices} onSelect={setGlobalModalKey} />
-                <OptionsOICard />
+                <OptionsOICard indexHistory={data.indexHistory ?? []} />
               </>
             )}
 
