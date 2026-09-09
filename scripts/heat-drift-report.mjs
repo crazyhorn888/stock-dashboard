@@ -16,9 +16,14 @@
  *   （24→33%），所以「與基準的差距」比絕對值穩定得多。
  *   因此：風險側門檻收緊（6pp），報酬側看「與基準的差距」而不是絕對值。
  *
+ * 結果會寫進 Supabase 的 snapshots/heat-drift.json，後台 /review 的「熱度校準」
+ * 區塊直接讀它——不管有沒有超標都寫，這樣後台才看得到「上次檢查是什麼時候、結論是什麼」。
+ *
  * 執行：node scripts/heat-drift-report.mjs
- *   需要 SUPABASE_URL（讀 public bucket，不需要 service key）
+ *   SUPABASE_URL        讀 heat-history（public bucket）
+ *   SUPABASE_SERVICE_KEY 寫回 heat-drift.json（沒設就只印報表不寫）
  *   --as-of YYYY-MM-DD  只用這天以前的資料重算（驗證警報邏輯、或回看當時的樣子）
+ *   --no-upload         只印報表，不寫 Supabase（本機試跑用）
  */
 import { readFileSync } from 'fs'
 import { join, dirname } from 'path'
@@ -41,6 +46,27 @@ const BANDS = [
   ['strong', 80, 95, '強勢 P80-95'],
   ['hot', 95, 101, '極熱 ≥P95'],
 ]
+
+/** 寫回 Supabase（後台 /review 讀這支）。沒有 service key 或 --no-upload 就跳過 */
+async function upload(payload) {
+  const key = process.env.SUPABASE_SERVICE_KEY
+  if (!key || process.argv.includes('--no-upload')) {
+    console.log('\n（未寫入 Supabase：無 SUPABASE_SERVICE_KEY 或指定了 --no-upload）')
+    return
+  }
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/snapshots/heat-drift.json`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+      'x-upsert': 'true',
+    },
+    body: JSON.stringify(payload),
+  })
+  // 寫不進去不該讓整個檢查失敗（報表本身已經印出來了），但要講清楚
+  console.log(res.ok ? '\n已寫入 snapshots/heat-drift.json'
+    : `\n⚠️ heat-drift.json 寫入失敗：${res.status} ${await res.text()}`)
+}
 
 async function getJson(url, label) {
   const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
@@ -154,6 +180,25 @@ async function main() {
   if (order[0][0].split(' ')[0] !== '強勢') {
     alerts.push(`風險排序翻轉：最安全的不再是強勢區，而是「${order[0][0]}」`)
   }
+
+  await upload({
+    checkedAt: new Date().toISOString(),
+    asOf: asOfIdx > 0 ? process.argv[asOfIdx + 1] : null,
+    range: [ds[V[0]], ds[V[V.length - 1]]],
+    sampleDays: V.length,
+    shippedSampleDays: shipped.baseline.n,
+    ok: alerts.length === 0,
+    alerts,
+    order: order.map(([l, v]) => ({ band: l, down: v })),
+    rows: [...BANDS, ['entry', 0, 0, '進場訊號']]
+      .filter(([k]) => shipped.stats[k] && now[k])
+      .map(([k, , , label]) => ({
+        label, n: now[k].n,
+        shipped: { down: shipped.stats[k].down, up: shipped.stats[k].up },
+        now: { down: now[k].down, up: now[k].up },
+      })),
+    baseline: { shipped: shipped.baseline, now: base },
+  })
 
   if (alerts.length) {
     console.log(`\n⚠️  ${alerts.length} 項超過門檻，需要人工判斷是不是真的變了：`)

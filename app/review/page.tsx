@@ -4,6 +4,7 @@ import PendingTab from './PendingTab'
 import EditTab from './EditTab'
 import DailyBriefCard from '@/components/aftermarket/DailyBriefCard'
 import FreshnessPanel from '@/components/review/FreshnessPanel'
+import DriftPanel from '@/components/review/DriftPanel'
 import type { DailyBriefFacts } from '@/lib/types'
 
 const STORAGE_KEY = 'review_password'
@@ -166,6 +167,8 @@ export default function ReviewPage() {
         )}
 
         <FreshnessPanel />
+
+        <DriftPanel />
 
         <DailyBriefCard brief={brief} />
 

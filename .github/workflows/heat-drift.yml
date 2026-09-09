@@ -38,6 +38,8 @@ jobs:
       - name: 重算 STATS 並與 lib/marketHeat.ts 比對
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          # 結果要寫回 snapshots/heat-drift.json，後台 /review 讀它
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
           if [ -n "${{ inputs.as_of }}" ]; then
             node scripts/heat-drift-report.mjs --as-of "${{ inputs.as_of }}"

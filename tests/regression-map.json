@@ -577,5 +577,15 @@
     "解析 lib/marketHeat.ts 的 regex 失敗時要拋錯，不能默默跟空值比",
     "樣本要 i + 62 < N，否則最近兩個月會被算成「沒賺到 10%」而低估報酬",
     "--as-of 可回看當時的樣子，也是驗證警報邏輯的方式（--as-of 2023-09-30 應觸發 3 項）"
+  ],
+  "scripts/heat-drift-report.mjs::upload": [
+    "不管有沒有超標都要寫 snapshots/heat-drift.json——後台 /review 的 DriftPanel 靠它顯示「上次檢查是什麼時候、結論是什麼」。只在超標時寫的話，平常後台會是空的，看不出檢查到底有沒有在跑",
+    "寫入失敗不可讓整個檢查失敗（報表已經印出來了），但要在 log 講清楚",
+    "upload 要在 process.exit(1) 之前呼叫，否則超標那次反而寫不進去"
+  ],
+  "components/review/DriftPanel.tsx": [
+    "通知管道是「後台 + GitHub 失敗信」，不開 issue（Franky 不常上 GitHub）。季度一次的信容易滑掉，後台才是真的會看到的地方",
+    "還沒跑過第一次（heat-drift.json 不存在）時整塊不顯示，不要留空殼",
+    "超過 100 天沒檢查要標「已逾一季」——排程壞掉時要看得出來"
   ]
 }
