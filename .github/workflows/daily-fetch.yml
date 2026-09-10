@@ -63,6 +63,10 @@ on:
         description: 'R7：單獨補跑全球指數（原本只有台北 06:07 那班會跑，失敗要等 24 小時；建議挑各市場都收盤的時段觸發，見 R11）'
         type: boolean
         default: false
+      oi_rebuild:
+        description: 'AC-CL-2：選擇權 OI 欄位改版後整段重抓（既有快照沒有 ml 欄位，不重抓的話主力成本推估要等好幾天才有東西可看）。約 10 分鐘'
+        type: boolean
+        default: false
 
 # 固定 group 名稱讓所有 run 排同一隊：後到的排隊等前面跑完（不取消），
 # 避免兩個 run 同時「下載快照→改→上傳」互相覆蓋（lost update）
@@ -216,7 +220,8 @@ jobs:
          || github.event.schedule == '25 7 * * 1-5'))
       || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 平常早退只要幾秒；勾 oi_rebuild 整段重抓 30 天約 10 分鐘，5 分鐘會被砍掉
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -231,4 +236,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          # 勾了 oi_rebuild 才整段重抓；平常留空，維持「已有資料就早退」的輕量行為
+          OPTIONS_OI_REBUILD: ${{ github.event.inputs.oi_rebuild == 'true' && '1' || '' }}
+          OPTIONS_OI_BACKFILL: ${{ github.event.inputs.oi_rebuild == 'true' && '30' || '' }}
         run: node scripts/fetch-options-oi.mjs

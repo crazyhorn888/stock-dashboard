@@ -12,6 +12,9 @@
  *
  * ⚠️ 本元件不做任何亮燈（AC-PCR-1）。889 天回測已否證「佈局遠離＋PCR 上升＝背離」
  * 這個假設——那個組合實測是偏多形狀（跌逾 3% 機率 4.1%，基準 12.0%）。
+ *
+ * AC-CL-10（2026-09-10）：原「疊上每日加倉前三大」散點與其勾選框已移除，
+ * 那件事改由上方的主力成本推估區塊呈現，兩處並列只會讓同一個問題有兩種畫法。
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -67,7 +70,6 @@ function smooth(pts: [number, number][]): string {
 
 export default function OptionsOIChart({ snap, indexClose, today }: Props) {
   const [range, setRange] = useState<20 | 60>(20)
-  const [showDelta, setShowDelta] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [avail, setAvail] = useState(290)
 
@@ -124,15 +126,6 @@ export default function OptionsOIChart({ snap, indexClose, today }: Props) {
   // revSp 開頭是 M，換成 L 才能接在 SC 那段後面而不另起新路徑
   const revSp = smooth([...spPts].reverse())
 
-  const deltaMax = showDelta
-    ? Math.max(1, ...s.flatMap(p => {
-        const day = snap.days[p.date]
-        const code = Object.keys(day).filter(c => /^\d{6}$/.test(c)).sort()[0]
-        const r = day[code]
-        return [...(r?.dnC ?? []), ...(r?.dnP ?? [])].map(v => v[1])
-      }))
-    : 1
-
   return (
     <div className="rounded-lg border border-slate-200 bg-white px-1 pt-2 pb-0.5">
       <div className="flex items-center justify-between gap-2 px-1 pb-1.5">
@@ -183,26 +176,6 @@ export default function OptionsOIChart({ snap, indexClose, today }: Props) {
               fill="none" stroke="#d97706" strokeWidth={1.4} strokeDasharray="3 2"
             />
 
-            {/* AC-PCR-12：加倉散點，刻意不連線——相鄰日跳動中位 1000 點，連起來只是鋸齒 */}
-            {showDelta && s.map((p, i) => {
-              const day = snap.days[p.date]
-              const code = Object.keys(day).filter(c => /^\d{6}$/.test(c)).sort()[0]
-              const r = day[code]
-              if (!r) return null
-              const pts = [
-                ...(r.dnC ?? []).map(v => ({ v, fill: '#dc2626' })),
-                ...(r.dnP ?? []).map(v => ({ v, fill: '#059669' })),
-              ]
-              return pts.map(({ v, fill }, j) => (
-                <circle
-                  key={`${p.date}-${j}`}
-                  cx={X(i)} cy={Y(v[0])}
-                  r={1.4 + 2.2 * Math.sqrt(v[1] / deltaMax)}
-                  fill={fill} opacity={0.55} stroke="#fff" strokeWidth={0.6}
-                />
-              ))
-            })}
-
             {s.map((p, i) => {
               const day = +p.date.slice(8)
               const isMonth = i === 0 || p.date.slice(5, 7) !== s[i - 1].date.slice(5, 7)
@@ -239,16 +212,6 @@ export default function OptionsOIChart({ snap, indexClose, today }: Props) {
         <span><i className="inline-block w-3 h-0.5 align-middle mr-0.5 bg-violet-600" />大盤收盤</span>
         <span><i className="inline-block w-3 align-middle mr-0.5 border-t-2 border-dashed border-amber-600" />PC Ratio（右軸）</span>
       </div>
-
-      <label className="flex items-center gap-1.5 text-[10.5px] text-slate-500 px-1.5 pt-1 pb-0.5 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={showDelta}
-          onChange={e => setShowDelta(e.target.checked)}
-          className="w-3 h-3 m-0"
-        />
-        疊上每日加倉前三大（±5% 內）{showDelta && '（點大小＝口數）'}
-      </label>
     </div>
   )
 }

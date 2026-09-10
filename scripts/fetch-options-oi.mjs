@@ -29,6 +29,10 @@ const BAND = 0.05      // AC-PCR-4：支撐壓力只認現價 ±5% 內的最大 
 const TOP_N = 3        // AC-OI-A4：每個到期別只留 Call/Put 各前三大
 const KEEP_DAYS = 60   // AC-OI-A7：保留 60 個交易日滾動
 const GAP_FIX_MAX = 3  // AC-OI-A11：一班最多自動補幾個缺漏日，避免單次 run 過長
+const RETAIN_MIN = 0.80   // AC-CL-2：留倉率門檻。OI 增量 ÷ 成交量，≈100% 代表新倉留倉而非當沖換手
+const ML_HORIZON = 45     // AC-CL-2a：只對 45 天內到期的契約記成本明細。更遠的季月（202612／202703）
+                          // 建倉零星卻要每天扛 OI 序列，實測是體積的主要來源
+const ML_MIN_DOI = 30     // 單日增量低於這個數就不納入追蹤，避免一口單長出一整條 OI 序列
 
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
@@ -139,6 +143,10 @@ async function fetchRaw(dateISO) {
   const iStrike = colIndex(columns, '履約價')
   const iCP = colIndex(columns, '買賣權')
   const iOI = colIndex(columns, '未沖銷')
+  // AC-CL-2：成本線要的兩個欄位。成交量取「合計」那欄（一般＋盤後），
+  // 收盤價取「最後成交價」——不可用結算價，那是模型推導的理論價（45800C 實例差 100 點）
+  const iVol = colIndex(columns, '合計', '成交量')
+  const iClose = colIndex(columns, '最後成交價')
   if ([iExp, iExpDate, iStrike, iCP, iOI].some(i => i === -1)) {
     throw new Error(`欄位比對失敗：${columns.join('|')}`)
   }
@@ -160,8 +168,14 @@ async function fetchRaw(dateISO) {
     const key = cp === 'Call' ? 'C' : cp === 'Put' ? 'P' : null
     if (!key) continue
 
-    byCode[code] ??= { exp, C: new Map(), P: new Map() }
+    byCode[code] ??= { exp, C: new Map(), P: new Map(), Cv: new Map(), Pv: new Map() }
     byCode[code][key].set(strike, oi)
+    // 量價另存一組平行 Map。不塞進 C/P 是刻意的——那兩個 Map 的值被 topN／compress
+    // 當成純數字用，改成陣列會讓既有的 AC-OI-A4／AC-PCR 全部靜默算錯
+    if (iVol !== -1 && iClose !== -1) {
+      const vol = toNum(cells[iVol]), close = toNum(cells[iClose])
+      if (vol != null || close != null) byCode[code][key === 'C' ? 'Cv' : 'Pv'].set(strike, [vol, close])
+    }
   }
 
   // AC-OI-A2 第二關：OI 全 0 代表資料還沒發布，整批不寫
@@ -218,8 +232,62 @@ function compress(curCode, prevCode, fut = null) {
   return out
 }
 
+/**
+ * AC-CL-2/3/8：主力成本推估要的當日切片。
+ *  e  當日建倉明細 [履約價, C|P, 成交量, OI 增量, 收盤價]——只收「價內 ＋ 留倉率 ≥ RETAIN_MIN」
+ *  o  追蹤中履約價的當日 OI [履約價, C|P, OI]——建過倉的點位之後每天都要記，
+ *     否則平倉看不出來（線寬要反映目前 OI，不是累積建倉量）
+ *  sc/sp 賣方防線＝價外 OI 最大的履約價 [履約價, OI, 收盤價]。
+ *     ⚠️ 必須限價外：不限的話會抓到價內 OI 最大者，那是買方部位不是壓力
+ *     （實測 202609F2 有三天因此把 SC 畫到指數下方）
+ */
+function mainForce(curCode, prevCode, fut, tracked) {
+  if (!(fut > 0)) return null
+  const e = []
+  for (const key of ['C', 'P']) {
+    const vm = curCode[key === 'C' ? 'Cv' : 'Pv']
+    for (const [k, oi] of curCode[key]) {
+      const vc = vm.get(k)
+      if (!vc) continue
+      const [vol, close] = vc
+      if (!vol || close == null) continue
+      const dOI = oi - (prevCode?.[key]?.get(k) ?? 0)
+      if (dOI < ML_MIN_DOI || dOI / vol < RETAIN_MIN) continue
+      const itm = key === 'C' ? k < fut : k > fut
+      if (itm) e.push([k, key, vol, dOI, close])
+    }
+  }
+
+  const keys = new Set([...(tracked ?? []), ...e.map(x => `${x[1]}${x[0]}`)])
+  const o = []
+  for (const kk of keys) {
+    const cp = kk[0], k = Number(kk.slice(1))
+    const oi = curCode[cp]?.get(k) ?? 0
+    if (oi > 0) o.push([k, cp, oi])   // 0 不必寫，前端讀不到就是 0，語意相同、體積差很多
+  }
+
+  // 只認現價 ±5% 內：再遠的深價外保單量體大但離畫面很遠，當成防線沒有意義
+  const lo5 = fut * (1 - BAND), hi5 = fut * (1 + BAND)
+  let sc = null, sp = null
+  for (const [k, oi] of curCode.C) {
+    if (k <= fut || k < lo5 || k > hi5) continue
+    if (!sc || oi > sc[1]) sc = [k, oi, curCode.Cv.get(k)?.[1] ?? null]
+  }
+  for (const [k, oi] of curCode.P) {
+    if (k >= fut || k < lo5 || k > hi5) continue
+    if (!sp || oi > sp[1]) sp = [k, oi, curCode.Pv.get(k)?.[1] ?? null]
+  }
+
+  const out = {}
+  if (e.length) out.e = e
+  if (o.length) out.o = o
+  if (sc?.[2] != null) out.sc = sc
+  if (sp?.[2] != null) out.sp = sp
+  return Object.keys(out).length ? out : null
+}
+
 /** 對外：抓一天並壓縮；prevRaw 給前一交易日的完整資料以算當日淨增加 */
-export async function fetchOptionsOI(dateISO, prevRaw = null, fut = null) {
+export async function fetchOptionsOI(dateISO, prevRaw = null, fut = null, tracked = {}) {
   const cur = await fetchRaw(dateISO)
   if (!cur) return null
   // ±5% 那組欄位只有「近月月選」用得到（AC-PCR-13：圖表只畫它），其餘 8~9 個
@@ -230,8 +298,25 @@ export async function fetchOptionsOI(dateISO, prevRaw = null, fut = null) {
   const out = {}
   for (const [code, rec] of Object.entries(cur)) {
     out[code] = compress(rec, prevRaw?.[code], code === monthly ? fut : null)
+    // 已結算的契約不再累積成本明細；當天到期的仍要記（結算日那天的狀態有意義）
+    if (rec.exp >= dateISO && rec.exp <= shiftDate(dateISO, ML_HORIZON)) {
+      const ml = mainForce(rec, prevRaw?.[code], fut, tracked[code])
+      if (ml) out[code].ml = ml
+    }
   }
   return out
+}
+
+/** 各契約「已經建過倉」的履約價集合，從既有快照回推——mainForce 要靠它每天續記 OI */
+export function trackedKeys(existing, code) {
+  const set = new Set()
+  for (const date of Object.keys(existing.days ?? {})) {
+    const ml = existing.days[date]?.[code]?.ml
+    if (!ml) continue
+    for (const x of ml.e ?? []) set.add(`${x[1]}${x[0]}`)
+    for (const x of ml.o ?? []) if (x[2] > 0) set.add(`${x[1]}${x[0]}`)
+  }
+  return set
 }
 
 /**
@@ -405,9 +490,16 @@ async function main() {
       console.log(`[oi] ${date} 期貨收盤抓取失敗（不影響 OI 主資料）：${e.message}`)
     }
 
+    // 每個契約已建倉的履約價集合，交給 mainForce 續記 OI（AC-CL-5 線寬要看目前 OI）
+    const tracked = {}
+    for (const code of new Set(Object.values(existing.days).flatMap(d => Object.keys(d)))) {
+      const set = trackedKeys(existing, code)
+      if (set.size) tracked[code] = set
+    }
+
     let rec
     try {
-      rec = await fetchOptionsOI(date, prevRaw, fut)
+      rec = await fetchOptionsOI(date, prevRaw, fut, tracked)
     } catch (e) {
       console.log(`[oi] ${date} 抓取失敗：${e.message}`)
       continue
@@ -446,6 +538,16 @@ async function main() {
     console.log(`[oi] 結算價抓取失敗（不影響主資料）：${e.message}`)
   }
 
+  // AC-CL-2a：已結算的契約不會出現在分頁（AC-CL-1 只列結算日 > 今天），
+  // 它的成本明細留著純粹是體積——實測每天每契約約 0.3~0.5 KB，一個月就是六位數位元組
+  let pruned = 0
+  for (const d of Object.keys(existing.days)) {
+    for (const [code, rec] of Object.entries(existing.days[d])) {
+      if (rec.ml && rec.exp < today) { delete rec.ml; pruned++ }
+    }
+  }
+  if (pruned) console.log(`[oi] 已清除 ${pruned} 筆已結算契約的成本明細`)
+
   // AC-OI-A7：只留最近 KEEP_DAYS 個交易日
   if (dates.length > KEEP_DAYS) {
     for (const d of dates.slice(0, dates.length - KEEP_DAYS)) {
@@ -456,6 +558,19 @@ async function main() {
 
   existing.updatedAt = new Date().toISOString()
   if (process.env.OPTIONS_OI_DRY_RUN) {
+    // AC-CL-2a：ml 欄位的體積必須實測，不能用估的
+    const strip = d => Object.fromEntries(Object.entries(d).map(([k, v]) => { const { ml, ...r } = v; return [k, r] }))
+    for (const d of Object.keys(existing.days).sort()) {
+      const full = JSON.stringify(existing.days[d]).length
+      const bare = JSON.stringify(strip(existing.days[d])).length
+      console.log(`[oi] ${d} 單日 ${(full / 1024).toFixed(2)} KB（其中 ml ${((full - bare) / 1024).toFixed(2)} KB）`)
+    }
+    // 指定路徑就把 payload 落地，方便拿真實資料驗前端模型
+    if (process.env.OPTIONS_OI_DUMP) {
+      const { writeFileSync } = await import('fs')
+      writeFileSync(process.env.OPTIONS_OI_DUMP, JSON.stringify(existing))
+      console.log(`[oi] 已寫出 ${process.env.OPTIONS_OI_DUMP}`)
+    }
     console.log(`[oi] DRY RUN：不上傳。日期 ${Object.keys(existing.days).sort().join(' ')}`)
     return
   }

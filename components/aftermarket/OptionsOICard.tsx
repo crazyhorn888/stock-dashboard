@@ -1,33 +1,31 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import OptionsOIChart from '@/components/aftermarket/OptionsOIChart'
-import type { OptionsOISnapshot, OptionsOIContract } from '@/lib/types'
+import CostLine from '@/components/aftermarket/CostLine'
+import type { OptionsOISnapshot } from '@/lib/types'
 import { fetchOptionsOI } from '@/lib/fetchOptionsOI'
 import { taipeiToday } from '@/lib/tradingDay'
-import {
-  type OIKind, type OICell,
-  trackContract, buildCalendar, prevContract, nextContractOn,
-  monthlyContracts, latestRecordedDay, weekTag,
-} from '@/lib/optionsOI'
+import { buildCases } from '@/lib/costLine'
 
-// 功能二十三：選擇權 OI（AC-OI-B1~B10）
-// 日曆三行 ＝ 追蹤契約的完整生命週期（掛牌週／中間週／結算週），規則詳見 lib/optionsOI.ts。
-
-const WEEK_LABELS = ['日', '一', '二', '三', '四', '五', '六']
-type DetailMode = 'main' | 'next' | 'prev' | 'm0' | 'm1'
-
-const md = (d: string) => `${Number(d.slice(5, 7))}/${d.slice(8, 10)}`
+/**
+ * 功能二十三：選擇權（AC-CL-0～AC-CL-11，2026-09-10 改版）。
+ *
+ * 一張卡兩個區塊，順序固定：
+ *  1. 主力成本推估——單一契約的買方成本線與賣方防線
+ *  2. PCR——全市場所有到期別合計的 PC Ratio 與支撐壓力通道
+ *
+ * ⚠️ 兩者不可合併成一張圖：Y 軸尺度不同（指數點位 vs 百分比），
+ * 而且 PCR 是全市場合計、成本線是單一契約，疊在一起會讓人誤讀 PCR 屬於該契約。
+ */
 
 interface CardProps {
-  /** 大盤日 K，供折線圖畫現貨收盤線（AC-PCR-8） */
+  /** 大盤日 K，供成本線畫指數走勢、PCR 圖畫現貨收盤線（AC-PCR-8） */
   indexHistory?: { date: string; close: number }[]
 }
 
 export default function OptionsOICard({ indexHistory = [] }: CardProps) {
   const [snap, setSnap] = useState<OptionsOISnapshot | null>(null)
-  const [kind, setKind] = useState<OIKind>('wed')
-  const [selected, setSelected] = useState<string | null>(null)
-  const [mode, setMode] = useState<DetailMode>('main')
+  const [code, setCode] = useState<string | null>(null)
   const [helpOpen, setHelpOpen] = useState(false)
 
   useEffect(() => { fetchOptionsOI().then(setSnap) }, [])
@@ -39,280 +37,135 @@ export default function OptionsOICard({ indexHistory = [] }: CardProps) {
     return m
   }, [indexHistory])
 
-  const track = useMemo(() => snap ? trackContract(snap, kind, today) : null, [snap, kind, today])
-  const rows = useMemo(
-    () => (snap && track) ? buildCalendar(snap, kind, track, today) : [],
-    [snap, track, kind, today],
+  const cases = useMemo(
+    () => snap ? buildCases(snap, indexClose, today) : [],
+    [snap, indexClose, today],
   )
 
-  // 切換週三／週五時把選中日期移到該契約最後有記錄的那天
-  useEffect(() => {
-    if (!snap || !track) return
-    const fallback = latestRecordedDay(snap, track.code, today)
-    setSelected(prev => (prev && snap.days[prev]?.[track.code]) ? prev : fallback)
-    setMode('main')
-  }, [snap, track, today])
+  // AC-CL-1：預設停在最近即將到期、但還沒結算的那一檔
+  const pick = useMemo(() => {
+    if (!cases.length) return null
+    return cases.find(c => c.code === code)
+      ?? cases.find(c => c.exp > today)
+      ?? cases[cases.length - 1]
+  }, [cases, code, today])
 
-  // AC-OI-B15：月選與週選結算無關，不得被 track = null 一起隱藏
   if (!snap) return null
-
-  const hasWeek = !!track && rows.length > 0
-  const prev = track && selected === track.listDate ? prevContract(snap, kind, track.listDate, today) : null
-  const nextCode = track && selected ? nextContractOn(snap, kind, selected, track.exp) : null
-  const detailCode = mode === 'next' && nextCode ? nextCode : track?.code ?? ''
-  const detailRec = selected ? snap.days[selected]?.[detailCode] ?? null : null
-  const { date: monthDate, items: months } = monthlyContracts(snap, today)
-  const monthPick = mode === 'm0' ? months[0] : mode === 'm1' ? months[1] : null
-
-  const cellClass = (c: OICell) => {
-    if (c.weekend) return 'bg-transparent border-transparent'
-    if (c.outside) return 'bg-slate-100 border-transparent'
-    if (c.rec) return 'bg-blue-50 border-blue-200 cursor-pointer'
-    if (c.today) return 'bg-amber-50 border-amber-300'
-    return 'bg-white border-slate-100'
-  }
 
   return (
     <div className="w-full bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3 mb-3 flex flex-col gap-2">
-      {/* 標題列 */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-          選擇權 OI
-          <button
-            onClick={() => setHelpOpen(true)}
-            aria-label="說明"
-            className="w-4 h-4 rounded-full border border-slate-300 text-slate-400 text-[10px] leading-none hover:border-blue-500 hover:text-blue-600"
-          >?</button>
-        </div>
-        <div className="flex items-center gap-1">
-          {track?.settled && (
-            <span className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5 whitespace-nowrap">
-              已結算 · 等下一檔掛牌
-            </span>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+            選擇權
+            <button
+              onClick={() => setHelpOpen(true)}
+              aria-label="說明"
+              className="w-4 h-4 rounded-full border border-slate-300 text-slate-400 text-[10px] leading-none hover:border-blue-500 hover:text-blue-600"
+            >?</button>
+          </h2>
+          {pick && (
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              {pick.code}　{pick.exp.slice(5).replace('-', '/')} 結算　可左右滑看更早
+            </p>
           )}
-          {(['wed', 'fri'] as const).map(k => (
-            <button
-              key={k}
-              onClick={() => { setKind(k); setMode('main') }}
-              className={`text-[11px] px-2.5 py-0.5 rounded-full border ${
-                kind === k
-                  ? 'bg-slate-800 text-white border-slate-800 font-semibold'
-                  : 'bg-white text-slate-500 border-slate-200'
-              }`}
-            >{k === 'wed' ? '週三選' : '週五選'}</button>
-          ))}
         </div>
       </div>
 
-      {!hasWeek && (
+      {/* ── 區塊一：主力成本推估 ───────────────────────────── */}
+      <div className="text-[11px] font-semibold text-slate-600 pt-0.5">主力成本推估</div>
+
+      {!pick ? (
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-4 text-[11px] text-slate-500 text-center">
-          {kind === 'wed' ? '週三選' : '週五選'}目前沒有可追蹤的契約，收盤後新契約掛牌即會恢復。
+          主力成本推估需要至少兩個交易日的建倉紀錄，稍後收盤更新後顯示
         </div>
+      ) : (
+        <>
+          {/* AC-CL-1：清單＝快照有揭露且尚未結算的契約，依結算日升冪 */}
+          <div className="flex flex-wrap gap-1">
+            {cases.map(c => (
+              <button
+                key={c.code}
+                onClick={() => setCode(c.code)}
+                className={`text-[10px] px-2 py-0.5 rounded-md border tabular-nums ${
+                  c.code === pick.code
+                    ? 'bg-slate-800 text-white border-slate-800 font-bold'
+                    : c.exp <= today
+                      ? 'bg-white text-slate-400 border-slate-200'
+                      : 'bg-white text-slate-600 border-slate-200'
+                }`}
+              >{c.code}{c.exp <= today ? ' ·結算日' : ''}</button>
+            ))}
+          </div>
+          <CostLine c={pick} />
+        </>
       )}
 
-      {hasWeek && <>
-      {/* 日曆：三行＝掛牌週／中間週／結算週 */}
-      <table className="w-full table-fixed border-separate border-spacing-[2px]">
-        <thead>
-          <tr>{WEEK_LABELS.map(w => (
-            <th key={w} className="text-[10px] font-semibold text-slate-400 pb-0.5">{w}</th>
-          ))}</tr>
-        </thead>
-        <tbody>
-          {rows.map((week, wi) => (
-            <tr key={wi}>
-              {week.map(c => (
-                <td
-                  key={c.date}
-                  onClick={() => { if (c.rec) { setSelected(c.date); setMode('main') } }}
-                  className={`h-14 align-top rounded-md border px-0.5 pt-0.5 text-center ${cellClass(c)} ${
-                    c.date === selected ? 'outline outline-2 outline-blue-500' : ''
-                  }`}
-                >
-                  {/* 日期與徽章同一行：日期靠左、徽章靠右，不用絕對定位（AC-OI-B7） */}
-                  <div className="flex items-start justify-between gap-0.5">
-                    <span className={`text-[9.5px] tabular-nums leading-tight pl-0.5 ${
-                      c.today ? 'text-blue-600 font-extrabold' : c.weekend ? 'text-slate-300' : 'text-slate-400'
-                    }`}>{md(c.date)}</span>
-                    <span className="flex gap-0.5 shrink-0">
-                      {c.prevCode && (
-                        <button
-                          onClick={e => { e.stopPropagation(); setSelected(c.date); setMode('prev') }}
-                          title={`上一檔 ${c.prevCode}`}
-                          className="text-[7.5px] font-extrabold text-white bg-slate-400 rounded px-[3px] leading-relaxed hover:bg-blue-500"
-                        >上</button>
-                      )}
-                      {c.nextCode && (
-                        <button
-                          onClick={e => { e.stopPropagation(); setSelected(c.date); setMode('next') }}
-                          title={`下一檔 ${c.nextCode}`}
-                          className="text-[7.5px] font-extrabold text-white bg-slate-400 rounded px-[3px] leading-relaxed hover:bg-blue-500"
-                        >{weekTag(c.nextCode)}</button>
-                      )}
-                    </span>
-                  </div>
-
-                  {c.rec && (
-                    <>
-                      <div className="text-[11px] font-bold tabular-nums text-red-600 leading-tight">{c.rec.C[0]?.[0]}</div>
-                      <div className="text-[11px] font-bold tabular-nums text-emerald-600 leading-tight">{c.rec.P[0]?.[0]}</div>
-                    </>
-                  )}
-                  {!c.rec && c.today && (
-                    <div className="text-[9px] text-slate-400 mt-2 leading-tight">收盤後<br />更新</div>
-                  )}
-                  {!c.rec && !c.today && c.note && (
-                    <div className={`text-[8.5px] font-bold mt-2 leading-tight ${
-                      c.note === '月結算日' ? 'text-blue-600' : 'text-slate-500'
-                    }`}>{c.note}</div>
-                  )}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      </>}
-
-      {/* AC-PCR-7：折線圖在日曆下方、明細上方，預設展開。口徑是近月月選，
-          與上方週選日曆不同源——Modal 有說明兩者的差別。
-          用月選資料，所以不能包在 hasWeek 裡跟著週選一起消失（同 AC-OI-B15） */}
+      {/* ── 區塊二：PCR ─────────────────────────────────── */}
+      <div className="text-[11px] font-semibold text-slate-600 pt-1.5 border-t border-slate-200">PCR</div>
       <OptionsOIChart snap={snap} indexClose={indexClose} today={today} />
-
-      {hasWeek && <>
-      {/* 明細：追蹤中／下一檔／上一檔 */}
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-        <div className="flex flex-wrap gap-1 mb-1.5">
-          <TabButton on={mode === 'main'} onClick={() => setMode('main')} label={`追蹤中 ${track.code}`} />
-          {nextCode && <TabButton on={mode === 'next'} onClick={() => setMode('next')} label={`下一檔 ${nextCode}`} />}
-          {prev && <TabButton on={mode === 'prev'} onClick={() => setMode('prev')} label={`上一檔 ${prev.code}`} />}
-          {monthPick && <TabButton on onClick={() => setMode('main')} label={`月選 ${monthPick.code}`} />}
-        </div>
-
-        {monthPick ? (
-          <>
-            <h4 className="text-[11px] font-bold text-slate-800 mb-1.5">
-              {monthDate ? `${md(monthDate)} 收盤 · ` : ''}{monthPick.code}（月選，結算 {md(monthPick.rec.exp)}）
-            </h4>
-            <TopThree rec={monthPick.rec} />
-          </>
-        ) : mode === 'prev' && prev ? (
-          <>
-            <h4 className="text-[11px] font-bold text-slate-800 mb-1.5">
-              {prev.code} · 已於 {md(prev.date)} 結算
-            </h4>
-            <div className="text-[10.5px] text-slate-500 leading-relaxed mb-1.5">
-              <b className="text-slate-800">最後結算價</b>{' '}
-              <span className="text-[13px] font-extrabold tabular-nums text-slate-800">{prev.fsp.toLocaleString()}</span>
-              {prev.rec && prev.lastDay && (
-                <>　結算前（{md(prev.lastDay)}）壓力 {prev.rec.C[0]?.[0]} ／ 支撐 {prev.rec.P[0]?.[0]} →{' '}
-                  <b className="text-slate-800">
-                    {prev.fsp <= (prev.rec.C[0]?.[0] ?? Infinity) && prev.fsp >= (prev.rec.P[0]?.[0] ?? -Infinity)
-                      ? '收在區間內' : '突破區間'}
-                  </b>
-                </>
-              )}
-            </div>
-            {prev.rec && <TopThree rec={prev.rec} />}
-          </>
-        ) : detailRec && selected ? (
-          <>
-            <h4 className="text-[11px] font-bold text-slate-800 mb-1.5">
-              {md(selected)} 收盤 · {detailCode}（結算 {md(detailRec.exp)}）
-            </h4>
-            <TopThree rec={detailRec} />
-          </>
-        ) : (
-          <div className="text-[11px] text-slate-400">尚無記錄</div>
-        )}
-      </div>
-      </>}
-
-      {/* 月選（AC-OI-B9） */}
-      {months.length > 0 && (
-        <div className="grid grid-cols-2 gap-2">
-          {months.map((m, i) => (
-            <button
-              key={m.code}
-              onClick={() => setMode(i === 0 ? 'm0' : 'm1')}
-              className={`text-left rounded-lg border bg-slate-50 p-2 ${
-                (mode === 'm0' && i === 0) || (mode === 'm1' && i === 1)
-                  ? 'border-blue-400 ring-1 ring-blue-200' : 'border-slate-200'
-              }`}
-            >
-              <div className="text-[10px] text-slate-400 mb-1">
-                月選{i === 0 ? '當月' : '次月'} · 結算 {md(m.rec.exp)}
-              </div>
-              <div className="flex justify-between text-[11px] tabular-nums">
-                <span className="text-red-600">壓力 SC</span>
-                <b className="text-slate-800">{m.rec.C[0]?.[0] ?? '—'}</b>
-              </div>
-              <div className="flex justify-between text-[11px] tabular-nums">
-                <span className="text-emerald-600">支撐 SP</span>
-                <b className="text-slate-800">{m.rec.P[0]?.[0] ?? '—'}</b>
-              </div>
-              <div className="text-[9px] text-slate-400 mt-1">點看前三大與今日新增</div>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* 圖例 */}
-      <div className="flex flex-wrap gap-x-2.5 gap-y-1 text-[9.5px] text-slate-500">
-        <Legend className="bg-blue-50 border-blue-200" label="未結算" />
-        <Legend className="bg-amber-50 border-amber-300" label="今日" />
-        <Legend className="bg-white border-slate-200" label="尚未到" />
-        <Legend className="bg-slate-100 border-transparent" label="掛牌前／結算後" />
-      </div>
 
       {helpOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/40"
           onClick={() => setHelpOpen(false)}
         >
-          <div className="bg-white rounded-xl border border-slate-200 p-4 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-xl border border-slate-200 p-4 max-w-sm w-full max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-start justify-between mb-2">
-              <h3 className="text-sm font-bold text-slate-800">怎麼看這張表</h3>
+              <h3 className="text-sm font-bold text-slate-800">怎麼看這張卡</h3>
               <button onClick={() => setHelpOpen(false)} className="text-slate-400 text-sm">✕</button>
             </div>
-            <p className="text-xs text-slate-600 leading-relaxed mb-2">
-              <b className="text-slate-800">SP，OI 最大量區</b>：市場的<b className="text-slate-800">支撐區</b>，因為賣方不希望指數跌破這裡。
-            </p>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              <b className="text-slate-800">SC，OI 最大量區</b>：市場的<b className="text-slate-800">壓力區</b>，因為賣方不希望指數漲過這裡。
-            </p>
+
+            <div className="flex flex-col gap-2">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                <b className="text-slate-800">主力成本推估</b>：找出<b className="text-slate-800">價內</b>、
+                當日<b className="text-slate-800">留倉率 ≥80%</b>（OI 增量 ÷ 成交量，≈100% 代表新倉留著過夜而非當沖換手）、
+                累積 ≥100 口的建倉，用<code className="bg-slate-100 rounded px-1">履約價 ± 權利金</code>畫成成本線，
+                看指數一路走到結算日是站上還是跌破。
+              </p>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                <b className="text-slate-800">成本用最後成交價</b>，不用結算價——結算價是模型推導的理論價，
+                <span className="text-slate-400">實例 45800C：結算 1,360 vs 收盤 1,260，差 100 點。</span>
+              </p>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                <b className="text-slate-800">線粗＝目前 OI</b>，不是累積建倉量。部位被平掉線就變細，
+                剩不到兩成幾乎淡出——用累積量的話，早就平掉的部位還會被畫成一條粗防線。
+                <b className="text-slate-800">底</b>＝成本最低的那條（買方最後防線），
+                <b className="text-slate-800">重</b>＝目前 OI 最大的那條。
+              </p>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                <b className="text-slate-800">賣方防線 SC / SP</b>：價外、現價 ±5% 內 OI 最大的履約價，
+                加減權利金後就是賣方開始虧損的點。買方回本點與賣方虧損點是同一個數字，只是視角相反。
+              </p>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                <b className="text-slate-800">點日曆</b>只切換底下明細的日期口徑（成本與累積量都用當天重算），
+                圖表與捲動位置不動。
+              </p>
+            </div>
 
             <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col gap-2">
               <p className="text-xs text-slate-600 leading-relaxed">
-                <b className="text-slate-800">日曆上的數字</b>：該日收盤的<b className="text-slate-800">未沖銷契約量（OI）</b>，
-                即當下尚未平倉的部位，非每日成交量累加。部位平掉 OI 即減少，結算日歸零。
-              </p>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                <b className="text-slate-800">今日新增未平倉</b>：今日 OI −昨日 OI 的正值，為<b className="text-slate-800">淨增加</b>
-                （＝新開倉 − 平倉），非當日新開倉口數。當沖來回會互相抵銷，留下的是實際押上去的部位。
-              </p>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                <b className="text-slate-800">前三大 vs 今日新增</b>：前者是整段累積的佈局，後者是當天的動作，兩者位置常不同。
+                <b className="text-slate-800">分頁什麼時候會多一檔？</b>週選在<b className="text-slate-800">結算日前 14 天</b>掛牌
+                （前兩週的同一個星期幾），月選在<b className="text-slate-800">前一個月選結算的次一營業日</b>掛牌。
+                <span className="text-slate-400">
+                　掛牌日遇休市會順延（2026-06-19 端午、2026-07-10 各順延一次），所以本卡不推算日期，
+                  直接列當日快照有揭露的契約。
+                </span>
               </p>
             </div>
 
             {/* AC-PCR-15：折線圖的口徑與濾波理由 */}
             <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col gap-2">
               <p className="text-xs text-slate-600 leading-relaxed">
-                <b className="text-slate-800">PC Ratio</b> ＝ 賣權 OI ÷ 買權 OI，數值高代表賣權佈局相對多。
+                <b className="text-slate-800">PCR</b> ＝ 賣權 OI ÷ 買權 OI，數值高代表賣權佈局相對多。
                 折線圖採<b className="text-slate-800">近月月選</b>：週選每兩週換約、全市場合計每隔幾天就有契約結算，
                 數字的跳動來自成分更換而非市場情緒。
               </p>
               <p className="text-xs text-slate-600 leading-relaxed">
                 <b className="text-slate-800">支撐壓力取近月選現價 ±5% 範圍內的最大 OI</b>，不用全域 Top1。
                 <span className="text-slate-400">
-                  　例：2026-09-08 指數 47,105，當月選賣權第二大 OI 掛在 21,800——那是深價外的災難險保單，不是防守線。
+                　例：2026-09-08 指數 47,105，當月選賣權第二大 OI 掛在 21,800——那是深價外的災難險保單，不是防守線。
                 </span>
-              </p>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                <b className="text-slate-800">圖上的線與點是兩件事</b>：線是累積 OI 最大的位置，點是當日淨增加前三大，
-                重疊與否都正常。
               </p>
               <p className="text-xs text-amber-700 leading-relaxed bg-amber-50 border-l-2 border-amber-400 pl-2 py-1.5">
                 <b>PC Ratio 上升 ＋ 支撐往下鋪，是偏多形狀，不是背離警訊。</b>
@@ -325,59 +178,5 @@ export default function OptionsOICard({ indexHistory = [] }: CardProps) {
         </div>
       )}
     </div>
-  )
-}
-
-function TabButton({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`text-[9.5px] px-1.5 py-0.5 rounded border tabular-nums ${
-        on ? 'bg-blue-600 text-white border-blue-600 font-bold' : 'bg-white text-slate-500 border-slate-200'
-      }`}
-    >{label}</button>
-  )
-}
-
-function TopThree({ rec }: { rec: OptionsOIContract }) {
-  const list = (arr: [number, number][] | undefined, sign = false) => (arr ?? []).map(([strike, oi], i) => (
-    <div key={strike} className="flex justify-between text-[10.5px] tabular-nums text-slate-500 py-[1.5px]">
-      <b className={`text-slate-800 font-bold ${i === 0 ? 'text-[11.5px]' : ''}`}>{strike}</b>
-      <span>{sign ? '+' : ''}{oi.toLocaleString()} 口</span>
-    </div>
-  ))
-  const hasDelta = (rec.dC?.length ?? 0) > 0 || (rec.dP?.length ?? 0) > 0
-  return (
-    <>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <div className="text-[10px] font-bold text-red-600 mb-0.5">壓力 SC · 前三大</div>
-          {list(rec.C)}
-        </div>
-        <div>
-          <div className="text-[10px] font-bold text-emerald-600 mb-0.5">支撐 SP · 前三大</div>
-          {list(rec.P)}
-        </div>
-      </div>
-      {/* 累積是整段佈局，今日新增是當天的動作，兩者位置常常不同 */}
-      {hasDelta && (
-        <div className="mt-1.5 pt-1.5 border-t border-slate-200">
-          <div className="text-[9.5px] text-slate-400 mb-0.5">今日新增未平倉（當天押在哪）</div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>{list(rec.dC, true)}</div>
-            <div>{list(rec.dP, true)}</div>
-          </div>
-        </div>
-      )}
-    </>
-  )
-}
-
-function Legend({ className, label }: { className: string; label: string }) {
-  return (
-    <span className="flex items-center gap-1">
-      <i className={`inline-block w-2.5 h-2.5 rounded-sm border ${className}`} />
-      {label}
-    </span>
   )
 }

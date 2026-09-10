@@ -309,6 +309,18 @@ export interface OptionsOIContract {
   /** ±5% 內的當日淨增加前三大（先框範圍、再排前三大） */
   dnC?: [number, number][]
   dnP?: [number, number][]
+
+  // ── AC-CL-2（2026-09-10）：主力成本推估的當日切片 ──
+  /** 只在「尚未結算且 45 天內到期」的契約上出現；已結算者由 pipeline 清除以省體積 */
+  ml?: {
+    /** 當日建倉明細 [履約價, C|P, 成交量, OI 增量, 收盤價]，只收價內且留倉率 ≥80% */
+    e?: [number, 'C' | 'P', number, number, number][]
+    /** 追蹤中履約價的當日 OI [履約價, C|P, OI]。OI 為 0 者不寫，前端讀不到即視為 0 */
+    o?: [number, 'C' | 'P', number][]
+    /** 賣方防線＝價外、±5% 內 OI 最大的履約價 [履約價, OI, 收盤價] */
+    sc?: [number, number, number]
+    sp?: [number, number, number]
+  }
 }
 
 export interface OptionsOISnapshot {
