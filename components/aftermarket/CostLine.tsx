@@ -12,7 +12,7 @@
  * 還會被畫成一條粗防線——那是不存在的支撐。
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { legsAsOf, type CostCase, type CostLeg } from '@/lib/costLine'
 
 const H = 248, PT = 10, PB = 30, IN = 14, DAY_W = 34
@@ -33,27 +33,55 @@ function smooth(pts: [number, number][]): string {
   return d
 }
 
-/** 生命週期內的平日，若不在交易日序列裡就是休市（颱風假／國定假日） */
-function calendarWeeks(c: CostCase) {
+type Cell = { iso: string; day: number; weekend: boolean; live: boolean; isExp: boolean }
+type Week = { cells: Cell[]; gapBefore: number }
+
+const weekStart = (iso: string) => {
+  const d = new Date(`${iso}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() - d.getUTCDay())
+  return d
+}
+const isoOf = (d: Date) => d.toISOString().slice(0, 10)
+const addDays = (d: Date, n: number) => { const x = new Date(d); x.setUTCDate(x.getUTCDate() + n); return x }
+
+/**
+ * AC-CL-13：日曆只畫「錨點往前 3 週 ～ 往後 2 週」，錨點＝min(今天, 結算日)。
+ *
+ * 原本畫「最早有資料那天 → 結算日」，月選的生命週期跨月，實測 202609 是 8 列、
+ * 29 天裡 18 天是「無參考 0 口」，202610 更是 8 列全空。看更早靠圖表橫向捲動，
+ * 日曆不負責完整生命週期。
+ *
+ * 生命週期內的平日若不在交易日序列裡就是休市（颱風假／國定假日）。
+ */
+function calendarWeeks(c: CostCase, today: string): Week[] {
   const inLife = new Set(c.days)
-  const first = new Date(`${c.days[0]}T00:00:00Z`)
-  const cur = new Date(first)
-  cur.setUTCDate(first.getUTCDate() - first.getUTCDay())
-  const end = new Date(`${c.exp}T00:00:00Z`)
-  const weeks: { iso: string; day: number; weekend: boolean; live: boolean; isExp: boolean }[][] = []
-  while (cur <= end) {
-    const cells = []
+  const anchor = today < c.exp ? today : c.exp
+  const lifeFirst = weekStart(c.days[0]), lifeLast = weekStart(c.exp)
+  let from = addDays(weekStart(anchor), -21)
+  let to = addDays(weekStart(anchor), 14)
+  if (from < lifeFirst) from = lifeFirst
+  if (to > lifeLast) to = lifeLast
+
+  const build = (start: Date): Cell[] => {
+    const cells: Cell[] = []
     for (let i = 0; i < 7; i++) {
-      const iso = cur.toISOString().slice(0, 10)
-      cells.push({ iso, day: cur.getUTCDate(), weekend: i === 0 || i === 6, live: inLife.has(iso), isExp: iso === c.exp })
-      cur.setUTCDate(cur.getUTCDate() + 1)
+      const d = addDays(start, i), iso = isoOf(d)
+      cells.push({ iso, day: d.getUTCDate(), weekend: i === 0 || i === 6, live: inLife.has(iso), isExp: iso === c.exp })
     }
-    weeks.push(cells)
+    return cells
+  }
+
+  const weeks: Week[] = []
+  for (let cur = new Date(from); cur <= to; cur = addDays(cur, 7)) weeks.push({ cells: build(cur), gapBefore: 0 })
+  // 結算週落在範圍外時單獨補一列，中間標明略過幾週——直接接上去會讓日期無聲跳號
+  if (lifeLast > to) {
+    const gap = Math.round((+lifeLast - +to) / (7 * 86400000)) - 1
+    weeks.push({ cells: build(lifeLast), gapBefore: gap })
   }
   return weeks
 }
 
-export default function CostLine({ c }: { c: CostCase }) {
+export default function CostLine({ c, today }: { c: CostCase; today: string }) {
   const [selDay, setSelDay] = useState<string | null>(null)
   const [showOld, setShowOld] = useState(false)
   const [showOtm, setShowOtm] = useState(true)
@@ -63,7 +91,7 @@ export default function CostLine({ c }: { c: CostCase }) {
 
   const tl = c.timeline
   const todayD = tl[tl.length - 1].d
-  const weeks = useMemo(() => calendarWeeks(c), [c])
+  const weeks = useMemo(() => calendarWeeks(c, today), [c, today])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -185,9 +213,11 @@ export default function CostLine({ c }: { c: CostCase }) {
   const curMax = Math.max(1, ...legsIn.map(l => curOI(l.key)))
   const labels: { y: number; col: string; op: number; oi: number; tag: string; be: number }[] = []
 
+  // 琥珀色標的是「真的今天」，不是「最後一天有資料的日子」——已結算的契約若用後者，
+  // 會把結算日染成今天（AC-CL-14 讓已結算契約留在分頁上之後才會踩到）
   const cellClass = (cell: { weekend: boolean; live: boolean; iso: string }, inRange: boolean, noTrade: boolean) => {
     if (cell.weekend || !inRange || noTrade) return 'bg-slate-100 border-transparent'
-    if (cell.iso === todayD) return 'bg-amber-50 border-amber-300'
+    if (cell.iso === today) return 'bg-amber-50 border-amber-300'
     return cell.live ? 'bg-blue-50 border-blue-200 cursor-pointer' : 'bg-white border-slate-100'
   }
 
@@ -202,8 +232,14 @@ export default function CostLine({ c }: { c: CostCase }) {
         </thead>
         <tbody>
           {weeks.map((week, wi) => (
-            <tr key={wi}>
-              {week.map(cell => {
+            <Fragment key={wi}>
+              {week.gapBefore > 0 && (
+                <tr><td colSpan={7} className="text-center text-[8.5px] text-slate-300 py-0.5">
+                  ⋯ 略過 {week.gapBefore} 週 ⋯
+                </td></tr>
+              )}
+              <tr>
+              {week.cells.map(cell => {
                 const inRange = cell.iso >= c.days[0] && cell.iso <= c.exp
                 const noTrade = !cell.weekend && inRange && !cell.live && cell.iso < todayD
                 const rec = c.daily[cell.iso]
@@ -217,7 +253,7 @@ export default function CostLine({ c }: { c: CostCase }) {
                     }`}
                   >
                     <div className={`text-[9.5px] tabular-nums leading-tight ${
-                      cell.iso === todayD ? 'font-extrabold text-blue-600' : 'text-slate-400'
+                      cell.iso === today ? 'font-extrabold text-blue-600' : 'text-slate-400'
                     }`}>{cell.day}</div>
                     {cell.weekend || !inRange ? null
                       : noTrade ? <div className="text-[8px] text-slate-400 pt-2.5 opacity-60">休市</div>
@@ -242,7 +278,8 @@ export default function CostLine({ c }: { c: CostCase }) {
                   </td>
                 )
               })}
-            </tr>
+              </tr>
+            </Fragment>
           ))}
         </tbody>
       </table>
@@ -484,20 +521,12 @@ export default function CostLine({ c }: { c: CostCase }) {
               </span>
             </div>
             <div className="text-[9.5px] text-slate-400 leading-relaxed">
-              取<b>價外</b> Call／Put、現價 ±5% 內的最大 OI。畫的是<b>賣方虧損點</b>（履約價 ± 權利金），
-              賣方漲/跌過去才開始賠——與 BC 成本線是同一個數字、視角相反。
+              取<b>價外</b> Call／Put、現價 ±5% 內的最大 OI。
             </div>
           </div>
         )}
 
-        <div className="text-[9.5px] text-slate-400 leading-relaxed mt-1">
-          {detail.forced && <b className="text-amber-600">這個契約的建倉全在上次轉倉之前，已自動顯示全部。</b>}
-          {detail.hidden > 0 && <span>已隱藏 {detail.hidden} 條轉倉前建立的舊部位。</span>}
-          {' '}{detail.isLatest ? '最新指數' : `${md(detail.asOf)} 指數`} <b>{nf(detail.last)}</b>，
-          在 {detail.legs.length} 條成本線中站上 <b>
-            {detail.legs.filter(l => l.cp === 'C' ? detail.last >= l.be : detail.last <= l.be).length}
-          </b> 條。
-        </div>
+
       </div>
     </div>
   )

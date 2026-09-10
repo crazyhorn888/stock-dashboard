@@ -43,12 +43,20 @@ export default function OptionsOICard({ indexHistory = [] }: CardProps) {
   )
 
   // AC-CL-1：預設停在最近即將到期、但還沒結算的那一檔
+  // AC-CL-14：未結算的依結算日升冪在前，已結算的（7 天內）依結算日降冪在後。
+  // 結算完才看得出當初那條成本線守不守得住，所以留一段回顧窗口
+  const tabs = useMemo(() => {
+    const live = cases.filter(c => c.exp >= today).sort((a, b) => a.exp.localeCompare(b.exp))
+    const done = cases.filter(c => c.exp < today).sort((a, b) => b.exp.localeCompare(a.exp))
+    return [...live, ...done]
+  }, [cases, today])
+
   const pick = useMemo(() => {
-    if (!cases.length) return null
-    return cases.find(c => c.code === code)
-      ?? cases.find(c => c.exp > today)
-      ?? cases[cases.length - 1]
-  }, [cases, code, today])
+    if (!tabs.length) return null
+    return tabs.find(c => c.code === code)
+      ?? tabs.find(c => c.exp > today)
+      ?? tabs[0]
+  }, [tabs, code, today])
 
   if (!snap) return null
 
@@ -83,21 +91,21 @@ export default function OptionsOICard({ indexHistory = [] }: CardProps) {
         <>
           {/* AC-CL-1：清單＝快照有揭露且尚未結算的契約，依結算日升冪 */}
           <div className="flex flex-wrap gap-1">
-            {cases.map(c => (
+            {tabs.map(c => (
               <button
                 key={c.code}
                 onClick={() => setCode(c.code)}
                 className={`text-[10px] px-2 py-0.5 rounded-md border tabular-nums ${
                   c.code === pick.code
                     ? 'bg-slate-800 text-white border-slate-800 font-bold'
-                    : c.exp <= today
+                    : c.exp < today
                       ? 'bg-white text-slate-400 border-slate-200'
                       : 'bg-white text-slate-600 border-slate-200'
                 }`}
-              >{c.code}{c.exp <= today ? ' ·結算日' : ''}</button>
+              >{c.code}{c.exp < today ? ' ·已結' : c.exp === today ? ' ·結算日' : ''}</button>
             ))}
           </div>
-          <CostLine c={pick} />
+          <CostLine c={pick} today={today} />
         </>
       )}
 

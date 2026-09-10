@@ -33,6 +33,7 @@ const RETAIN_MIN = 0.80   // AC-CL-2：留倉率門檻。OI 增量 ÷ 成交量�
 const ML_HORIZON = 45     // AC-CL-2a：只對 45 天內到期的契約記成本明細。更遠的季月（202612／202703）
                           // 建倉零星卻要每天扛 OI 序列，實測是體積的主要來源
 const ML_MIN_DOI = 30     // 單日增量低於這個數就不納入追蹤，避免一口單長出一整條 OI 序列
+const KEEP_SETTLED_DAYS = 7  // AC-CL-14：已結算契約的成本明細再留幾天（與 lib/costLine.ts 同值）
 
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
@@ -538,12 +539,15 @@ async function main() {
     console.log(`[oi] 結算價抓取失敗（不影響主資料）：${e.message}`)
   }
 
-  // AC-CL-2a：已結算的契約不會出現在分頁（AC-CL-1 只列結算日 > 今天），
-  // 它的成本明細留著純粹是體積——實測每天每契約約 0.3~0.5 KB，一個月就是六位數位元組
+  // AC-CL-14：已結算的契約再留 KEEP_SETTLED_DAYS 天供回顧——結算完才看得出
+  // 當初那條成本線守不守得住。超過窗口就清掉，純粹是體積（實測每天每契約 0.3~0.5 KB）。
+  // ⚠️ 這個門檻必須與 lib/costLine.ts 的 KEEP_SETTLED_DAYS 同步，否則分頁列得出
+  // 契約卻沒有明細可看
+  const mlFloor = shiftDate(today, -KEEP_SETTLED_DAYS)
   let pruned = 0
   for (const d of Object.keys(existing.days)) {
-    for (const [code, rec] of Object.entries(existing.days[d])) {
-      if (rec.ml && rec.exp < today) { delete rec.ml; pruned++ }
+    for (const rec of Object.values(existing.days[d])) {
+      if (rec.ml && rec.exp < mlFloor) { delete rec.ml; pruned++ }
     }
   }
   if (pruned) console.log(`[oi] 已清除 ${pruned} 筆已結算契約的成本明細`)

@@ -72,6 +72,15 @@ export interface CostCase {
 /** AC-CL-4：單一履約價累積不到這個口數就不列，濾掉零星單 */
 export const MIN_OI = 100
 
+/** AC-CL-14：已結算的契約再留幾天供回顧（pipeline 端的清除門檻必須同步） */
+export const KEEP_SETTLED_DAYS = 7
+
+const shift = (iso: string, days: number) => {
+  const d = new Date(`${iso}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
 const mlOf = (snap: OptionsOISnapshot, d: string, code: string) =>
   snap.days[d]?.[code]?.ml ?? null
 
@@ -207,6 +216,6 @@ export function buildCases(
     .map(c => analyze(snap, c, dates, settleDays, indexClose))
     // ⚠️ 不可再加「有合格建倉線才留」的條件——剛掛牌的契約本來就還沒有建倉，
     // 濾掉的話 F3、下期月選就永遠不會出現在分頁上，正好違反 AC-CL-1
-    .filter((c): c is CostCase => !!c && c.exp >= today)
+    .filter((c): c is CostCase => !!c && c.exp >= shift(today, -KEEP_SETTLED_DAYS))
     .sort((a, b) => a.exp.localeCompare(b.exp))
 }
