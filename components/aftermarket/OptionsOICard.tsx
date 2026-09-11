@@ -43,13 +43,13 @@ export default function OptionsOICard({ indexHistory = [] }: CardProps) {
   )
 
   // AC-CL-1：預設停在最近即將到期、但還沒結算的那一檔
-  // AC-CL-14：未結算的依結算日升冪在前，已結算的（7 天內）依結算日降冪在後。
-  // 結算完才看得出當初那條成本線守不守得住，所以留一段回顧窗口
-  const tabs = useMemo(() => {
-    const live = cases.filter(c => c.exp >= today).sort((a, b) => a.exp.localeCompare(b.exp))
-    const done = cases.filter(c => c.exp < today).sort((a, b) => b.exp.localeCompare(a.exp))
-    return [...live, ...done]
-  }, [cases, today])
+  // AC-CL-14（2026-09-11 修訂）：全部依結算日升冪排成單一時間軸。
+  // 已結算的（7 天內）結算日最早，自然落在最前面——不另外分組，分組會讓
+  // 最近到期、最該看的那一檔被推到最後一格
+  const tabs = useMemo(
+    () => [...cases].sort((a, b) => a.exp.localeCompare(b.exp)),
+    [cases],
+  )
 
   const pick = useMemo(() => {
     if (!tabs.length) return null
