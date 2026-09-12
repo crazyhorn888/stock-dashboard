@@ -11,7 +11,7 @@ import type { SnapshotData, HolidayStatus } from '@/lib/types'
  * （平日 18:00 後大盤仍無今日 K 棒 → 視為非交易日，只能在晚上才成立）。
  * 各日期戳直接從快照內容推導，layered（market.json）與 fallback（latest.json）皆適用。
  */
-export default function FreshnessBar({ data, holiday }: { data: SnapshotData; holiday?: HolidayStatus | null }) {
+export default function FreshnessBar({ data, holiday, optionsDate = null }: { data: SnapshotData; holiday?: HolidayStatus | null; optionsDate?: string | null }) {
   const info = useMemo(() => {
     const now = new Date()
     const today = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' })
@@ -54,9 +54,12 @@ export default function FreshnessBar({ data, holiday }: { data: SnapshotData; ho
         { label: '融資', date: marginDate },
         { label: '板塊', date: sectorDate },
         { label: '股價', date: stocksDate },
+        // AC-FR-3：資料源獨立於主線 pipeline（options-oi.json 自己的抓取路徑），
+        // 主線上傳失敗時這一項仍能反映真實鮮度，不會跟著其他五項一起卡住
+        { label: '選擇權', date: optionsDate },
       ],
     }
-  }, [data, holiday])
+  }, [data, holiday, optionsDate])
 
   const fmt = (d: string | null) => (d ? d.slice(5).replace('-', '/') : '—')
   // 資料項用短格式（9/03 而非 09/03）：手機單行剛好塞得下六欄，不必折行也不必橫捲

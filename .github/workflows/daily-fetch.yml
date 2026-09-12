@@ -119,13 +119,16 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         run: node scripts/guard-check.mjs
 
+      # AC-UP-2：原本這裡還有一個獨立的「npm install firebase-admin --no-save」步驟，
+      # 但 firebase-admin 早就在 package.json devDependencies，npm ci 已經會裝好，
+      # 那步是重複且用不鎖版本的方式重裝，反而是風險點——2026-09-11 事故的根因是
+      # @google-cloud/firestore 屬於 firebase-admin 的 optionalDependencies，
+      # npm 在 Actions 上裝不上也不會讓 npm ci 失敗，直到 write-firebase.mjs 執行期間
+      # 才報 Cannot find module。已改把它列為 package.json 的必要依賴（AC-UP-1），
+      # 裝不上時 npm ci 這步會直接失敗，不必再靠這個獨立步驟補裝
       - name: Install dependencies
         if: steps.guard.outputs.SHOULD_RUN == 'true'
         run: npm ci
-
-      - name: Install firebase-admin
-        if: steps.guard.outputs.SHOULD_RUN == 'true'
-        run: npm install firebase-admin --no-save
 
       - name: 抓取每日行情（含兩道 Guard：已完成 / 非交易日）
         if: steps.guard.outputs.SHOULD_RUN == 'true'

@@ -81,7 +81,8 @@
     "快照載入；P1-1 分檔後改動點；P2-1 起 market.json 的 conceptHistory/concepts 也要一併還原"
   ],
   ".github/workflows/daily-fetch.yml": [
-    "cron 班次、concurrency 排隊、guard 前置 gate；改動需 push main 才生效；P2-3 起 06:07 班次靠 github.event.schedule 字串比對切到 fetch-global-indices job，兩處 cron 字串必須完全一致"
+    "cron 班次、concurrency 排隊、guard 前置 gate；改動需 push main 才生效；P2-3 起 06:07 班次靠 github.event.schedule 字串比對切到 fetch-global-indices job，兩處 cron 字串必須完全一致",
+    "AC-UP-2（2026-09-13）：移除獨立的「Install firebase-admin」步驟（原本是 npm install firebase-admin --no-save，不鎖版本、且與 package.json 已宣告的依賴重複）；firebase-admin 與 @google-cloud/firestore 現在都由 npm ci 一次裝好"
   ],
   "scripts/fetch-global.mjs": [
     "P2-3 全球指數獨立輕量腳本；Yahoo Finance chart API 是非官方端點，symbol 或回應格式跑掉會整批悄悄失敗（有 try/catch 保留舊值，不會噴掉整個 run，但要留意 log）"
@@ -410,7 +411,8 @@
   "components/shared/FreshnessBar.tsx": [
     "AC-UI-2：各資料集直接標日期，與基準日相符為綠、落後為橘",
     "基準日規則（2026-09-03 定案）：休市→最近交易日；交易日 13:30（台股收盤）後→今日；13:30 前→上一個交易日。收盤前拿今天當基準會讓整排變橘色，因為當下最新應有的資料就是前一交易日的",
-    "⚠️ 所有時間判斷一律指定 timeZone:'Asia/Taipei'——使用者出國時手機時區會變，用本地時間會整個判斷錯一天"
+    "⚠️ 所有時間判斷一律指定 timeZone:'Asia/Taipei'——使用者出國時手機時區會變，用本地時間會整個判斷錯一天",
+    "AC-FR-3（2026-09-13）：新增 optionsDate prop 與「選擇權」第 6 欄，日期戳來源獨立於主線 pipeline（options-oi.json），主線上傳失敗時仍能反映真實鮮度；版面早在 2026-09-04 就已按六欄寬度量過（344px vs 手機可用 366px），加這欄不會破版"
   ],
   "components/stock/StockKChart.tsx::isoWeekKey": [
     "週線分組全程用 UTC 解析與運算（同 lib/calcMA.ts::resampleWeekly）",
@@ -603,5 +605,41 @@
   ],
   "components/aftermarket/CostLine.tsx": [
     "AC-CL-5/6/7：① 線寬＝目前 OI、OI 歸零不畫、剩不到兩成淡化 ② 底/重必須在『全部有部位的線』中認定並強制顯示，不可只看勾選後的子集 ③ 日曆底色語意＝有沒有開盤，與有沒有建倉無關；休市判定用交易日序列不自排日期表 ④ 點日曆只切換明細口徑，圖表與捲動位置不得跟著變"
+  ],
+  "scripts/fetch-holders.mjs::parseTDCC": [
+    "集保大戶百張/千張佔比與總股數的解析；級距 16（差異數調整）誤算進百張會讓全市場數字虛高"
+  ],
+  "scripts/fetch-holders.mjs::rollWindow": [
+    "52 週滾動與 AC-HD-3 殘缺守門；誤放行殘檔會讓那一週永久壞掉（只追加不重算）"
+  ],
+  "scripts/calc-holders-z.mjs::calcZ": [
+    "AC-HZ-2 穩健 Z（中位數/MAD）；改回平均/標準差會讓命中率從 5% 爆到 24%（週變化峰度 640）"
+  ],
+  "scripts/calc-holders-z.mjs::detectCapitalEvent": [
+    "AC-HZ-3 股本事件守門；漏判會把增資/可轉債轉換當成大戶進出"
+  ],
+  "scripts/calc-holders-z.mjs::buildHolders": [
+    "週別對齊與最新週萃取；缺席週沒補 null 會讓整條序列錯位"
+  ],
+  "scripts/seed-holders-history.mjs::mergeWeeks": [
+    "一次性回填要「合併」不是覆寫；覆寫會洗掉週六班次剛寫入的新週"
+  ],
+  "lib/fetchHolders.ts::isHolderMove": [
+    "AC-HZ-4 異動判定：股本事件週與累積中一律不算，門檻由使用者調"
+  ],
+  "lib/fetchHolders.ts::deltaPp": [
+    "AC-HZ-3：股本事件週的 Δ 必須回 null，顯示成 0 會誤導"
+  ],
+  "lib/stockFilter.ts::matches::holders": [
+    "AC-HF-1 集保三條件；缺值一律不符合（不當 0），holders 未載入前不套用避免清空"
+  ],
+  "components/stock/HoldersBlock.tsx": [
+    "AC-HU-3/4 Modal 區塊與說明；說明文字不得出現預測性或「主力進場」字眼"
+  ],
+  "package.json": [
+    "AC-UP-1（2026-09-13）：@google-cloud/firestore 從 firebase-admin 的 optionalDependencies 轉列為本專案 devDependencies 直接依賴——npm 裝不上該套件時要讓 npm ci 直接失敗攔在最前面，不能悄悄跳過；2026-09-11 事故就是靠 optionalDependencies 的沉默失敗特性，讓 write-firebase.mjs 抓完整輪資料後才在最後一步炸掉"
+  ],
+  "app/aftermarket/page.tsx::optionsDate": [
+    "AC-FR-3：頁面層呼叫 fetchOptionsOI() 取 options-oi.json 的 days 最新一天日期，傳給 FreshnessBar；fetchOptionsOI 內部有 module-level cache/inflight singleton，跟 OptionsOICard 各自呼叫一次不會重複打 Supabase"
   ]
 }

@@ -6,6 +6,7 @@ import { fetchOHLCSnapshot, getStockBars, type OHLCBar } from '@/lib/fetchStockO
 import StockKChart, { type Period } from './StockKChart'
 import ConceptTags from '@/components/shared/ConceptTags'
 import InstNetBlock from '@/components/shared/InstNetBlock'
+import HoldersBlock from './HoldersBlock'
 import type { InstNet } from '@/lib/instNet'
 import { useWatchlist } from '@/lib/watchlist'
 
@@ -133,6 +134,9 @@ export default function StockDetailSheet({ stock, n, onClose, onConceptClick, in
 
         {/* 當日三大法人（與泡泡面板個股列同一份資料源，見 lib/instNet） */}
         <InstNetBlock inst={instNet} date={instNetDate} />
+
+        {/* AC-HU-3：集保大戶（週更，絕對值只出現在這裡，清單只放增減 pp） */}
+        <HoldersBlock code={stock.code} />
 
         {/* P2-2：概念 tags */}
         {!!stock.concepts?.length && (

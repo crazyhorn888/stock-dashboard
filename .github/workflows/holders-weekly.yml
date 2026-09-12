@@ -1,0 +1,51 @@
+# 集保戶股權分散表週更（功能二十四，AC-HD-4）
+#
+# 為什麼是週更不是日更：TDCC 本來就只在每週最後一個營業日結算、週六上架。
+# 週間跑只會拿到同一份資料，AC-HD-3 的日期比對會擋掉重複寫入（整批不寫、log 標 ⏭）。
+#
+# 兩班的分工：週六主班搶第一時間；週日補班接住 TDCC 上架延遲或 GitHub 漏跑
+# （排程不保證執行，2026-09-04 主 pipeline 就被漏跑過一次）。
+# 兩班都跑到同一份資料時，第二班會被日期比對擋下，成本只有 3 秒。
+name: 集保大戶籌碼週更
+
+on:
+  schedule:
+    # 台北週六 09:00 = UTC 週六 01:00
+    - cron: '0 1 * * 6'
+    # 台北週日 09:00 補班
+    - cron: '0 1 * * 0'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '只抓不寫，用來確認解析結果'
+        type: boolean
+        default: false
+
+jobs:
+  holders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # 兩支腳本都零依賴，只用內建 fetch，不必 npm install
+      - name: 抓 TDCC 股權分散表並滾動 52 週
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          HOLDERS_DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: node scripts/fetch-holders.mjs
+
+      # 上一步被 AC-HD-3 擋下時（同一資料日期已抓過），這步重算也只是得到同樣的結果，
+      # 覆寫同內容無害；分成兩步是為了讓 log 看得出是哪一段出問題
+      - name: 算週變化／股本事件／穩健 Z，產出 holders.json
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          HOLDERS_DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: node scripts/calc-holders-z.mjs

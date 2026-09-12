@@ -5,8 +5,10 @@ import ConceptTags from '@/components/shared/ConceptTags'
 import { useWatchlist } from '@/lib/watchlist'
 import { useStockFilter, CONSOLIDATION_FIELDS, CONSOLIDATION_FLAGS, BARS_FILTER_IDS, type FilterId } from '@/lib/stockFilter'
 import { fetchInstCost, costOf, gapToCost, windowForN } from '@/lib/fetchInstCost'
+import { fetchHolders, holdersOf, isHolderMove, isWideMove, deltaPp, moveMultiple } from '@/lib/fetchHolders'
+import { fmtMultiple } from '@/components/stock/HoldersBlock'
 import { useNDays } from '@/lib/nDays'
-import type { InstCostSnapshot } from '@/lib/types'
+import type { InstCostSnapshot, HoldersSnapshot } from '@/lib/types'
 import { fetchOHLCSnapshot } from '@/lib/fetchStockOHLC'
 import type { OHLCSnapshot } from '@/lib/types'
 
@@ -15,7 +17,8 @@ import type { OHLCSnapshot } from '@/lib/types'
  * 共用同一個元件：同欄位、同排序規則、同顯示格式，資料 refer 同一份 StockRow
  * （page.tsx 統一產生，法人欄位來自 day0 T86，見 lib/instNet）。
  *
- * 欄位：⭐ 代號 名稱 收盤 漲跌% 距N高▼% 距N低▲% P/E EPS 外資 投信 自營 合計 成本 距成本% 產業 概念
+ * 欄位：⭐ 代號 名稱 收盤 漲跌% 距N高▼% 距N低▲% P/E EPS 外資 投信 自營 合計 成本 距成本% 百張Δ 千張Δ 產業 概念
+ * 集保兩欄只放週變化 pp，絕對值收在 Modal（2026-09-11 Franky 指定：清單保持精簡）。
  * （2026-09-04 移除「視覺」欄——它只是把「距N高%」再畫一次長條，佔一整欄不划算）
  * （產業欄 2026-07-12 曾短暫移除後加回——當時整欄「—」是資料 bug 不是欄位沒用，資料修復後保留）
  * 法人四欄（外資/投信/自營/合計）排序用絕對值——大動作在前（2026-07-12 Franky 確認）。
@@ -24,6 +27,8 @@ import type { OHLCSnapshot } from '@/lib/types'
 type SortKey =
   | 'changePercent' | 'highDropPct' | 'lowRisePct' | 'pe' | 'eps'
   | 'foreignNetBuy' | 'trustNet' | 'dealerNet' | 'instTotal'
+  // 集保兩欄不在 StockRow 上（資料來自 holders.json），排序時要另外取值
+  | 'holdersDh' | 'holdersDk'
 
 const ABS_KEYS: SortKey[] = ['foreignNetBuy', 'trustNet', 'dealerNet', 'instTotal']
 
@@ -51,6 +56,23 @@ function instCell(v: number | undefined | null) {
 }
 
 const fmtDate = (d: string) => d.slice(5).replace('-', '/').replace(/^0/, '')
+
+const fmtPp = (v: number | null | undefined) =>
+  v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(2)}`
+
+/** 集保兩欄：只顯示週變化 pp。股本事件週與缺值都顯示「—」（AC-HZ-3／AC-HD-5） */
+function holderCell(e: ReturnType<typeof holdersOf>, key: 'dh' | 'dk') {
+  if (e?.capitalEvent) {
+    return <span className="text-slate-300" title="本週有股本／庫存異動，數字不可比">—</span>
+  }
+  const v = deltaPp(e, key)
+  if (v == null) return <span className="text-slate-300">—</span>
+  return (
+    <span className={`font-medium ${v > 0 ? 'text-red-500' : v < 0 ? 'text-green-600' : 'text-slate-400'}`}>
+      {v > 0 ? '+' : ''}{v.toFixed(2)}
+    </span>
+  )
+}
 
 export default function StockRowsTable({
   rows, onStockClick, onConceptClick,
@@ -88,6 +110,12 @@ export default function StockRowsTable({
   const [instCost, setInstCost] = useState<InstCostSnapshot | null>(null)
   useEffect(() => { fetchInstCost().then(setInstCost) }, [])
   const costWindow = windowForN(nDays)
+
+  // AC-HU-1：集保大戶。全市場約 270KB 且兩欄常駐顯示，比照法人成本掛載就抓
+  const [holders, setHolders] = useState<HoldersSnapshot | null>(null)
+  useEffect(() => { fetchHolders().then(setHolders) }, [])
+  // AC-HF-4：門檻使用者可調，沒設定就用後端預設
+  const zThreshold = filter.state.value.holderMove ?? holders?.threshold ?? 5
   // 序列還沒累積到該窗口天數（起步期的 60/120 日）→ 標示累積中而不是當成沒資料
   const costAccruing = !!instCost && instCost.days < costWindow
 
@@ -97,17 +125,22 @@ export default function StockRowsTable({
   const instBg = stale ? 'bg-amber-50/40' : ''
 
   const filteredRows = useMemo(
-    () => filter.filterRows(rows, bars ?? undefined, instCost, nDays),
-    [filter, rows, bars, instCost, nDays],
+    () => filter.filterRows(rows, bars ?? undefined, instCost, nDays, holders),
+    [filter, rows, bars, instCost, nDays, holders],
   )
 
   const sorted = useMemo(() => {
     const val = (r: StockRow) => {
+      if (sortKey === 'holdersDh' || sortKey === 'holdersDk') {
+        // 缺值排到最後（不是當 0），否則「沒資料」會混進中間看起來像沒變動
+        const d = deltaPp(holdersOf(holders, r.code), sortKey === 'holdersDh' ? 'dh' : 'dk')
+        return d ?? (sortAsc ? Infinity : -Infinity)
+      }
       const v = (r[sortKey] as number | null | undefined) ?? 0
       return ABS_KEYS.includes(sortKey) ? Math.abs(v) : v
     }
     return [...filteredRows].sort((a, b) => sortAsc ? val(a) - val(b) : val(b) - val(a))
-  }, [filteredRows, sortKey, sortAsc])
+  }, [filteredRows, sortKey, sortAsc, holders])
 
   function handleSort(key: SortKey) {
     if (sortKey === key) setSortAsc(a => !a)
@@ -154,6 +187,11 @@ export default function StockRowsTable({
                 法人成本
                 <span className="font-normal text-slate-400">　{costAccruing ? '累積中' : `${costWindow} 日`}</span>
               </th>
+              {/* AC-HU-5：集保是週更、股價是日更，最多差 5 個交易日，週別一定要標出來 */}
+              <th colSpan={2} className="px-2 py-1 text-[10px] font-semibold text-slate-500 text-center border-b border-l border-slate-200 bg-emerald-50/50">
+                集保大戶
+                <span className="font-normal text-slate-400">　{holders?.dataDate ? fmtDate(holders.dataDate) : '—'}</span>
+              </th>
               <th colSpan={2} className="border-b border-l border-slate-200" />
             </tr>
           )}
@@ -173,6 +211,8 @@ export default function StockRowsTable({
             <th className={thCls('instTotal')} onClick={() => handleSort('instTotal')}>合計(億) {arrow('instTotal')}</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 whitespace-nowrap">成本</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 whitespace-nowrap">距成本%</th>
+            <th className={thCls('holdersDh')} onClick={() => handleSort('holdersDh')}>百張Δ {arrow('holdersDh')}</th>
+            <th className={thCls('holdersDk')} onClick={() => handleSort('holdersDk')}>千張Δ {arrow('holdersDk')}</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400">產業</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400">概念</th>
           </tr>
@@ -186,6 +226,9 @@ export default function StockRowsTable({
             const chgUp = r.changePercent >= 0
             const cost = costOf(instCost, r.code, costWindow)
             const costGap = gapToCost(r.close, cost)
+            const hold = holdersOf(holders, r.code)
+            const moved = isHolderMove(hold, zThreshold)
+            const wide = isWideMove(hold, zThreshold)
             const highBad = r.highDropPct <= -15
             const highGood = r.highDropPct >= -5
             return (
@@ -202,7 +245,21 @@ export default function StockRowsTable({
                     ★
                   </button>
                 </td>
-                <td className="px-3 py-2 font-bold text-blue-600">{r.code}</td>
+                <td className="px-3 py-2 font-bold text-blue-600 whitespace-nowrap">
+                  {r.code}
+                  {moved && (
+                    /* AC-HU-2：中性標記。實心＝籌碼與期貨同時異動（動的範圍更廣），
+                       不是「更可能下跌」——回測顯示兩者同時之後的報酬 p=0.43，不顯著 */
+                    <span
+                      className={`ml-1 inline-block w-1.5 h-1.5 rounded-full align-middle ${
+                        wide ? 'bg-slate-500' : 'border border-slate-400'
+                      }`}
+                      title={`籌碼異動　比平常的波動大 ${moveMultiple(hold) != null ? fmtMultiple(moveMultiple(hold)!) : '—'}`
+                        + `｜百張 ${fmtPp(hold?.dh)}pp、千張 ${fmtPp(hold?.dk)}pp`
+                        + (wide ? '｜同週個股期貨也異動' : '')}
+                    />
+                  )}
+                </td>
                 <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{r.name}</td>
                 <td className="px-3 py-2 text-slate-700">{r.close.toLocaleString()}</td>
                 <td className="px-3 py-2">
@@ -230,6 +287,8 @@ export default function StockRowsTable({
                     </span>
                   ) : <span className="text-slate-300">—</span>}
                 </td>
+                <td className="px-3 py-2 tabular-nums">{holderCell(hold, 'dh')}</td>
+                <td className="px-3 py-2 tabular-nums">{holderCell(hold, 'dk')}</td>
                 <td className="px-3 py-2">
                   <span className="bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-slate-500 text-[10px] whitespace-nowrap">
                     {r.industry}
@@ -264,7 +323,8 @@ interface FilterPanelProps {
 function StockFilterPanel({
   open, onToggleOpen, filter, matchedCount, barsLoading, barsError, costWindow, costAccruing,
 }: FilterPanelProps) {
-  const { state, defs, toggle, setValue, setRange, reset, activeCount, setConsolidationParam, toggleConsolidationFlag } = filter
+  const { state, defs, toggle, setValue, setRange, reset, activeCount,
+    setConsolidationParam, toggleConsolidationFlag, toggleHolderWide } = filter
   const [advOpen, setAdvOpen] = useState(false)
 
   function symbol(id: FilterId) {
@@ -272,6 +332,8 @@ function StockFilterPanel({
     if (def.kind === 'lt') return '<'
     if (def.kind === 'range') return '~'
     if (def.kind === 'inst-cost-gte') return '≥'   // AC-IC-3：折價幅度 ≥ 門檻
+    if (def.kind === 'holders-gte') return '≥'
+    if (def.kind === 'holder-move') return ''      // label 本身已經有「Z≥」，不要疊成「Z≥≥」
     return '>'
   }
 
@@ -395,6 +457,19 @@ function StockFilterPanel({
                   />
                   <span>{def.unit}</span>
                 </span>
+              )}
+              {/* AC-HF-1：籌碼異動可再收斂成「同週個股期貨也異動」。
+                  語意是動的範圍更廣，不是更看空——回測 p=0.43 不顯著，文案不得寫成訊號 */}
+              {def.kind === 'holder-move' && (
+                <>
+                  <label className="flex items-center gap-1 text-[10px] text-slate-500">
+                    <input type="checkbox" checked={state.holderWide} onChange={toggleHolderWide} />
+                    同時有期貨異動
+                  </label>
+                  <span className="text-[10px] text-slate-400">
+                    大戶結構變動比自己平常大幾倍（{def.min}~{def.max}，越大越少）
+                  </span>
+                </>
               )}
               {/* AC-IC-7：成本窗口不是獨立設定，是跟著頁面 N 換算出來的 */}
               {def.kind === 'inst-cost-gte' && (

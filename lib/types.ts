@@ -269,6 +269,33 @@ export interface InstCostSnapshot {
   cost: Record<string, Record<string, number>>
 }
 
+// ── 功能二十四：集保大戶籌碼（holders.json，calc-holders-z.mjs 產出）──────────
+// 週更資料（TDCC 每週最後營業日結算、週六上架），與日更的股價最多差 5 個交易日。
+export interface HoldersEntry {
+  h: number              // 百張大戶持股比例 %（級距 10~15 加總）
+  k: number              // 千張大戶持股比例 %（級距 15）
+  prevH: number | null   // 上週值，Modal 的三列表格用
+  prevK: number | null
+  dh: number | null      // 週變化（百分點）；股本事件週為 null
+  dk: number | null
+  zh: number | null      // 穩健 Z（中位數/MAD）；累積不足 26 週為 null
+  zk: number | null
+  sameDir: boolean       // 百張與千張本週同方向變動（AC-HZ-4 判定的第二個條件）
+  capitalEvent: boolean  // 該週總股數變動 > 0.5%，數字不可比（AC-HZ-3）
+  weeks: number          // 已累積週數，判斷要不要顯示「累積中」
+  futMove?: boolean      // 同週個股期貨也異動（AC-HZ-7）；沒有個股期貨的標的為 undefined
+}
+
+export interface HoldersSnapshot {
+  updatedAt: string
+  dataDate: string           // 本週資料日 YYYY-MM-DD
+  prevDate: string | null
+  threshold: number          // 後端預設門檻（5），前端可由篩選面板覆寫
+  window: number             // Z 值滾動窗（週）
+  minPeriods: number         // 樣本不足這個數就不給 Z
+  stocks: Record<string, HoldersEntry>
+}
+
 // ── P2-5：個股歷史（stock-history.json，lazy-load，不進 market.json）───────
 export interface StockHistoryEntry {
   code: string; name: string

@@ -15,6 +15,7 @@ import { calcStockRow } from '@/lib/calcMetrics'
 import { MOCK_DATA } from '@/lib/mockData'
 import { fetchSnapshot } from '@/lib/fetchSnapshot'
 import { fetchHolidayStatus } from '@/lib/fetchHolidayStatus'
+import { fetchOptionsOI } from '@/lib/fetchOptionsOI'
 import { calcConcepts } from '@/lib/calcSectors'
 import { calcMarketSignals } from '@/lib/calcMarketSignals'
 import { useNDays, N_DEFAULT } from '@/lib/nDays'
@@ -38,6 +39,9 @@ export default function AftermarketPage() {
   const [globalModalKey, setGlobalModalKey] = useState<string | null>(null)
   // 台股是否休市（TWSE 官方行事曆）：用來把「待更新中」類文字換成「今日休市」說明，避免上午誤讀
   const [holidayStatus, setHolidayStatus] = useState<HolidayStatus | null>(null)
+  // AC-FR-3：選擇權 OI 最新資料日，來源獨立於主線 pipeline（options-oi.json 自己的抓取路徑），
+  // 主線上傳失敗時鮮度列仍能顯示這一項的真實狀態
+  const [optionsDate, setOptionsDate] = useState<string | null>(null)
   // /review 待審核數量：>0 時齒輪圖示發亮提醒
   const [pendingCount, setPendingCount] = useState(0)
 
@@ -46,6 +50,10 @@ export default function AftermarketPage() {
   useEffect(() => {
     fetchHolidayStatus().then(setHolidayStatus)
     fetch('/api/review/pending-count').then(r => r.json()).then(d => setPendingCount(d.count ?? 0)).catch(() => {})
+    fetchOptionsOI().then(snap => {
+      const dates = snap?.days ? Object.keys(snap.days) : []
+      setOptionsDate(dates.length ? dates.sort().at(-1)! : null)
+    })
   }, [])
 
   useEffect(() => {
@@ -213,7 +221,7 @@ export default function AftermarketPage() {
             </div>
           </div>
         )}
-        {!loading && !error && <FreshnessBar data={data} holiday={holidayStatus} />}
+        {!loading && !error && <FreshnessBar data={data} holiday={holidayStatus} optionsDate={optionsDate} />}
 
         {loading ? (
           <div className="space-y-3 animate-pulse">

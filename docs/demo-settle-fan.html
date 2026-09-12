@@ -1,0 +1,262 @@
+<title>結算日落點扇形圖</title>
+<style>
+:root{--bg:#f1f5f9;--card:#fff;--ink:#0f172a;--ink2:#475569;--ink3:#94a3b8;--line:#e2e8f0;
+ --line2:#cbd5e1;--red:#dc2626;--green:#059669;--amber:#d97706;--amber-bg:#fffbeb;
+ --grid:#e8edf3;--twii:#7c3aed;--proj:#f8fafc}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b1120;--card:#131c2e;
+ --ink:#e8eef8;--ink2:#a5b3c8;--ink3:#6b7c94;--line:#25314a;--line2:#35435f;--red:#f87171;
+ --green:#34d399;--amber:#fbbf24;--amber-bg:#2a2211;--grid:#1e2a40;--twii:#a78bfa;--proj:#0f1729}}
+:root[data-theme="dark"]{--bg:#0b1120;--card:#131c2e;--ink:#e8eef8;--ink2:#a5b3c8;--ink3:#6b7c94;
+ --line:#25314a;--line2:#35435f;--red:#f87171;--green:#34d399;--amber:#fbbf24;
+ --amber-bg:#2a2211;--grid:#1e2a40;--twii:#a78bfa;--proj:#0f1729}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);margin:0;padding:14px;
+ font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Noto Sans TC",sans-serif;
+ display:flex;flex-direction:column;align-items:center;gap:12px}
+.wrap{width:100%;max-width:430px;display:flex;flex-direction:column;gap:12px}
+.banner{background:var(--amber-bg);border:1px solid var(--amber);border-radius:10px;padding:8px 11px;
+ font-size:11.5px;color:var(--amber);line-height:1.65}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 14px;
+ display:flex;flex-direction:column;gap:9px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.hdr{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ttl{font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px}
+.q{width:16px;height:16px;border-radius:50%;border:1px solid var(--line2);background:none;
+ color:var(--ink3);font-size:10px;cursor:pointer;font-family:inherit;line-height:1}
+.sub{font-size:10px;color:var(--ink3)}
+.seg{display:flex;gap:4px}
+.pill{font-size:11px;padding:2px 9px;border-radius:99px;border:1px solid var(--line);
+ background:var(--card);color:var(--ink2);cursor:pointer;font-family:inherit}
+.pill.on{background:var(--ink);color:var(--card);border-color:var(--ink);font-weight:600}
+.zoom{display:flex;align-items:center;gap:8px;font-size:10.5px;color:var(--ink2);padding:2px 2px 0}
+.zoom input[type=range]{flex:1;margin:0}
+.chart{border:1px solid var(--line);border-radius:9px;padding:8px 4px 2px;background:var(--card)}
+.plot{display:flex;align-items:flex-start}
+.plot .scroll{flex:1;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
+.plot .scroll::-webkit-scrollbar{height:4px}
+.plot .scroll::-webkit-scrollbar-thumb{background:var(--line2);border-radius:2px}
+.plot svg{display:block}
+.legend{display:flex;flex-wrap:wrap;gap:8px;font-size:9.5px;color:var(--ink2);padding:5px 6px 0}
+.legend i{display:inline-block;width:12px;height:2px;vertical-align:middle;margin-right:3px}
+.legend .sw{width:11px;height:9px;border-radius:2px;display:inline-block;vertical-align:-1px;margin-right:3px}
+.bands{border:1px solid var(--line);border-radius:9px;background:var(--bg);padding:9px}
+.bh{font-size:11px;font-weight:700;margin-bottom:6px}
+.brow{display:flex;align-items:center;gap:7px;font-size:10.5px;font-variant-numeric:tabular-nums;
+ padding:3px 0;border-bottom:1px dashed var(--line)}
+.brow:last-child{border:0}
+.brow .sw{width:14px;height:11px;border-radius:2px;flex-shrink:0}
+.brow .rng{color:var(--ink);font-weight:600;flex:1}
+.brow .meta{color:var(--ink3);font-size:9.5px}
+.hint{font-size:10.5px;color:var(--ink3);line-height:1.65}
+.modal{position:fixed;inset:0;background:rgba(2,6,23,.5);display:flex;align-items:center;
+ justify-content:center;padding:16px;z-index:50}
+.modal[hidden]{display:none!important}
+.sheet{background:var(--card);border-radius:14px;padding:14px;max-width:400px;width:100%;
+ max-height:82vh;overflow:auto}
+.sheet h3{margin:0 0 8px;font-size:13px;display:flex;justify-content:space-between;align-items:center}
+.blk{background:var(--bg);border-radius:8px;padding:8px 10px;margin-bottom:7px;font-size:10.5px;
+ color:var(--ink2);line-height:1.7}
+.blk b{color:var(--ink)}
+.x{background:none;border:0;color:var(--ink3);font-size:17px;cursor:pointer;font-family:inherit}
+code{font-family:ui-monospace,Menlo,monospace;font-size:10px;background:var(--card);padding:1px 4px;border-radius:3px}
+</style>
+
+<div class="wrap">
+  <div class="banner">
+    <b>Demo</b>｜追蹤 <b id="bTrack"></b>，把它掛牌以來每一天算出的兩平上下限，
+    往右投射到結算日，切出的區間依「共識強度」上色。真實資料。
+  </div>
+
+  <div class="card">
+    <div class="hdr">
+      <div>
+        <div class="ttl">結算日落點推估 <button class="q" id="qbtn">?</button></div>
+        <div class="sub" id="sub"></div>
+      </div>
+      <div class="seg" id="modeSeg">
+        <button class="pill on" data-m="1">單點</button>
+        <button class="pill" data-m="3">加權</button>
+      </div>
+    </div>
+
+    <div class="zoom">
+      <span>顯示天數</span>
+      <input type="range" id="zoomR" min="4" max="8" value="8">
+      <span id="zoomV" style="min-width:2.5em;text-align:right"></span>
+    </div>
+
+    <div class="chart">
+      <div class="plot">
+        <svg id="axL" width="44" height="250" aria-hidden="true"></svg>
+        <div class="scroll" id="scroll"><svg id="svg" height="250" role="img" aria-label="結算日落點推估"></svg></div>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--red)"></i>上限</span>
+        <span><i style="background:var(--green)"></i>下限</span>
+        <span><i style="background:var(--twii)"></i>大盤收盤</span>
+        <span><span class="sw" style="background:rgba(5,150,105,.30)"></span>多數共識</span>
+        <span><span class="sw" style="background:rgba(5,150,105,.12)"></span>少數覆蓋</span>
+      </div>
+    </div>
+
+    <div class="bands" id="bands"></div>
+    <div class="hint" id="hint"></div>
+  </div>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="sheet">
+    <h3>這張圖怎麼讀 <button class="x" id="mx">✕</button></h3>
+    <div class="blk">
+      <b>追蹤規則</b>：結算日嚴格大於今天、最接近的那一檔契約，跨週三選／週五選／月選滾動。
+      圖上畫的是它<b>掛牌以來每一天</b>的兩平上下限，不只它成為「最近到期」的那 2~3 天。
+    </div>
+    <div class="blk">
+      <b>兩平點</b>：<code>上限 = Call 價內履約價 ＋ 權利金</code>、
+      <code>下限 = Put 價內履約價 − 權利金</code>，權利金取當日結算價。
+      前三大 OI 相鄰差距都在 3% 內時三點都畫（實測 8 天裡 Call 0 天、Put 1 天觸發，很罕見）。
+    </div>
+    <div class="blk">
+      <b>右側投射區</b>：把每天的上下限往右拉成水平虛線到結算日。越多天的區間重疊到同一個
+      價位帶，底色越深——那是市場反覆押注的價位。
+    </div>
+    <div class="blk" style="border-left:2px solid var(--amber)">
+      <b>⚠️ 這是「當日預期」不是「準確預測」。</b>70 天回測：用某天的區間去猜該契約最終落點，
+      剩 2-3 天時命中率 <b>25%</b>、剩 4-7 天時只有 <b>7%</b>。原因是<b>指數自己的漂移
+      （中位 1,050 點）比區間寬度（798 點）還大</b>。有價值的是看區間<b>怎麼收斂</b>，
+      不是把它當靶心。
+    </div>
+    <div class="blk">
+      <b>通道天生偏下</b>：Call 的價內最大 OI 常在深價內（時間價值近 0，兩平點貼著現價），
+      Put 的常在接近價平（時間價值大，兩平點就遠）。實測下緣距現價是上緣的 3.1 倍。
+      不要把偏下讀成看空。
+    </div>
+  </div>
+</div>
+
+<script>
+const DATA = {"track":{"code":"202609W2","exp":"2026-09-09"},"life":[{"d":"2026-08-27","fut":46078,"dte":13,"hi":46460,"lo":45260,"hi3":46566.25,"lo3":45260,"C":[[45000,4,3,1460],[45200,2,0,1320],[46000,2,1,825]],"P":[[46100,5,5,840]],"multiC":false,"multiP":false,"hiN":[46460,46520,46825],"loN":[45260]},{"d":"2026-08-31","fut":45983,"dte":9,"hi":46445,"lo":45395,"hi3":46491.25,"lo3":45404.375,"C":[[45700,10,14,745],[45850,5,5,665],[45950,5,5,610]],"P":[[46000,14,9,605],[46050,5,4,645],[46100,5,2,670]],"multiC":false,"multiP":false,"hiN":[46445,46515,46560],"loN":[45395,45405,45430]},{"d":"2026-09-01","fut":47209,"dte":8,"hi":47670,"lo":46630,"hi3":47592.25352112676,"lo3":46690,"C":[[47000,32,112,670],[46500,21,40,980],[46800,18,29,785]],"P":[[47350,2,2,720],[47500,2,2,800],[47600,2,2,860]],"multiC":false,"multiP":true,"hiN":[47670,47480,47585],"loN":[46630,46700,46740]},{"d":"2026-09-02","fut":46189,"dte":7,"hi":46270,"lo":45650,"hi3":46363.94557823129,"lo3":45668.47826086957,"C":[[44800,400,400,1470],[45100,400,400,1230],[45700,376,384,800]],"P":[[46300,66,54,650],[46200,65,16,615],[47000,30,30,1110]],"multiC":false,"multiP":false,"hiN":[46270,46330,46500],"loN":[45650,45585,45890]},{"d":"2026-09-03","fut":45837,"dte":6,"hi":45940,"lo":45385,"hi3":46053.231292517004,"lo3":45449.66453674121,"C":[[44800,400,0,1140],[45100,400,1,905],[45700,376,10,525]],"P":[[46000,121,304,615],[46300,98,89,790],[46200,94,125,730]],"multiC":false,"multiP":false,"hiN":[45940,46005,46225],"loN":[45385,45510,45470]},{"d":"2026-09-04","fut":46704,"dte":5,"hi":46960,"lo":46410,"hi3":46794.119047619046,"lo3":46375.9746835443,"C":[[46500,441,856,460],[45200,415,413,1490],[45500,404,419,1220]],"P":[[47000,37,32,590],[46800,24,27,472],[46900,18,31,530]],"multiC":false,"multiP":false,"hiN":[46960,46690,46720],"loN":[46410,46328,46370]},{"d":"2026-09-07","fut":47470,"dte":2,"hi":47572,"lo":47147,"hi3":47578.81468732071,"lo3":47156.465986394556,"C":[[47200,597,4644,372],[47000,574,6071,505],[47400,572,4628,260]],"P":[[47500,156,1080,353],[47600,73,458,422],[47550,65,205,395]],"multiC":false,"multiP":false,"hiN":[47572,47505,47660],"loN":[47147,47178,47155]},{"d":"2026-09-08","fut":46980,"dte":1,"hi":47164,"lo":46764,"hi3":47047.33966745844,"lo3":46806.753637901864,"C":[[46900,440,1232,264],[45200,414,1,1780],[45500,409,0,1490]],"P":[[47000,1271,13662,236],[47200,1219,8644,348],[47100,465,5894,295]],"multiC":false,"multiP":false,"hiN":[47164,46980,46990],"loN":[46764,46852,46805]}],"idx":{"2026-09-09":47183.36,"2026-09-08":47105.78,"2026-09-07":47326.27,"2026-09-04":46551.13,"2026-09-03":45857.66,"2026-09-02":46164.72,"2026-09-01":46948.72,"2026-08-31":46128.47,"2026-08-28":46331.45,"2026-08-27":45975.22,"2026-08-26":45832.62,"2026-08-25":45169.46,"2026-08-24":44762.32,"2026-08-21":45224.29,"2026-08-20":44933.74,"2026-08-19":44719.35,"2026-08-18":45308.68,"2026-08-17":45857.27,"2026-08-14":45811.01,"2026-08-13":46021.48,"2026-08-12":45518.07,"2026-08-11":45120.72,"2026-08-10":44928.76,"2026-08-07":44225.91,"2026-08-06":44396.7,"2026-08-05":44611.6,"2026-08-04":43360.66,"2026-08-03":43386.41,"2026-07-31":43119.75,"2026-07-30":39933.3,"2026-07-29":40039.18,"2026-07-28":41603.36,"2026-07-27":43634.19,"2026-07-24":43654.84,"2026-07-23":44850.81,"2026-07-22":44825.78,"2026-07-21":44232.87,"2026-07-20":42449.7,"2026-07-17":42671.27,"2026-07-16":45624.98,"2026-07-15":45631.59,"2026-07-14":44737.95,"2026-07-13":45380.52,"2026-07-09":45354.61,"2026-07-08":45734.41,"2026-07-07":45479.11,"2026-07-06":46556.39,"2026-07-03":46780.62,"2026-07-02":46744.16,"2026-07-01":47018.99,"2026-06-30":46125.91,"2026-06-29":44999.9,"2026-06-26":44571.76,"2026-06-25":46255.26,"2026-06-24":46043.6,"2026-06-23":47100.65,"2026-06-22":47741.51,"2026-06-18":46465.2,"2026-06-17":45877.39,"2026-06-16":45809.19,"2026-06-15":45396.99,"2026-06-12":44169.04,"2026-06-11":43149.46,"2026-06-10":43225.54,"2026-06-09":44704.44,"2026-06-08":43502.78,"2026-06-05":45070.94,"2026-06-04":45677.46,"2026-06-03":46459.16,"2026-06-02":45557.31,"2026-06-01":45337.91,"2026-05-29":44732.94,"2026-05-28":43636.44,"2026-05-27":44256.8,"2026-05-26":43525.37,"2026-05-25":43644.4,"2026-05-22":42267.97,"2026-05-21":41368.21,"2026-05-20":40020.82,"2026-05-19":40175.56,"2026-05-18":40891.82,"2026-05-15":41172.36,"2026-05-14":41751.75,"2026-05-13":41374.5,"2026-05-12":41898.32,"2026-05-11":41790.06,"2026-05-08":41603.94,"2026-05-07":41933.78,"2026-05-06":41138.85,"2026-05-05":40769.29,"2026-05-04":40705.14,"2026-04-30":38926.63,"2026-04-29":39303.5,"2026-04-28":39521.73,"2026-04-27":39616.63,"2026-04-24":38932.4,"2026-04-23":37714.15,"2026-04-22":37878.47,"2026-04-21":37605.11,"2026-04-20":36958.8,"2026-04-17":36804.34,"2026-04-16":37132.02,"2026-04-15":36722.14,"2026-04-14":36296.12,"2026-04-13":35457.29,"2026-04-10":35417.83,"2026-04-09":34861.16,"2026-04-08":34761.38,"2026-04-07":33229.82,"2026-04-02":32572.43,"2026-04-01":33174.82,"2026-03-31":31722.99,"2026-03-30":32518.16,"2026-03-27":33112.59,"2026-03-26":33337.62,"2026-03-25":33439.11,"2026-03-24":32612.24,"2026-03-23":32722.5,"2026-03-20":33543.88,"2026-03-19":33689.68,"2026-03-18":34348.58,"2026-03-17":33836.57,"2026-03-16":33342.51,"2026-03-13":33400.32,"2026-03-12":33581.86,"2026-03-11":34114.19,"2026-03-10":32771.87,"2026-03-09":32110.42,"2026-03-06":33599.54,"2026-03-05":33672.94,"2026-03-04":32828.88,"2026-03-03":34323.65,"2026-03-02":35095.09,"2026-02-26":35414.49,"2026-02-25":35413.07,"2026-02-24":34700.82,"2026-02-23":33773.26,"2026-02-11":33605.71,"2026-02-10":33072.97,"2026-02-09":32404.62,"2026-02-06":31782.92,"2026-02-05":31801.27,"2026-02-04":32289.81,"2026-02-03":32195.36,"2026-02-02":31624.03,"2026-01-30":32063.75,"2026-01-29":32536.27,"2026-01-28":32803.82,"2026-01-27":32317.92,"2026-01-26":32064.52,"2026-01-23":31961.51,"2026-01-22":31746.08,"2026-01-21":31246.37,"2026-01-20":31759.99,"2026-01-19":31639.29,"2026-01-16":31408.7,"2026-01-15":30810.58,"2026-01-14":30941.78,"2026-01-13":30707.22,"2026-01-12":30567.29,"2026-01-09":30288.96,"2026-01-08":30360.55,"2026-01-07":30435.47,"2026-01-06":30576.3,"2026-01-05":30105.04,"2026-01-02":29349.81,"2025-12-31":28963.6,"2025-12-30":28707.13,"2025-12-29":28810.89,"2025-12-26":28556.02,"2025-12-24":28371.98,"2025-12-23":28310.47,"2025-12-22":28149.64,"2025-12-19":27696.35,"2025-12-18":27468.53,"2025-12-17":27525.17,"2025-12-16":27536.66,"2025-12-15":27866.94,"2025-12-12":28198.02,"2025-12-11":28024.75,"2025-12-10":28400.73,"2025-12-09":28182.6,"2025-12-08":28303.78,"2025-12-05":27980.89,"2025-12-04":27795.71,"2025-12-03":27793.04,"2025-12-02":27564.27,"2025-12-01":27342.53,"2025-11-28":27626.48,"2025-11-27":27554.53,"2025-11-26":27409.54,"2025-11-25":26912.17,"2025-11-24":26504.24,"2025-11-21":26434.94,"2025-11-20":27426.36,"2025-11-19":26580.12,"2025-11-18":26756.12,"2025-11-17":27447.31,"2025-11-14":27397.5,"2025-11-13":27903.56,"2025-11-12":27947.09,"2025-11-11":27784.95,"2025-11-10":27869.51,"2025-11-07":27651.41,"2025-11-06":27899.45,"2025-11-05":27717.06,"2025-11-04":28116.56,"2025-11-03":28334.59,"2025-10-31":28233.35,"2025-10-30":28287.53,"2025-10-29":28294.74,"2025-10-28":27949.11,"2025-10-27":27993.63,"2025-10-23":27532.26,"2025-10-22":27648.91,"2025-10-21":27752.41,"2025-10-20":27688.63,"2025-10-17":27302.37,"2025-10-16":27647.87,"2025-10-15":27275.71,"2025-10-14":26793.15,"2025-10-13":26923.42,"2025-10-09":27301.92,"2025-10-08":27063.68,"2025-10-07":27211.95,"2025-10-03":26761.06,"2025-10-02":26378.39,"2025-10-01":25982.91,"2025-09-30":25820.54,"2025-09-26":25580.32,"2025-09-25":26023.85,"2025-09-24":26196.73,"2025-09-23":26247.37,"2025-09-22":25880.6,"2025-09-19":25578.37,"2025-09-18":25769.36,"2025-09-17":25438.25,"2025-09-16":25629.64,"2025-09-15":25357.16,"2025-09-12":25474.64,"2025-09-11":25215.71,"2025-09-10":25192.59,"2025-09-09":24855.18,"2025-09-08":24547.38,"2025-09-05":24494.58,"2025-09-04":24179.85,"2025-09-03":24100.3,"2025-09-02":24016.78,"2025-09-01":24071.73,"2025-08-29":24233.1}};
+const { track, life, idx } = DATA;
+let mode = 1, zoomDays = life.length;
+const md = s => s.slice(5).replace('-','/');
+const nf = n => n==null?'—':Math.round(n).toLocaleString();
+const HI = m => m===1?'hi':'hi3', LO = m => m===1?'lo':'lo3';
+document.getElementById('bTrack').textContent = track.code + '（' + md(track.exp) + ' 結算）';
+
+const H=250, PT=10, PB=30, IN=10, DAY_W=30, PROJ_W=104;
+
+function smooth(pts){
+  if(pts.length<2) return '';
+  let d='M'+pts[0][0]+' '+pts[0][1];
+  for(let i=0;i<pts.length-1;i++){
+    const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||p2;
+    d+='C'+(p1[0]+(p2[0]-p0[0])/6)+' '+(p1[1]+(p2[1]-p0[1])/6)+','
+      +(p2[0]-(p3[0]-p1[0])/6)+' '+(p2[1]-(p3[1]-p1[1])/6)+','+p2[0]+' '+p2[1];
+  }
+  return d;
+}
+
+/** 把可視範圍內每天的 [lo,hi] 疊起來，切成不重疊的價位帶並記錄覆蓋次數 */
+function stack(rows){
+  const edges = [...new Set(rows.flatMap(r => [r[LO(mode)], r[HI(mode)]]))].sort((a,b)=>a-b);
+  const bands = [];
+  for(let i=0;i<edges.length-1;i++){
+    const a=edges[i], b=edges[i+1];
+    const mid=(a+b)/2;
+    const n = rows.filter(r => r[LO(mode)] <= mid && mid <= r[HI(mode)]).length;
+    if(n>0) bands.push({ lo:a, hi:b, n });
+  }
+  return bands;
+}
+
+function draw(){
+  const rows = life.slice(-zoomDays), n = rows.length;
+  const W = n*DAY_W + PROJ_W;
+  // Y 軸只看可視範圍（含投射帶），滑動或縮放時自動聚焦
+  const vals = rows.flatMap(r => [r[HI(mode)], r[LO(mode)], r.fut, idx[r.d]]).filter(v=>v!=null);
+  const vMin=Math.min(...vals), vMax=Math.max(...vals), pad=(vMax-vMin)*0.10;
+  const lo=vMin-pad, hi=vMax+pad;
+  const X=i=>i*DAY_W+DAY_W/2;
+  const Y=v=>PT+IN+(hi-v)/(hi-lo)*(H-PT-PB-IN*2);
+  const projX0 = n*DAY_W, projX1 = W-6;
+  let g='';
+
+  // 投射區底色
+  g+='<rect x="'+projX0+'" y="'+PT+'" width="'+(W-projX0)+'" height="'+(H-PT-PB)+'" fill="var(--proj)"/>';
+  // 共識帶：覆蓋次數越多越深
+  const bands = stack(rows);
+  const maxN = Math.max(...bands.map(b=>b.n));
+  for(const b of bands){
+    const y1=Y(b.hi), y2=Y(b.lo), a=0.08+0.26*(b.n/maxN);
+    g+='<rect x="'+projX0+'" y="'+y1+'" width="'+(projX1-projX0)+'" height="'+Math.max(1,y2-y1)
+      +'" fill="rgba(5,150,105,'+a.toFixed(3)+')"/>';
+  }
+  // 每日上下限往右投射的虛線
+  for(const r of rows){
+    for(const [v,c] of [[r[HI(mode)],'var(--red)'],[r[LO(mode)],'var(--green)']]){
+      g+='<line x1="'+projX0+'" y1="'+Y(v)+'" x2="'+projX1+'" y2="'+Y(v)
+        +'" stroke="'+c+'" stroke-width=".8" stroke-dasharray="2 3" opacity=".45"/>';
+    }
+  }
+  g+='<line x1="'+projX0+'" y1="'+PT+'" x2="'+projX0+'" y2="'+(H-PB)+'" stroke="var(--line2)"/>';
+  g+='<text x="'+((projX0+projX1)/2)+'" y="'+(H-PB+12)+'" text-anchor="middle" font-size="8.5" font-weight="700" fill="var(--ink2)">'+md(track.exp)+'</text>';
+  g+='<text x="'+((projX0+projX1)/2)+'" y="'+(H-PB+22)+'" text-anchor="middle" font-size="7.5" fill="var(--ink3)">結算</text>';
+
+  // 格線
+  for(let k=0;k<=4;k++){const y=Y(lo+(hi-lo)*k/4);
+    g+='<line x1="0" y1="'+y+'" x2="'+projX0+'" y2="'+y+'" stroke="var(--grid)"/>';}
+
+  const hp=rows.map((r,i)=>[X(i),Y(r[HI(mode)])]), lp=rows.map((r,i)=>[X(i),Y(r[LO(mode)])]);
+  g+='<path d="'+smooth(hp)+'L'+smooth([...lp].reverse()).slice(1)+'Z" fill="rgba(37,99,235,.06)"/>';
+  g+='<path d="'+smooth(hp)+'" fill="none" stroke="var(--red)" stroke-width="1.7"/>';
+  g+='<path d="'+smooth(lp)+'" fill="none" stroke="var(--green)" stroke-width="1.7"/>';
+  const ip=rows.map((r,i)=>idx[r.d]!=null?[X(i),Y(idx[r.d])]:null).filter(Boolean);
+  if(ip.length>1) g+='<path d="'+smooth(ip)+'" fill="none" stroke="var(--twii)" stroke-width="1.6"/>';
+
+  rows.forEach((r,i)=>{
+    g+='<circle cx="'+X(i)+'" cy="'+Y(r.fut)+'" r="1.6" fill="var(--twii)"/>';
+    g+='<text x="'+X(i)+'" y="'+(H-PB+12)+'" text-anchor="middle" font-size="8.5" fill="var(--ink3)">'+ +r.d.slice(8) +'</text>';
+    g+='<text x="'+X(i)+'" y="'+(H-PB+22)+'" text-anchor="middle" font-size="7" fill="var(--ink3)">'+r.dte+'天</text>';
+  });
+
+  const svg=document.getElementById('svg'); svg.setAttribute('width',W); svg.innerHTML=g;
+  let l=''; for(let k=0;k<=4;k++){const v=lo+(hi-lo)*k/4;
+    l+='<text x="40" y="'+(Y(v)+3)+'" text-anchor="end" font-size="8" fill="var(--ink3)">'+nf(Math.round(v/50)*50)+'</text>';}
+  document.getElementById('axL').innerHTML=l;
+  const sc=document.getElementById('scroll'); sc.scrollLeft=sc.scrollWidth;
+
+  // 區間清單
+  const sorted=[...bands].sort((a,b)=>b.n-a.n||b.hi-a.hi);
+  document.getElementById('bands').innerHTML =
+    '<div class="bh">'+md(track.exp)+' 結算日的推估區間（近 '+n+' 天疊出）</div>'
+    + sorted.slice(0,6).map(b=>{
+        const a=0.08+0.26*(b.n/maxN);
+        return '<div class="brow"><span class="sw" style="background:rgba(5,150,105,'+a.toFixed(3)+')"></span>'
+          + '<span class="rng">'+nf(b.lo)+' ~ '+nf(b.hi)+'</span>'
+          + '<span class="meta">'+b.n+'/'+n+' 天覆蓋 · '+nf(b.hi-b.lo)+' 點</span></div>';
+      }).join('');
+  const last=rows.at(-1);
+  const core=sorted[0];
+  document.getElementById('sub').textContent =
+    md(last.d)+' 收盤 · 剩 '+last.dte+' 天 · 期貨 '+nf(last.fut);
+  document.getElementById('hint').innerHTML =
+    '最新一天的區間 <b>'+nf(last[LO(mode)])+' ~ '+nf(last[HI(mode)])+'</b>（'+nf(last[HI(mode)]-last[LO(mode)])+' 點），'
+    + '寬度已從掛牌時的 '+nf(life[0][HI(mode)]-life[0][LO(mode)])+' 點收斂。'
+    + '共識最強的價位帶是 <b>'+nf(core.lo)+' ~ '+nf(core.hi)+'</b>（'+core.n+'/'+n+' 天都覆蓋到）。';
+  document.getElementById('zoomV').textContent = n+' 天';
+}
+
+document.getElementById('modeSeg').addEventListener('click',e=>{
+  const b=e.target.closest('[data-m]'); if(!b) return;
+  mode=+b.dataset.m;
+  [...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));
+  draw();
+});
+const zr=document.getElementById('zoomR');
+zr.max=life.length; zr.value=life.length;
+zr.addEventListener('input',e=>{ zoomDays=+e.target.value; draw(); });
+const modal=document.getElementById('modal');
+document.getElementById('qbtn').onclick=()=>modal.hidden=false;
+document.getElementById('mx').onclick=()=>modal.hidden=true;
+modal.onclick=e=>{if(e.target===modal) modal.hidden=true};
+draw();
+</script>

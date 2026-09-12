@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import type { StockRow, OHLCSnapshot, InstCostSnapshot } from '@/lib/types'
+import type { StockRow, OHLCSnapshot, InstCostSnapshot, HoldersSnapshot } from '@/lib/types'
+import { holdersOf, isHolderMove, isWideMove, deltaPp } from '@/lib/fetchHolders'
 import { matchConsolidation, CONSOLIDATION_DEFAULTS, type ConsolidationParams } from '@/lib/consolidationPattern'
 import { costOf, gapToCost, windowForN } from '@/lib/fetchInstCost'
 
@@ -10,6 +11,7 @@ const KEY = 'stockFilter'
 const EVENT = 'stockFilter-change'
 
 export type FilterId = 'highDrop' | 'changeUp' | 'lowRise' | 'peRange' | 'instTotal' | 'volume' | 'consolidation' | 'belowInstCost'
+  | 'holderH' | 'holderK' | 'holderMove'
 
 // 需要 K 線/量能資料（ohlc.json）的條件，勾選任一才會 lazy fetch（AC-CS-1、AC-VOL-2）
 export const BARS_FILTER_IDS: FilterId[] = ['volume', 'consolidation']
@@ -71,7 +73,30 @@ interface InstCostDef {
   defaultValue: number
 }
 
+// AC-HF-1：集保大戶週增加 ≥ X pp。資料來自 holders.json 不是 StockRow 欄位
+interface HoldersGteDef {
+  id: 'holderH' | 'holderK'
+  label: string
+  kind: 'holders-gte'
+  field: 'dh' | 'dk'
+  unit: string
+  defaultValue: number
+}
+
+// AC-HF-1／AC-HF-4：籌碼異動。value 存的是 Z 門檻（不是比較值），
+// 而且這個門檻同時決定清單上的圓點要不要出現——所以沒勾選時也要有值
+interface HolderMoveDef {
+  id: 'holderMove'
+  label: string
+  kind: 'holder-move'
+  unit: string
+  defaultValue: number
+  min: number
+  max: number
+}
+
 type ConditionDef = ThresholdDef | RangeDef | LowRiseDef | BarsGtDef | PatternDef | InstCostDef
+  | HoldersGteDef | HolderMoveDef
 
 export const CONDITION_DEFS: ConditionDef[] = [
   { id: 'highDrop', label: '距N高', kind: 'lt', field: 'highDropPct', unit: '%', defaultValue: -30 },
@@ -82,6 +107,9 @@ export const CONDITION_DEFS: ConditionDef[] = [
   { id: 'volume', label: '當日量能', kind: 'bars-gt', unit: '張', defaultValue: 1000 },
   { id: 'consolidation', label: '整理平台', kind: 'pattern' },
   { id: 'belowInstCost', label: '低於法人成本', kind: 'inst-cost-gte', unit: '%', defaultValue: 0 },
+  { id: 'holderH', label: '百張大戶增加', kind: 'holders-gte', field: 'dh', unit: 'pp', defaultValue: 0.5 },
+  { id: 'holderK', label: '千張大戶增加', kind: 'holders-gte', field: 'dk', unit: 'pp', defaultValue: 0.5 },
+  { id: 'holderMove', label: '籌碼異動 Z≥', kind: 'holder-move', unit: '', defaultValue: 5, min: 3, max: 8 },
 ]
 
 // ConsolidationParams 的數字欄位／布林欄位（型別上分開，兩種 UI 控件不共用 setter）
@@ -123,6 +151,8 @@ interface FilterState {
   consolidation: ConsolidationParams
   /** AC-IC-3a：belowInstCost 的語意版本。2 = 折價幅度（正值）；缺值或 1 = 舊的距成本（負值） */
   icv: number
+  /** AC-HF-1：籌碼異動再收斂成「同週個股期貨也異動」 */
+  holderWide: boolean
 }
 
 const ICV_CURRENT = 2
@@ -137,7 +167,7 @@ function defaultState(): FilterState {
     if (def.kind === 'range') { min[def.id] = def.defaultMin; max[def.id] = def.defaultMax }
     else if (def.kind !== 'pattern') value[def.id] = def.defaultValue
   }
-  return { enabled, value, min, max, consolidation: { ...CONSOLIDATION_DEFAULTS }, icv: ICV_CURRENT }
+  return { enabled, value, min, max, consolidation: { ...CONSOLIDATION_DEFAULTS }, icv: ICV_CURRENT, holderWide: false }
 }
 
 function getState(): FilterState {
@@ -158,6 +188,7 @@ function getState(): FilterState {
       max: { ...base.max, ...parsed.max },
       consolidation: { ...base.consolidation, ...parsed.consolidation },
       icv: ICV_CURRENT,
+      holderWide: !!parsed.holderWide,
     }
   } catch {
     return defaultState()
@@ -176,7 +207,20 @@ function matches(
   bars?: OHLCSnapshot['bars'],
   instCost?: InstCostSnapshot | null,
   nDays = 100,
+  holders?: HoldersSnapshot | null,
 ): boolean {
+  // AC-HF-1：集保大戶週增加 ≥ X pp。股本事件週的 Δ 是 null（AC-HZ-3），
+  // 缺值一律不符合，不當 0
+  if (def.kind === 'holders-gte') {
+    const d = deltaPp(holdersOf(holders ?? null, row.code), def.field)
+    return d != null && d >= state.value[def.id]
+  }
+  // AC-HF-1／AC-HF-4：籌碼異動；勾了 holderWide 就再要求同週期貨也異動
+  if (def.kind === 'holder-move') {
+    const e = holdersOf(holders ?? null, row.code)
+    const th = state.value[def.id]
+    return state.holderWide ? isWideMove(e, th) : isHolderMove(e, th)
+  }
   // AC-IC-3：折價幅度 ≥ 門檻（折價幅度 ＝ −距成本%，正值代表比成本便宜）。
   // 窗口跟著頁面 N；成本缺值視為不符合，不當 0
   if (def.kind === 'inst-cost-gte') {
@@ -236,6 +280,13 @@ export function useStockFilter() {
     setStateLocal(next)
   }, [])
 
+  const toggleHolderWide = useCallback(() => {
+    const next = getState()
+    next.holderWide = !next.holderWide
+    saveState(next)
+    setStateLocal(next)
+  }, [])
+
   const reset = useCallback(() => {
     const next = defaultState()
     saveState(next)
@@ -266,6 +317,7 @@ export function useStockFilter() {
     bars?: OHLCSnapshot['bars'],
     instCost?: InstCostSnapshot | null,
     nDays = 100,
+    holders?: HoldersSnapshot | null,
   ) => {
     const activeDefs = CONDITION_DEFS.filter(d => state.enabled[d.id])
     if (activeDefs.length === 0) return rows
@@ -273,11 +325,13 @@ export function useStockFilter() {
     if (BARS_FILTER_IDS.some(id => state.enabled[id]) && !bars) return rows
     // AC-IC-3：同理，法人成本還沒載入前不套用
     if (state.enabled.belowInstCost && !instCost) return rows
-    return rows.filter(r => activeDefs.every(def => matches(def, r, state, bars, instCost, nDays)))
+    // 集保三條件同理：holders.json 還沒到齊就先不套用，避免整張表瞬間清空
+    if ((state.enabled.holderH || state.enabled.holderK || state.enabled.holderMove) && !holders) return rows
+    return rows.filter(r => activeDefs.every(def => matches(def, r, state, bars, instCost, nDays, holders)))
   }, [state])
 
   return {
     state, defs: CONDITION_DEFS, toggle, setValue, setRange, reset, activeCount,
-    filterRows, needsBars, setConsolidationParam, toggleConsolidationFlag,
+    filterRows, needsBars, setConsolidationParam, toggleConsolidationFlag, toggleHolderWide,
   }
 }
